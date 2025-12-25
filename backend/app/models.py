@@ -167,6 +167,13 @@ class Transaction(TimeStampedModel):
     category = models.ForeignKey(Category, on_delete=models.PROTECT)
     date = models.DateField(help_text="The actual date of transaction")
     description = models.TextField(blank=True)
+
+    # Field for marking transaction as void/cancelled
+    is_valid = models.BooleanField(default=True)  # True = Dihitung, False = Dianggap batal
+    
+    # Log siapa yang membatalkan
+    voided_by = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL, related_name='voided_transactions')
+    voided_at = models.DateTimeField(null=True, blank=True)
     
     # Metadata for ingestion
     source = models.CharField(
