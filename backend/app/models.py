@@ -34,6 +34,7 @@ class TransactionType(models.TextChoices):
 class TransactionSource(models.TextChoices):
     WHATSAPP = 'WHATSAPP', 'WhatsApp Bot'
     EMAIL = 'EMAIL', 'Email Report'
+    MANUAL = 'MANUAL', 'Manual Entry by Owner'
 
 class IngestionStatus(models.TextChoices):
     PENDING = 'PENDING', 'Pending Processing'
@@ -55,7 +56,6 @@ class Branch(TimeStampedModel):
         default=BranchType.LAUNDRY
     )
     address = models.TextField(blank=True, null=True)
-    is_active = models.BooleanField(default=True)
 
     def __str__(self):
         return f"{self.name} ({self.get_branch_type_display()})"

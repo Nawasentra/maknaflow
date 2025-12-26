@@ -9,7 +9,7 @@ from .models import Branch, User, Category, Transaction
 class BranchSerializer(serializers.ModelSerializer):
     class Meta:
         model = Branch
-        fields = ['id', 'name', 'branch_type', 'address', 'is_active']
+        fields = ['id', 'name', 'branch_type', 'address']
 
 
 class CategorySerializer(serializers.ModelSerializer):
