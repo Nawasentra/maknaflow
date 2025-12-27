@@ -1,5 +1,6 @@
 from django.db import models
 from django.contrib.auth.models import AbstractUser
+import uuid
 
 # ==========================================
 # 1. ABSTRACT MODELS (Utilities)
@@ -188,6 +189,9 @@ class Transaction(TimeStampedModel):
         help_text="WhatsApp phone number that sent the data"
     )
     evidence_image = models.ImageField(upload_to='receipts/%Y/%m/', blank=True, null=True)
+
+    # Unique identifier for the transaction
+    uuid = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
 
     class Meta:
         ordering = ['-date', '-created_at']
