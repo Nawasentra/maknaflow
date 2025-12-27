@@ -122,7 +122,8 @@ AUTH_PASSWORD_VALIDATORS = [
 
 LANGUAGE_CODE = 'en-us'
 
-TIME_ZONE = 'UTC'
+# Timezone: WIB (Western Indonesian Time, UTC+7)
+TIME_ZONE = 'Asia/Jakarta'
 
 USE_I18N = True
 
@@ -141,3 +142,9 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # Custom User Model
 AUTH_USER_MODEL = 'app.User'
+
+# Email Ingestion (IMAP Server) Configuration
+IMAP_HOST = config('IMAP_HOST', default='imap.gmail.com')
+IMAP_USER = config('IMAP_USER', default='')
+IMAP_PASSWORD = config('IMAP_PASSWORD', default='')
+OWNER_EMAILS = config('OWNER_EMAILS', default='', cast=Csv())

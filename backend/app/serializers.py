@@ -15,7 +15,7 @@ class BranchSerializer(serializers.ModelSerializer):
 class CategorySerializer(serializers.ModelSerializer):
     class Meta:
         model = Category
-        fields = ['id', 'name', 'transaction_type', 'applicable_branch_type']
+        fields = ['id', 'name', 'transaction_type']
 
 
 class UserSerializer(serializers.ModelSerializer):

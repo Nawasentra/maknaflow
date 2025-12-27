@@ -6,7 +6,7 @@ from .models import (
 
 @admin.register(Branch)
 class BranchAdmin(admin.ModelAdmin):
-    list_display = ['name', 'branch_type', 'address', 'created_at']
+    list_display = ['id', 'name', 'branch_type', 'address', 'created_at']
     list_filter = ['branch_type', 'created_at']
     search_fields = ['name', 'address']
     readonly_fields = ['created_at', 'updated_at']
@@ -24,17 +24,27 @@ class BranchAdmin(admin.ModelAdmin):
 
 @admin.register(Category)
 class CategoryAdmin(admin.ModelAdmin):
-    list_display = ['name', 'transaction_type', 'applicable_branch_type', 'created_at']
-    list_filter = ['transaction_type', 'applicable_branch_type', 'created_at']
+    list_display = ['id', 'name', 'transaction_type', 'get_branches', 'created_at']
+    list_filter = ['transaction_type', 'created_at']
     search_fields = ['name']
     readonly_fields = ['created_at', 'updated_at']
+
+    def get_branches(self, obj):
+        return ", ".join([b.name for b in obj.branches.all()])
+    get_branches.short_description = 'Branches'
+
+
+def link_categories_to_branches(modeladmin, request, queryset):
+    for t in queryset:
+        t.category.branches.add(t.branch)
+link_categories_to_branches.short_description = "Link selected categories to branches"
 
 
 @admin.register(Transaction)
 class TransactionAdmin(admin.ModelAdmin):
     list_display = [
-        'id', 'date', 'branch', 'amount', 'transaction_type', 
-        'category', 'reported_by', 'is_verified', 'source', 'created_at'
+        'id', 'date', 'branch_name', 'amount', 'transaction_type', 
+        'category_name', 'reported_by', 'is_verified', 'source', 'created_at'
     ]
     list_filter = [
         'transaction_type', 'source', 'is_verified', 'is_valid',
@@ -76,13 +86,20 @@ class TransactionAdmin(admin.ModelAdmin):
         qs = super().get_queryset(request)
         return qs.select_related('branch', 'category', 'reported_by', 'voided_by')
 
+    def branch_name(self, obj):
+        return obj.branch.name
+    branch_name.short_description = 'Branch'
+
+    def category_name(self, obj):
+        return obj.category.name
+    category_name.short_description = 'Category'
+
+    actions = [link_categories_to_branches]
+
 
 @admin.register(IngestionLog)
 class IngestionLogAdmin(admin.ModelAdmin):
-    list_display = [
-        'id', 'source', 'status', 'created_transaction', 
-        'created_at', 'has_error'
-    ]
+    list_display = ['id', 'source', 'status', 'created_transaction', 'created_at']
     list_filter = ['source', 'status', 'created_at']
     search_fields = [
         'raw_payload', 'error_message', 
