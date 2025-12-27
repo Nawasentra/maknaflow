@@ -1,6 +1,5 @@
 from django.db import models
 from django.contrib.auth.models import AbstractUser
-import uuid
 
 # ==========================================
 # 1. ABSTRACT MODELS (Utilities)
@@ -106,12 +105,12 @@ class Category(TimeStampedModel):
     name = models.CharField(max_length=50)
     transaction_type = models.CharField(choices=TransactionType.choices, max_length=10)
     
-    # If a category is specific to a branch type (e.g., specific soap for Carwash)
-    applicable_branch_type = models.CharField(
-        max_length=20, 
-        choices=BranchType.choices, 
-        blank=True, 
-        null=True
+    # Link category to specific branches (e.g., specific soap for Carwash)
+    branches = models.ManyToManyField(
+        'Branch',
+        related_name='categories',
+        blank=True,
+        help_text="Branches that use this category"
     )
 
     class Meta:
@@ -147,20 +146,13 @@ class Transaction(TimeStampedModel):
     Records for income and expenses with verifications
     """
     branch = models.ForeignKey(
-        Branch, 
-        on_delete=models.CASCADE, 
+        'Branch',
+        on_delete=models.CASCADE,
         related_name='transactions'
     )
     
     # Tracking
-    reported_by = models.ForeignKey(
-        User,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name='transactions_reported',
-        help_text="Staff who reported this transaction via WhatsApp"
-    )
+    reported_by = models.ForeignKey('User', on_delete=models.SET_NULL, null=True, blank=True, related_name='transactions_reported', help_text="Staff who reported this transaction via WhatsApp")
     is_verified = models.BooleanField(
         default=False,
         help_text="Whether this transaction is verified (auto-verified if from verified staff)"
@@ -169,13 +161,13 @@ class Transaction(TimeStampedModel):
     # Transaction details
     amount = models.DecimalField(max_digits=12, decimal_places=2)
     transaction_type = models.CharField(max_length=10, choices=TransactionType.choices)
-    category = models.ForeignKey(Category, on_delete=models.PROTECT)
+    category = models.ForeignKey('Category', on_delete=models.CASCADE)
     date = models.DateField(help_text="The actual date of transaction")
     description = models.TextField(blank=True)
     payment_method = models.CharField(
         max_length=10, 
         choices=PaymentMethod.choices, 
-        default=PaymentMethod.UNKNOWN
+        blank=True
     )
 
     # Field for marking transaction as void/cancelled
