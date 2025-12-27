@@ -122,7 +122,8 @@ AUTH_PASSWORD_VALIDATORS = [
 
 LANGUAGE_CODE = 'en-us'
 
-TIME_ZONE = 'UTC'
+# Timezone: WIB (Western Indonesian Time, UTC+7)
+TIME_ZONE = 'Asia/Jakarta'
 
 USE_I18N = True
 
