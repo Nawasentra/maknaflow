@@ -41,6 +41,11 @@ class IngestionStatus(models.TextChoices):
     SUCCESS = 'SUCCESS', 'Successfully Parsed'
     FAILED = 'FAILED', 'Parsing Failed'
 
+class PaymentMethod(models.TextChoices):
+    CASH = 'CASH', 'Cash'
+    QRIS = 'QRIS', 'QRIS'
+    TRANSFER = 'TRANSFER', 'Transfer'
+
 # ==========================================
 # 3. DOMAIN MODELS
 # ==========================================
@@ -167,6 +172,11 @@ class Transaction(TimeStampedModel):
     category = models.ForeignKey(Category, on_delete=models.PROTECT)
     date = models.DateField(help_text="The actual date of transaction")
     description = models.TextField(blank=True)
+    payment_method = models.CharField(
+        max_length=10, 
+        choices=PaymentMethod.choices, 
+        default=PaymentMethod.UNKNOWN
+    )
 
     # Field for marking transaction as void/cancelled
     is_valid = models.BooleanField(default=True)  # True = Dihitung, False = Dianggap batal
