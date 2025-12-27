@@ -32,13 +32,11 @@ def test_category_serializer():
     category = Category.objects.create(
         name="Supplies",
         transaction_type=TransactionType.EXPENSE,
-        applicable_branch_type=BranchType.LAUNDRY,
     )
     serializer = CategorySerializer(category)
     data = serializer.data
     assert data["name"] == "Supplies"
     assert data["transaction_type"] == TransactionType.EXPENSE
-    assert data["applicable_branch_type"] == BranchType.LAUNDRY
 
 @pytest.mark.django_db
 def test_user_serializer():
@@ -67,7 +65,6 @@ def test_transaction_serializer():
     category = Category.objects.create(
         name="IncomeCat",
         transaction_type=TransactionType.INCOME,
-        applicable_branch_type=BranchType.LAUNDRY,
     )
     transaction = Transaction.objects.create(
         branch=branch,
@@ -100,7 +97,6 @@ def test_transaction_serializer_amount_validation():
     category = Category.objects.create(
         name="ExpenseCat",
         transaction_type=TransactionType.EXPENSE,
-        applicable_branch_type=BranchType.LAUNDRY,
     )
     data = {
         "branch": branch.id,
@@ -125,7 +121,6 @@ def test_transaction_serializer_category_type_validation():
     category = Category.objects.create(
         name="IncomeCat",
         transaction_type=TransactionType.INCOME,
-        applicable_branch_type=BranchType.LAUNDRY,
     )
     data = {
         "branch": branch.id,
