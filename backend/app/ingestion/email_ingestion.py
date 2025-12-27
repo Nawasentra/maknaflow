@@ -6,7 +6,7 @@ from django.core.exceptions import ValidationError
 from django.utils import timezone
 from app.models import (
     Branch, User, Category, Transaction, IngestionLog,
-    TransactionType, TransactionSource, IngestionStatus,
+    TransactionType, TransactionSource, IngestionStatus, BranchType,
 )
 from app.ingestion.luna_parser import parse_luna_email
 from app.ingestion.hitachi_parser import parse_hitachi_email
@@ -15,11 +15,13 @@ logger = logging.getLogger(__name__)
 
 # Email Ingestion Service Class
 class EmailIngestionService:
-    def __init__(self):
+    def __init__(self, dry_run=False, limit=None):
         self.host = settings.IMAP_HOST
         self.user = settings.IMAP_USER
         self.password = settings.IMAP_PASSWORD
         self.owner_emails = [e.strip() for e in getattr(settings, 'OWNER_EMAILS', []) if e.strip()]
+        self.dry_run = dry_run
+        self.limit = limit
 
     # Connect to IMAP server
     def connect(self):
@@ -58,6 +60,8 @@ class EmailIngestionService:
             if status != "OK":
                 return "Search Failed"
             email_ids = messages[0].split()
+            if self.limit:
+                email_ids = email_ids[:self.limit]
             processed, failed = 0, 0
             for e_id in email_ids:
                 try:
@@ -134,15 +138,32 @@ class EmailIngestionService:
 
     # Find business branch from parsed metadata
     def _find_branch_from_metadata(self, parsed_data, email_type, subject_fallback):
-        branch_name = (parsed_data or {}).get("branch_name")
+        branch_name = None
+        # Prefer location/location_alias from metadata if available
+        if parsed_data:
+            metadata = parsed_data.get("metadata", {})
+            branch_name = metadata.get("location_alias") or metadata.get("location")
+        # Fallback to branch_name in parsed_data
+        if not branch_name:
+            branch_name = (parsed_data or {}).get("branch_name")
+        # Fallback to subject
         if not branch_name and subject_fallback:
-            branch_name = subject_fallback.split(":")[0].strip()
+            subject = subject_fallback
+            for prefix in ["Fwd:", "FW:", "Re:"]:
+                if subject.upper().startswith(prefix.upper()):
+                    subject = subject[len(prefix):].strip()
+            branch_name = subject.split(":")[0].strip()
         if not branch_name:
             raise ValidationError("No Branch name found in email or subject.")
-        try:
-            return Branch.objects.get(name__iexact=branch_name)
-        except Branch.DoesNotExist:
-            raise ValidationError(f"No Branch name found matching '{branch_name}'")
+        # If branch_name contains '|', use the last part (after the last '|')
+        if "|" in branch_name:
+            branch_name = branch_name.split("|")[-1].strip()
+        # Try to get or create the branch
+        branch, created = Branch.objects.get_or_create(
+            name=branch_name,
+            defaults={'branch_type': BranchType.LAUNDRY}
+        )
+        return branch
 
     # Detect email type and parse accordingly
     def _detect_and_parse_email(self, body):
