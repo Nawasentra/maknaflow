@@ -1,6 +1,11 @@
+from django.http import HttpResponse
 from django.urls import path
-from . import views
+from .views import EmailIngestionWebhook
+
+def home(request):
+    return HttpResponse("MaknaFlow API is running.")
 
 urlpatterns = [
-    path('', views.home, name='home'),
+    path('', home, name='home'),
+    path('webhooks/make/', EmailIngestionWebhook.as_view(), name='webhook-make'),
 ]
