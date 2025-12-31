@@ -140,7 +140,6 @@ class EmailWebhookService:
         if metadata.get("date"):
             try:
                 date_str = metadata["date"]
-                # Parse date in "Month Date, year" format
                 date_parts = date_str.split(", ")
                 if len(date_parts) >= 2:
                     date_str = ", ".join(date_parts[1:])
@@ -152,21 +151,24 @@ class EmailWebhookService:
         transactions = []
         for item in (parsed_data or {}).get(items_key, []):
             name = item.get("name")
-            amount = item.get("amount", 0)
+            amount = int(item.get("amount", 0))
             if not name or not amount:
                 continue
-            category, _ = Category.objects.get_or_create(
-                name=name, defaults={'name': name, 'transaction_type': trx_type}
-            )
-            category.branches.add(branch)
-            trans = Transaction.objects.create(
-                branch=branch, reported_by=user, amount=amount,
-                transaction_type=trx_type, category=category,
-                date=transaction_date,
-                description=f"{desc_prefix}: {name} ({subject})",
-                source=TransactionSource.EMAIL
-            )
-            transactions.append(trans)
+            try:
+                category, _ = Category.objects.get_or_create(
+                    name=name, transaction_type=trx_type, defaults={'name': name, 'transaction_type': trx_type}
+                )
+                category.branches.add(branch)
+                trans = Transaction.objects.create(
+                    branch=branch, reported_by=user, amount=amount,
+                    transaction_type=trx_type, category=category,
+                    date=transaction_date,
+                    description=f"{desc_prefix}: {name} ({subject})",
+                    source=TransactionSource.EMAIL
+                )
+                transactions.append(trans)
+            except Exception as e:
+                logger.error(f"Failed to create transaction for item {item}: {e}")
         return transactions
 
     def _parse_body(self, text):
