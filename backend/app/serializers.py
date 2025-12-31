@@ -109,3 +109,12 @@ class TransactionSerializer(serializers.ModelSerializer):
             if 'reported_by' not in validated_data or validated_data['reported_by'] is None:
                 validated_data['reported_by'] = request.user
         return super().create(validated_data)
+
+# ==============================================
+# 3. EMAIL WEBHOOK SERIALIZER
+# ==============================================
+
+class EmailWebhookPayloadSerializer(serializers.Serializer):
+    sender = serializers.EmailField()
+    subject = serializers.CharField()
+    text_body = serializers.CharField()
