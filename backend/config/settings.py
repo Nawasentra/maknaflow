@@ -166,3 +166,16 @@ SOCIALACCOUNT_PROVIDERS = {
         }
     }
 }
+
+# Custom adapter
+SOCIALACCOUNT_ADAPTER = 'app.adapters.OwnerOnlyAdapter'
+
+# Email whitelist
+ALLOWED_EMAILS = [
+    # Email Development (delete later)
+    "dzakyatha8@gmail.com",
+    "maknaflow@gmail.com",
+    
+    # Email Mas Adhif
+    "adlinadhif@gmail.com",
+]
