@@ -148,3 +148,21 @@ IMAP_HOST = config('IMAP_HOST', default='imap.gmail.com')
 IMAP_USER = config('IMAP_USER', default='')
 IMAP_PASSWORD = config('IMAP_PASSWORD', default='')
 OWNER_EMAILS = config('OWNER_EMAILS', default='', cast=Csv())
+
+# Google Configuration
+SOCIALACCOUNT_PROVIDERS = {
+    'google': {
+        'APP': {
+            'client_id': config('GOOGLE_OAUTH_CLIENT_ID'),
+            'secret': config('GOOGLE_OAUTH_CLIENT_SECRET'),
+            'key': ''
+        },
+        'SCOPE': [
+            'profile',
+            'email',
+        ],
+        'AUTH_PARAMS': {
+            'access_type': 'online',
+        }
+    }
+}
