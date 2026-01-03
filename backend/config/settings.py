@@ -48,8 +48,19 @@ INSTALLED_APPS = [
     'allauth',
     'allauth.account',
     'allauth.socialaccount',
+    'allauth.socialaccount.providers.google',
     'dj_rest_auth.registration',
 ]
+
+SITE_ID = 1
+
+# REST Framework settings
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework.authentication.TokenAuthentication',
+        'rest_framework.authentication.SessionAuthentication',
+    ],
+}
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
@@ -153,8 +164,8 @@ OWNER_EMAILS = config('OWNER_EMAILS', default='', cast=Csv())
 SOCIALACCOUNT_PROVIDERS = {
     'google': {
         'APP': {
-            'client_id': config('GOOGLE_OAUTH_CLIENT_ID'),
-            'secret': config('GOOGLE_OAUTH_CLIENT_SECRET'),
+            'client_id': config('GOOGLE_OAUTH_CLIENT_ID', default=''),
+            'secret': config('GOOGLE_OAUTH_CLIENT_SECRET', default=''),
             'key': ''
         },
         'SCOPE': [
@@ -171,11 +182,4 @@ SOCIALACCOUNT_PROVIDERS = {
 SOCIALACCOUNT_ADAPTER = 'app.adapters.OwnerOnlyAdapter'
 
 # Email whitelist
-ALLOWED_EMAILS = [
-    # Email Development (delete later)
-    "dzakyatha8@gmail.com",
-    "maknaflow@gmail.com",
-    
-    # Email Mas Adhif
-    "adlinadhif@gmail.com",
-]
+ALLOWED_EMAILS = config('ALLOWED_EMAILS', default='', cast=Csv())
