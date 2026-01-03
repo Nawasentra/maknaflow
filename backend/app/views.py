@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 class EmailIngestionWebhook(APIView):
     """
-    POST /api/webhooks/make/
+    POST /webhooks/make/
     Headers: X-Api-Key: <your-key>
     """
     authentication_classes = [] 
@@ -22,8 +22,12 @@ class EmailIngestionWebhook(APIView):
     def post(self, request, *args, **kwargs):
         # 1. Security
         api_key = request.headers.get('X-Api-Key')
-        if api_key != getattr(settings, 'INGESTION_API_KEY', 'unset'):
-            logger.warning("Unauthorized webhook attempt.")
+        expected_api_key = getattr(settings, 'INGESTION_API_KEY', None)
+        if not expected_api_key:
+            logger.error("INGESTION_API_KEY is not configured or is empty.")
+            return Response({"error": "Server misconfiguration"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        if api_key != expected_api_key:
+            logger.warning("Unauthorized access attempt with API key: %s", api_key)
             return Response({"error": "Unauthorized"}, status=status.HTTP_401_UNAUTHORIZED)
 
         # 2. Input validation
