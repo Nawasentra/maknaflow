@@ -38,8 +38,8 @@ class EmailWebhookService:
         user = None
         try:
             user = self._find_user_by_email(sender)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Failed to find user by email '%s': %s", sender, e)
 
         # Create transactions
         if email_type == "LUNA":
@@ -48,6 +48,10 @@ class EmailWebhookService:
         elif email_type == "HITACHI":
             transactions = self._create_transactions(branch, user, subject, parsed_data, TransactionType.INCOME, "top_items", "Hitachi")
             return f"Created {len(transactions)} transactions from Hitachi"
+        else:
+            # Add this to handle SIMPLE emails or unrecognized types
+            logger.warning(f"Unhandled email type: {email_type}")
+            return "Email received but no transactions created (unsupported format)"
 
     def _detect_and_parse_email(self, subject, sender, body):
         """
@@ -92,7 +96,7 @@ class EmailWebhookService:
                     subject = subject[len(prefix):].strip()
             branch_name = subject.split(":")[0].strip()
         if not branch_name:
-            raise ValidationError("No Branch name found in email or subject")
+            raise ValidationError("Parsed data does not contain branch information")
         # If branch_name contains '|', use the last part (after the last '|')
         if "|" in branch_name:
             branch_name = branch_name.split("|")[-1].strip()
@@ -105,31 +109,15 @@ class EmailWebhookService:
 
     def _find_user_by_email(self, email_addr):
         """
-        Find User by email, or return owner user if not found
+        Find User by email, or return None if not found
         """
         from app.models import User
         if email_addr:
             try:
                 return User.objects.get(email=email_addr)
             except User.DoesNotExist:
-                pass
-        owner_emails = getattr(settings, 'OWNER_EMAILS', [])
-        if not owner_emails:
-            raise User.DoesNotExist("No owner emails configured. Cannot determine user for transaction")
-        owner_email = owner_emails[0]
-        try:
-            return User.objects.get(email=owner_email)
-        except User.DoesNotExist:
-            username = owner_email.split('@')[0]
-            base_username = username
-            counter = 1
-            while User.objects.filter(username=username).exists():
-                username = f"{base_username}{counter}"
-                counter += 1
-            return User.objects.create_user(
-                username=username, email=owner_email, password=None,
-                is_active=True, is_staff=True, is_superuser=False
-            )
+                logger.warning(f"User with email {email_addr} not found")
+        return None
 
     def _create_transactions(self, branch, user, subject, parsed_data, trx_type, items_key, desc_prefix):
         """
@@ -139,54 +127,48 @@ class EmailWebhookService:
         metadata = (parsed_data or {}).get("metadata", {})
         if metadata.get("date"):
             try:
-                date_str = metadata["date"]
-                date_parts = date_str.split(", ")
-                if len(date_parts) >= 2:
-                    date_str = ", ".join(date_parts[1:])
-                    transaction_date = datetime.strptime(date_str, "%B %d, %Y").date()
-                else:
-                    transaction_date = datetime.strptime(date_str, "%Y-%m-%d").date()
-            except Exception:
-                pass
+                date_str = str(metadata["date"]).strip()
+                date_formats = [
+                    "%A, %B %d, %Y",  # e.g. Tuesday, November 5, 2025
+                    "%B %d, %Y",      # e.g. November 5, 2025
+                    "%Y-%m-%d",       # e.g. 2025-11-05
+                ]
+                for fmt in date_formats:
+                    try:
+                        transaction_date = datetime.strptime(date_str, fmt).date()
+                        break
+                    except ValueError:
+                        continue
+            except Exception as e:
+                logger.warning("Failed to parse date '%s': %s", metadata.get("date"), e)
         transactions = []
+        category_cache = {}
         for item in (parsed_data or {}).get(items_key, []):
             name = item.get("name")
             amount = int(item.get("amount", 0))
             if not name or not amount:
                 continue
             try:
-                category, _ = Category.objects.get_or_create(
-                    name=name, transaction_type=trx_type, defaults={'name': name, 'transaction_type': trx_type}
-                )
-                category.branches.add(branch)
+                cache_key = (name, trx_type)
+                category = category_cache.get(cache_key)
+                if category is None:
+                    category, _ = Category.objects.get_or_create(
+                        name=name,
+                        transaction_type=trx_type
+                    )
+                    category.branches.add(branch)
+                    category_cache[cache_key] = category
                 trans = Transaction.objects.create(
-                    branch=branch, reported_by=user, amount=amount,
-                    transaction_type=trx_type, category=category,
+                    branch=branch,
+                    reported_by=user,
+                    amount=amount,
+                    transaction_type=trx_type,
+                    category=category,
                     date=transaction_date,
                     description=f"{desc_prefix}: {name} ({subject})",
-                    source=TransactionSource.EMAIL
+                    source=TransactionSource.EMAIL,
                 )
                 transactions.append(trans)
             except Exception as e:
                 logger.error(f"Failed to create transaction for item {item}: {e}")
         return transactions
-
-    def _parse_body(self, text):
-        """
-        Simple parser for SIMPLE email type
-        """
-        match = re.search(r'(?P<category>\w+)\s*:\s*(?P<amount>\d+)', text)
-        if not match:
-            raise ValidationError("Invalid Format. Expected 'Category: Amount'")
-        cat_name = match.group('category')
-        amount = match.group('amount')
-        category = Category.objects.filter(
-            name__iexact=cat_name,
-            transaction_type=TransactionType.EXPENSE
-        ).first()
-        if not category:
-            category = Category.objects.create(
-                name=cat_name,
-                transaction_type=TransactionType.EXPENSE
-            )
-        return category, amount
