@@ -48,8 +48,19 @@ INSTALLED_APPS = [
     'allauth',
     'allauth.account',
     'allauth.socialaccount',
+    'allauth.socialaccount.providers.google',
     'dj_rest_auth.registration',
 ]
+
+SITE_ID = 1
+
+# REST Framework settings
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework.authentication.TokenAuthentication',
+        'rest_framework.authentication.SessionAuthentication',
+    ],
+}
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
@@ -148,3 +159,27 @@ IMAP_HOST = config('IMAP_HOST', default='imap.gmail.com')
 IMAP_USER = config('IMAP_USER', default='')
 IMAP_PASSWORD = config('IMAP_PASSWORD', default='')
 OWNER_EMAILS = config('OWNER_EMAILS', default='', cast=Csv())
+
+# Google Configuration
+SOCIALACCOUNT_PROVIDERS = {
+    'google': {
+        'APP': {
+            'client_id': config('GOOGLE_OAUTH_CLIENT_ID', default=''),
+            'secret': config('GOOGLE_OAUTH_CLIENT_SECRET', default=''),
+            'key': ''
+        },
+        'SCOPE': [
+            'profile',
+            'email',
+        ],
+        'AUTH_PARAMS': {
+            'access_type': 'online',
+        }
+    }
+}
+
+# Custom adapter
+SOCIALACCOUNT_ADAPTER = 'app.adapters.OwnerOnlyAdapter'
+
+# Email whitelist
+ALLOWED_EMAILS = config('ALLOWED_EMAILS', default='', cast=Csv())
