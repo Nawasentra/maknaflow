@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Branch, User, Category, Transaction
+from .models import Branch, User, Category, Transaction, IngestionLog
 
 # ==============================================
 # 1. REFERENCE SERIALIZERS
@@ -109,3 +109,50 @@ class TransactionSerializer(serializers.ModelSerializer):
             if 'reported_by' not in validated_data or validated_data['reported_by'] is None:
                 validated_data['reported_by'] = request.user
         return super().create(validated_data)
+
+
+# ==============================================
+# 3. INGESTION LOG SERIALIZER
+# ==============================================
+
+class IngestionLogSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = IngestionLog
+        fields = [
+            'id',
+            'source',
+            'status',
+            'error_message',
+            'created_at',
+            'created_transaction',
+        ]
+        read_only_fields = [
+            'id',
+            'created_at',
+        ]
+
+
+# ==============================================
+# 4. WEBHOOK PAYLOAD SERIALIZERS
+# ==============================================
+
+class EmailWebhookPayloadSerializer(serializers.Serializer):
+    """
+    Serializer for validating email webhook payloads from Mailgun
+    """
+    branch_id = serializers.IntegerField()
+    category_id = serializers.IntegerField()
+    amount = serializers.DecimalField(max_digits=12, decimal_places=2)
+    transaction_type = serializers.CharField(max_length=10)
+    description = serializers.CharField(max_length=500, required=False, allow_blank=True)
+    date = serializers.DateField()
+    source_identifier = serializers.CharField(max_length=100, required=False)
+
+
+class WhatsAppWebhookPayloadSerializer(serializers.Serializer):
+    """
+    Serializer for validating WhatsApp webhook payloads
+    """
+    branch_id = serializers.IntegerField()
+    phone_number = serializers.CharField(max_length=20)
+    message = serializers.CharField(max_length=1000)
