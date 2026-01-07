@@ -1,6 +1,7 @@
 from django.test import TestCase, Client, override_settings
 from django.urls import reverse
 from unittest.mock import patch
+import pytest
 
 class EmailIngestionWebhookTestCase(TestCase):
     def setUp(self):
@@ -50,3 +51,16 @@ class EmailIngestionWebhookTestCase(TestCase):
         response = self.client.get(reverse('home'))
         self.assertEqual(response.status_code, 200)
         self.assertIn("MaknaFlow API is running", response.content.decode())
+
+@pytest.mark.django_db
+def test_home_view(client):
+    url = reverse('home')
+    response = client.get(url)
+    assert response.status_code == 200
+    assert b"Hello, world!" in response.content
+
+def test_google_login_view_exists(client):
+    url = reverse('google_login')
+    response = client.options(url)
+    # OPTIONS should be allowed, actual POST requires OAuth flow
+    assert response.status_code in [200, 405]

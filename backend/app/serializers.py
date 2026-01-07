@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Branch, User, Category, Transaction
+from .models import Branch, User, Category, Transaction, IngestionLog
 
 # ==============================================
 # 1. REFERENCE SERIALIZERS
@@ -111,10 +111,43 @@ class TransactionSerializer(serializers.ModelSerializer):
         return super().create(validated_data)
 
 # ==============================================
-# 3. EMAIL WEBHOOK SERIALIZER
+# 3. INGESTION LOG SERIALIZER
+# ==============================================
+
+class IngestionLogSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = IngestionLog
+        fields = [
+            'id',
+            'source',
+            'status',
+            'error_message',
+            'created_at',
+            'created_transaction',
+        ]
+        read_only_fields = [
+            'id',
+            'created_at',
+        ]
+
+
+# ==============================================
+# 4. WEBHOOK PAYLOAD SERIALIZERS
 # ==============================================
 
 class EmailWebhookPayloadSerializer(serializers.Serializer):
+    """
+    Serializer for validating email webhook payloads from Make.com
+    """
     sender = serializers.EmailField()
     subject = serializers.CharField()
     text_body = serializers.CharField()
+
+
+class WhatsAppWebhookPayloadSerializer(serializers.Serializer):
+    """
+    Serializer for validating WhatsApp webhook payloads
+    """
+    branch_id = serializers.IntegerField()
+    phone_number = serializers.CharField(max_length=20)
+    message = serializers.CharField(max_length=1000)

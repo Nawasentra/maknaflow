@@ -1,5 +1,5 @@
 from django.urls import resolve, reverse
-from app.views import EmailIngestionWebhook
+from app.views import EmailIngestionWebhook, home, GoogleLogin
 from app import urls as app_urls
 from django.test import TestCase
 
@@ -19,3 +19,11 @@ class UrlsTestCase(TestCase):
     def test_webhook_reverse(self):
         url = reverse('webhook-make')
         self.assertEqual(url, '/webhooks/make/')
+
+def test_home_url_resolves():
+    resolver = resolve('/')
+    assert resolver.func == home
+
+def test_google_login_url_resolves():
+    resolver = resolve('/auth/google/')
+    assert resolver.func.view_class == GoogleLogin
