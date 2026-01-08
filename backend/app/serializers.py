@@ -110,7 +110,6 @@ class TransactionSerializer(serializers.ModelSerializer):
                 validated_data['reported_by'] = request.user
         return super().create(validated_data)
 
-
 # ==============================================
 # 3. INGESTION LOG SERIALIZER
 # ==============================================
@@ -138,15 +137,11 @@ class IngestionLogSerializer(serializers.ModelSerializer):
 
 class EmailWebhookPayloadSerializer(serializers.Serializer):
     """
-    Serializer for validating email webhook payloads from Mailgun
+    Serializer for validating email webhook payloads from Make.com
     """
-    branch_id = serializers.IntegerField()
-    category_id = serializers.IntegerField()
-    amount = serializers.DecimalField(max_digits=12, decimal_places=2)
-    transaction_type = serializers.CharField(max_length=10)
-    description = serializers.CharField(max_length=500, required=False, allow_blank=True)
-    date = serializers.DateField()
-    source_identifier = serializers.CharField(max_length=100, required=False)
+    sender = serializers.EmailField()
+    subject = serializers.CharField()
+    text_body = serializers.CharField()
 
 
 class WhatsAppWebhookPayloadSerializer(serializers.Serializer):

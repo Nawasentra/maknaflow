@@ -173,10 +173,8 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # Custom User Model
 AUTH_USER_MODEL = 'app.User'
 
-# Email Ingestion (IMAP Server) Configuration
-IMAP_HOST = config('IMAP_HOST', default='imap.gmail.com')
-IMAP_USER = config('IMAP_USER', default='')
-IMAP_PASSWORD = config('IMAP_PASSWORD', default='')
+# Ingestion Webhook API Key
+INGESTION_API_KEY = config('INGESTION_API_KEY', default='')
 OWNER_EMAILS = config('OWNER_EMAILS', default='', cast=Csv())
 
 # Google Configuration
