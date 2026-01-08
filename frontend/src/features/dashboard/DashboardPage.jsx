@@ -186,7 +186,7 @@ function DashboardPage({ transactions, isLoading, error }) {
               style={{
                 display: 'grid',
                 gridTemplateColumns: '140px 125px 125px',
-                gap: '0.5rem',
+                gap: '0.5em',
                 justifyContent: 'flex-start',
               }}
             >
@@ -216,7 +216,7 @@ function DashboardPage({ transactions, isLoading, error }) {
                 onChange={(e) => setCustomStart(e.target.value)}
                 disabled={filterDate !== 'Custom'}
                 style={{
-                  width: '125px',
+                  width: '110px',
                   backgroundColor: filterDate === 'Custom' ? '#111827' : '#020617',
                   border: '1px solid #27272a',
                   borderRadius: '8px',
@@ -234,7 +234,7 @@ function DashboardPage({ transactions, isLoading, error }) {
                 onChange={(e) => setCustomEnd(e.target.value)}
                 disabled={filterDate !== 'Custom'}
                 style={{
-                  width: '125px',
+                  width: '110px',
                   backgroundColor: filterDate === 'Custom' ? '#111827' : '#020617',
                   border: '1px solid #27272a',
                   borderRadius: '8px',
