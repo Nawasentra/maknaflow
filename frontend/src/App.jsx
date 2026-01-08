@@ -536,6 +536,7 @@ function DashboardPage({ transactions }) {
                 display: 'grid',
                 gridTemplateColumns: '140px 125px 125px',
                 gap: '0.5rem',
+                
                 justifyContent: 'flex-start',
               }}
             >
