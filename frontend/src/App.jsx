@@ -77,6 +77,10 @@ function App() {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState('')
 
+  // notification state
+  const [notifications, setNotifications] = useState([])
+  const [unreadCount, setUnreadCount] = useState(0)
+
   useEffect(() => {
     let cancelled = false
     async function load() {
@@ -101,6 +105,31 @@ function App() {
     }
   }, [])
 
+  // build simple notifications from latest transactions
+  useEffect(() => {
+    if (!transactions || transactions.length === 0) return
+
+    const latest = transactions.slice(-5).map((t) => ({
+      id: t.id ?? `${t.branchName}-${t.date}-${t.amount}`,
+      branchName: t.branchName ?? t.branch ?? 'Unknown',
+      date: t.date ?? t.createdAt ?? '',
+      description: t.description ?? t.category ?? 'Transaksi baru',
+      type: t.type ?? 'Income',
+      amountFormatted: t.amountFormatted ?? `${t.amount ?? 0}`,
+      read: false,
+    }))
+
+    setNotifications(latest)
+    setUnreadCount(latest.length)
+  }, [transactions])
+
+  const handleMarkAllNotificationsRead = () => {
+    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })))
+    setUnreadCount(0)
+  }
+
+  const isAuthenticated = Boolean(localStorage.getItem('google_id_token'))
+
   return (
     <Router>
       <div
@@ -116,21 +145,42 @@ function App() {
           <Route
             path="/dashboard/*"
             element={
-              <AuthenticatedLayout
-                transactions={transactions}
-                setTransactions={setTransactions}
-                businessConfigs={businessConfigs}
-                setBusinessConfigs={setBusinessConfigs}
-                appSettings={appSettings}
-                setAppSettings={setAppSettings}
-                lastUsedType={lastUsedType}
-                setLastUsedType={setLastUsedType}
-                isLoading={isLoading}
-                error={error}
-              />
+              isAuthenticated ? (
+                <AuthenticatedLayout
+                  transactions={transactions}
+                  setTransactions={setTransactions}
+                  businessConfigs={businessConfigs}
+                  setBusinessConfigs={setBusinessConfigs}
+                  appSettings={appSettings}
+                  setAppSettings={setAppSettings}
+                  lastUsedType={lastUsedType}
+                  setLastUsedType={setLastUsedType}
+                  isLoading={isLoading}
+                  error={error}
+                  notifications={notifications}
+                  unreadCount={unreadCount}
+                  onAllNotificationsRead={handleMarkAllNotificationsRead}
+                />
+              ) : (
+                <LoginPage />
+              )
             }
           />
-          <Route path="/" element={<LoginPage />} />
+          <Route path="/" element={isAuthenticated ? <AuthenticatedLayout
+            transactions={transactions}
+            setTransactions={setTransactions}
+            businessConfigs={businessConfigs}
+            setBusinessConfigs={setBusinessConfigs}
+            appSettings={appSettings}
+            setAppSettings={setAppSettings}
+            lastUsedType={lastUsedType}
+            setLastUsedType={setLastUsedType}
+            isLoading={isLoading}
+            error={error}
+            notifications={notifications}
+            unreadCount={unreadCount}
+            onAllNotificationsRead={handleMarkAllNotificationsRead}
+          /> : <LoginPage />} />
         </Routes>
       </div>
     </Router>
