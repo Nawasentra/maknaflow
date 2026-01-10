@@ -36,6 +36,7 @@ function TransactionsPage({
   appSettings,
   lastUsedType,
   setLastUsedType,
+  showToast,
 }) {
   const [searchTerm, setSearchTerm] = useState('')
   const [confirmOpen, setConfirmOpen] = useState(false)
@@ -98,6 +99,7 @@ function TransactionsPage({
     }
     setConfirmOpen(false)
     setTransactionToDelete(null)
+    showToast?.('Berhasil menghapus transaksi.')
   }
 
   const handleCancelDelete = () => {
@@ -111,12 +113,12 @@ function TransactionsPage({
       {
         ...newTx,
         id: prev.length ? Math.max(...prev.map((p) => p.id)) + 1 : 1,
-        // ensure manual for anything created from this modal
         source: 'Manual',
       },
     ])
     setLastUsedType(newTx.type)
     setAddOpen(false)
+    showToast?.('Berhasil menambahkan transaksi.')
   }
 
   return (
@@ -493,7 +495,6 @@ function AddTransactionModal({
       type,
       amount: Number(digits),
       payment,
-      // source intentionally not passed; wrapper sets it to 'Manual'
     })
   }
 

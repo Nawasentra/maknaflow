@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 
-function SettingsPage({ businessConfigs, setBusinessConfigs, appSettings, setAppSettings }) {
+function SettingsPage({ businessConfigs, setBusinessConfigs, appSettings, setAppSettings, showToast }) {
   const [selectedUnitId, setSelectedUnitId] = useState(
     businessConfigs.length ? businessConfigs[0].id : '',
   )
@@ -40,15 +40,22 @@ function SettingsPage({ businessConfigs, setBusinessConfigs, appSettings, setApp
   }
 
   const handleToggleUnitActive = () => {
+    if (!selectedUnit) return
+    const nowActive = !selectedUnit.active
     setBusinessConfigs((prev) =>
       prev.map((b) =>
         b.id === selectedUnitId
           ? {
               ...b,
-              active: !b.active,
+              active: nowActive,
             }
           : b,
       ),
+    )
+    showToast?.(
+      nowActive
+        ? `Berhasil mengaktifkan tipe ${selectedUnit.unitBusiness}.`
+        : `Berhasil menonaktifkan tipe ${selectedUnit.unitBusiness}.`,
     )
   }
 
@@ -71,6 +78,7 @@ function SettingsPage({ businessConfigs, setBusinessConfigs, appSettings, setApp
 
   const handleToggleBranchActive = () => {
     if (!selectedUnit || !selectedBranch) return
+    const nowActive = selectedBranch.active === false ? true : false
     setBusinessConfigs((prev) =>
       prev.map((u) =>
         u.id === selectedUnit.id
@@ -78,12 +86,17 @@ function SettingsPage({ businessConfigs, setBusinessConfigs, appSettings, setApp
               ...u,
               branches: u.branches.map((br) =>
                 br.id === selectedBranch.id
-                  ? { ...br, active: br.active === false ? true : false }
+                  ? { ...br, active: nowActive }
                   : br,
               ),
             }
           : u,
       ),
+    )
+    showToast?.(
+      nowActive
+        ? `Berhasil mengaktifkan cabang ${selectedBranch.name}.`
+        : `Berhasil menonaktifkan cabang ${selectedBranch.name}.`,
     )
   }
 
@@ -111,6 +124,7 @@ function SettingsPage({ businessConfigs, setBusinessConfigs, appSettings, setApp
           : b,
       )
       setBusinessConfigs(updated)
+      showToast?.('Berhasil menambah kategori pendapatan default.')
     }
     setIncomeInput('')
   }
@@ -132,6 +146,7 @@ function SettingsPage({ businessConfigs, setBusinessConfigs, appSettings, setApp
           : b,
       )
       setBusinessConfigs(updated)
+      showToast?.('Berhasil menambah kategori pengeluaran default.')
     }
     setExpenseInput('')
   }
@@ -257,7 +272,7 @@ function SettingsPage({ businessConfigs, setBusinessConfigs, appSettings, setApp
                   backgroundColor: selectedUnit.active ? '#22c55e' : '#6b7280',
                   borderRadius: 9999,
                   border: 'none',
-                  color: 'var(--bg)', // use theme bg, not pure black
+                  color: 'var(--bg)',
                   fontSize: 13,
                   fontWeight: 600,
                   padding: '0.45rem 1.1rem',
@@ -339,7 +354,7 @@ function SettingsPage({ businessConfigs, setBusinessConfigs, appSettings, setApp
                         selectedBranch.active === false ? '#6b7280' : '#22c55e',
                       borderRadius: 9999,
                       border: 'none',
-                      color: 'var(--bg)', // use theme bg
+                      color: 'var(--bg)',
                       fontSize: 13,
                       fontWeight: 600,
                       padding: '0.45rem 1.1rem',
@@ -463,7 +478,7 @@ function SettingsPage({ businessConfigs, setBusinessConfigs, appSettings, setApp
                       backgroundColor: 'var(--accent)',
                       borderRadius: 9999,
                       border: 'none',
-                      color: 'var(--bg)',
+                      color: '#ffffff',
                       fontSize: 12,
                       fontWeight: 600,
                       padding: '0.45rem 0.9rem',
@@ -570,7 +585,7 @@ function SettingsPage({ businessConfigs, setBusinessConfigs, appSettings, setApp
                       backgroundColor: 'var(--accent)',
                       borderRadius: 9999,
                       border: 'none',
-                      color: 'var(--bg)',
+                      color: '#ffffff',
                       fontSize: 12,
                       fontWeight: 600,
                       padding: '0.45rem 0.9rem',

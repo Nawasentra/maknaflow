@@ -24,6 +24,7 @@ function AuthenticatedLayout({
   onLogout,
   theme,
   onToggleTheme,
+  showToast,
 }) {
   return (
     <>
@@ -57,6 +58,7 @@ function AuthenticatedLayout({
               appSettings={appSettings}
               lastUsedType={lastUsedType}
               setLastUsedType={setLastUsedType}
+              showToast={showToast}
             />
           }
         />
@@ -68,6 +70,7 @@ function AuthenticatedLayout({
               setBusinessConfigs={setBusinessConfigs}
               appSettings={appSettings}
               setAppSettings={setAppSettings}
+              showToast={showToast}
             />
           }
         />
@@ -77,6 +80,7 @@ function AuthenticatedLayout({
             <AddBusinessPage
               businessConfigs={businessConfigs}
               setBusinessConfigs={setBusinessConfigs}
+              showToast={showToast}
             />
           }
         />

@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 
-function AddBusinessPage({ businessConfigs, setBusinessConfigs }) {
+function AddBusinessPage({ businessConfigs, setBusinessConfigs, showToast }) {
   const [step, setStep] = useState(1)
   const [branchName, setBranchName] = useState('')
   const [unitType, setUnitType] = useState('')
@@ -113,6 +113,7 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs }) {
     setNewUnitType('')
     setIncomeCategories([])
     setExpenseCategories([])
+    showToast?.('Berhasil mengaktivasi unit bisnis baru.')
   }
 
   return (
@@ -182,11 +183,7 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs }) {
                     justifyContent: 'center',
                     fontSize: 13,
                     fontWeight: 600,
-                    color: isActive
-                      ? 'var(--bg)'          // step number clearly visible
-                      : isDone
-                      ? '#22c55e'
-                      : 'var(--subtext)',
+                    color: isActive ? 'var(--bg)' : isDone ? '#22c55e' : 'var(--subtext)',
                   }}
                 >
                   {isDone ? '✓' : s.id}
@@ -371,7 +368,7 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs }) {
                         backgroundColor: 'var(--accent)',
                         borderRadius: 9999,
                         border: 'none',
-                        color: 'var(--bg)',
+                        color: '#ffffff',
                         fontSize: 12,
                         fontWeight: 600,
                         padding: '0.45rem 0.9rem',
@@ -479,7 +476,7 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs }) {
                         backgroundColor: 'var(--accent)',
                         borderRadius: 9999,
                         border: 'none',
-                        color: 'var(--bg)',
+                        color: '#ffffff',
                         fontSize: 12,
                         fontWeight: 600,
                         padding: '0.45rem 0.9rem',
@@ -605,17 +602,56 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs }) {
               <h2 style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: 4 }}>
                 Konfirmasi & Aktivasi
               </h2>
-              <p style={{ color: 'var(--subtext)', fontSize: 12 }}>
-                Tinjau kembali detail unit bisnis sebelum diaktivasi.
+            <p style={{ color: 'var(--subtext)', fontSize: 12 }}>
+              Tinjau kembali detail unit bisnis sebelum diaktivasi.
+            </p>
+          </div>
+
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '1rem',
+              marginBottom: '1.5rem',
+            }}
+          >
+            <div
+              style={{
+                backgroundColor: 'var(--bg)',
+                borderRadius: 12,
+                border: '1px solid var(--border)',
+                padding: '1rem 1.25rem',
+              }}
+            >
+              <h3
+                style={{
+                  fontSize: 13,
+                  fontWeight: 600,
+                  marginBottom: 8,
+                  color: 'var(--text)',
+                }}
+              >
+                Ringkasan Unit Bisnis
+              </h3>
+              <p style={{ fontSize: 12, color: 'var(--subtext)', marginBottom: 4 }}>
+                Nama cabang / bisnis:
+                <span style={{ color: 'var(--text)', marginLeft: 4 }}>
+                  {branchName || '-'}
+                </span>
+              </p>
+              <p style={{ fontSize: 12, color: 'var(--subtext)', marginBottom: 4 }}>
+                Tipe unit bisnis:
+                <span style={{ color: 'var(--text)', marginLeft: 4 }}>
+                  {effectiveUnitType || '-'}
+                </span>
               </p>
             </div>
 
             <div
               style={{
-                display: 'flex',
-                flexDirection: 'column',
+                display: 'grid',
+                gridTemplateColumns: '1fr 1fr',
                 gap: '1rem',
-                marginBottom: '1.5rem',
               }}
             >
               <div
@@ -626,183 +662,144 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs }) {
                   padding: '1rem 1.25rem',
                 }}
               >
-                <h3
+                <h4
                   style={{
-                    fontSize: 13,
+                    fontSize: 12,
                     fontWeight: 600,
                     marginBottom: 8,
-                    color: 'var(--text)',
+                    color: '#16a34a',
                   }}
                 >
-                  Ringkasan Unit Bisnis
-                </h3>
-                <p style={{ fontSize: 12, color: 'var(--subtext)', marginBottom: 4 }}>
-                  Nama cabang / bisnis:
-                  <span style={{ color: 'var(--text)', marginLeft: 4 }}>
-                    {branchName || '-'}
-                  </span>
-                </p>
-                <p style={{ fontSize: 12, color: 'var(--subtext)', marginBottom: 4 }}>
-                  Tipe unit bisnis:
-                  <span style={{ color: 'var(--text)', marginLeft: 4 }}>
-                    {effectiveUnitType || '-'}
-                  </span>
-                </p>
+                  Kategori Pendapatan
+                </h4>
+                {incomeCategories.length === 0 ? (
+                  <p style={{ fontSize: 11, color: 'var(--subtext)' }}>
+                    Belum ada kategori pendapatan.
+                  </p>
+                ) : (
+                  <ul
+                    style={{
+                      listStyle: 'none',
+                      padding: 0,
+                      margin: 0,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 4,
+                    }}
+                  >
+                    {incomeCategories.map((cat) => (
+                      <li
+                        key={cat}
+                        style={{
+                          fontSize: 11,
+                          color: 'var(--text)',
+                        }}
+                      >
+                        • {cat}
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
 
               <div
                 style={{
-                  display: 'grid',
-                  gridTemplateColumns: '1fr 1fr',
-                  gap: '1rem',
+                  backgroundColor: 'var(--bg)',
+                  borderRadius: 12,
+                  border: '1px solid var(--border)',
+                  padding: '1rem 1.25rem',
                 }}
               >
-                <div
+                <h4
                   style={{
-                    backgroundColor: 'var(--bg)',
-                    borderRadius: 12,
-                    border: '1px solid var(--border)',
-                    padding: '1rem 1.25rem',
+                    fontSize: 12,
+                    fontWeight: 600,
+                    marginBottom: 8,
+                    color: '#dc2626',
                   }}
                 >
-                  <h4
+                  Kategori Pengeluaran
+                </h4>
+                {expenseCategories.length === 0 ? (
+                  <p style={{ fontSize: 11, color: 'var(--subtext)' }}>
+                    Belum ada kategori pengeluaran.
+                  </p>
+                ) : (
+                  <ul
                     style={{
-                      fontSize: 12,
-                      fontWeight: 600,
-                      marginBottom: 8,
-                      color: '#16a34a',
+                      listStyle: 'none',
+                      padding: 0,
+                      margin: 0,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 4,
                     }}
                   >
-                    Kategori Pendapatan
-                  </h4>
-                  {incomeCategories.length === 0 ? (
-                    <p style={{ fontSize: 11, color: 'var(--subtext)' }}>
-                      Belum ada kategori pendapatan.
-                    </p>
-                  ) : (
-                    <ul
-                      style={{
-                        listStyle: 'none',
-                        padding: 0,
-                        margin: 0,
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: 4,
-                      }}
-                    >
-                      {incomeCategories.map((cat) => (
-                        <li
-                          key={cat}
-                          style={{
-                            fontSize: 11,
-                            color: 'var(--text)',
-                          }}
-                        >
-                          • {cat}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-
-                <div
-                  style={{
-                    backgroundColor: 'var(--bg)',
-                    borderRadius: 12,
-                    border: '1px solid var(--border)',
-                    padding: '1rem 1.25rem',
-                  }}
-                >
-                  <h4
-                    style={{
-                      fontSize: 12,
-                      fontWeight: 600,
-                      marginBottom: 8,
-                      color: '#dc2626',
-                    }}
-                  >
-                    Kategori Pengeluaran
-                  </h4>
-                  {expenseCategories.length === 0 ? (
-                    <p style={{ fontSize: 11, color: 'var(--subtext)' }}>
-                      Belum ada kategori pengeluaran.
-                    </p>
-                  ) : (
-                    <ul
-                      style={{
-                        listStyle: 'none',
-                        padding: 0,
-                        margin: 0,
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: 4,
-                      }}
-                    >
-                      {expenseCategories.map((cat) => (
-                        <li
-                          key={cat}
-                          style={{
-                            fontSize: 11,
-                            color: 'var(--text)',
-                          }}
-                        >
-                          • {cat}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
+                    {expenseCategories.map((cat) => (
+                      <li
+                        key={cat}
+                        style={{
+                          fontSize: 11,
+                          color: 'var(--text)',
+                        }}
+                      >
+                        • {cat}
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
             </div>
+          </div>
 
-            <div
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginTop: '1.5rem',
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => setStep(1)}
               style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                marginTop: '1.5rem',
+                backgroundColor: 'transparent',
+                borderRadius: 9999,
+                border: '1px solid var(--border)',
+                color: 'var(--text)',
+                fontSize: 13,
+                padding: '0.55rem 1.3rem',
+                cursor: 'pointer',
               }}
             >
-              <button
-                type="button"
-                onClick={() => setStep(1)}
-                style={{
-                  backgroundColor: 'transparent',
-                  borderRadius: 9999,
-                  border: '1px solid var(--border)',
-                  color: 'var(--text)',
-                  fontSize: 13,
-                  padding: '0.55rem 1.3rem',
-                  cursor: 'pointer',
-                }}
-              >
-                ‹ Kembali ke bagian sebelumnya
-              </button>
+              ‹ Kembali ke bagian sebelumnya
+            </button>
 
-              <button
-                type="button"
-                onClick={handleActivate}
-                disabled={!canGoNext}
-                style={{
-                  backgroundColor: canGoNext ? 'var(--accent)' : '#4b5563',
-                  borderRadius: 9999,
-                  border: 'none',
-                  color: canGoNext ? 'var(--bg)' : '#e5e7eb',
-                  fontSize: 13,
-                  fontWeight: 600,
-                  padding: '0.6rem 1.8rem',
-                  cursor: canGoNext ? 'pointer' : 'not-allowed',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 8,
-                }}
-              >
-                Aktivasi Unit Bisnis
-                <span>✓</span>
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={handleActivate}
+              disabled={!canGoNext}
+              style={{
+                backgroundColor: canGoNext ? 'var(--accent)' : '#4b5563',
+                borderRadius: 9999,
+                border: 'none',
+                color: canGoNext ? 'var(--bg)' : '#e5e7eb',
+                fontSize: 13,
+                fontWeight: 600,
+                padding: '0.6rem 1.8rem',
+                cursor: canGoNext ? 'pointer' : 'not-allowed',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 8,
+              }}
+            >
+              Aktivasi Unit Bisnis
+              <span>✓</span>
+            </button>
           </div>
-        )}
+        </div>
+      )}
       </div>
     </main>
   )

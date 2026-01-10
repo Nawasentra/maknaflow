@@ -104,7 +104,7 @@ function App() {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState('')
 
-  // notification state
+  // notification state (in-app bell)
   const [notifications, setNotifications] = useState([])
   const [unreadCount, setUnreadCount] = useState(0)
 
@@ -119,6 +119,17 @@ function App() {
 
   // theme state
   const [theme, setTheme] = useState(getInitialTheme)
+
+  // toast state
+  const [toast, setToast] = useState(null) // { message, type } | null
+
+  const showToast = (message, type = 'success') => {
+    setToast({ message, type })
+    // auto-hide after 3s
+    setTimeout(() => {
+      setToast(null)
+    }, 3000)
+  }
 
   // LOAD TRANSACTIONS
   useEffect(() => {
@@ -227,6 +238,7 @@ function App() {
       onLogout={handleLogout}
       theme={theme}
       onToggleTheme={toggleTheme}
+      showToast={showToast}
     />
   )
 
@@ -255,6 +267,33 @@ function App() {
             }
           />
         </Routes>
+
+        {toast && (
+          <div
+            style={{
+              position: 'fixed',
+              top: '1.25rem',
+              right: '1.25rem',
+              zIndex: 100,
+              backgroundColor:
+                toast.type === 'error'
+                  ? 'rgba(239, 68, 68, 0.96)'
+                  : 'rgba(34, 197, 94, 0.96)',
+              color: '#f9fafb',
+              padding: '0.75rem 1rem',
+              borderRadius: 12,
+              boxShadow: '0 10px 25px rgba(0,0,0,0.35)',
+              fontSize: '0.85rem',
+              maxWidth: 320,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+            }}
+          >
+            <span>{toast.type === 'error' ? '⚠️' : '✅'}</span>
+            <span>{toast.message}</span>
+          </div>
+        )}
       </div>
     </Router>
   )
