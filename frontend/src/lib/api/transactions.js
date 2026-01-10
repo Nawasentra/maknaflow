@@ -86,9 +86,13 @@ function getNextId(list) {
 // --- FUNGSI API ---
 
 export async function fetchTransactions(params) {
+  const token = localStorage.getItem('auth_token')
+
   try {
-    // PANGGIL BACKEND BENARAN
-    const res = await api.get('/transactions/', { params })
+    const res = await api.get('/transactions/', {
+      params,
+      headers: token ? { Authorization: `Token ${token}` } : {},
+    })
     return res.data
   } catch (err) {
     console.warn('fetchTransactions failed, using mock:', err)
@@ -97,8 +101,12 @@ export async function fetchTransactions(params) {
 }
 
 export async function createTransaction(payload) {
+  const token = localStorage.getItem('auth_token')
+
   try {
-    const res = await api.post('/transactions/', payload)
+    const res = await api.post('/transactions/', payload, {
+      headers: token ? { Authorization: `Token ${token}` } : {},
+    })
     return res.data
   } catch (err) {
     console.warn('createTransaction failed, falling back to mock:', err)
@@ -110,8 +118,12 @@ export async function createTransaction(payload) {
 }
 
 export async function deleteTransaction(id) {
+  const token = localStorage.getItem('auth_token')
+
   try {
-    await api.delete(`/transactions/${id}/`)
+    await api.delete(`/transactions/${id}/`, {
+      headers: token ? { Authorization: `Token ${token}` } : {},
+    })
   } catch (err) {
     console.warn('deleteTransaction failed, deleting from mock only:', err)
   }

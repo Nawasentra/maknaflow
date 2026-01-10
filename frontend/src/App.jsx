@@ -110,7 +110,7 @@ function App() {
 
   // auth + user profile
   const [isAuthenticated, setIsAuthenticated] = useState(
-    Boolean(localStorage.getItem('google_id_token')),
+    Boolean(localStorage.getItem('auth_token')), // use backend token as truth
   )
   const [user, setUser] = useState(() => {
     const stored = localStorage.getItem('google_user')
@@ -186,6 +186,7 @@ function App() {
         setError('')
       } catch (e) {
         if (!cancelled) {
+          console.error('Failed to load transactions:', e)
           setError('Gagal memuat data transaksi.')
         }
       } finally {
@@ -236,26 +237,66 @@ function App() {
     })
   }
 
-  const handleLoginSuccess = (token) => {
-    localStorage.setItem('google_id_token', token)
+  // NEW: login that talks to Django
+  const handleLoginSuccess = async (googleIdToken) => {
+    try {
+      // Call backend Google social login endpoint
+      const res = await fetch(
+        'https://maknaflow-staging.onrender.com/api/auth/google/',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            // adjust to your backend serializer: id_token or access_token
+            id_token: googleIdToken,
+          }),
+        },
+      )
 
-    const payload = parseJwt(token)
-    if (payload) {
-      const u = {
-        name: payload.name || '',
-        email: payload.email || '',
-        picture: payload.picture || '',
+      if (!res.ok) {
+        const text = await res.text()
+        console.error('Backend Google login failed:', text)
+        showToast('Login gagal. Email mungkin tidak diizinkan.', 'error')
+        return
       }
-      setUser(u)
-      localStorage.setItem('google_user', JSON.stringify(u))
-    }
 
-    setIsAuthenticated(true)
+      const data = await res.json() // expect { key: '...' }
+      const backendToken = data.key
+
+      if (!backendToken) {
+        console.error('No token in backend response:', data)
+        showToast('Login gagal. Token tidak ditemukan.', 'error')
+        return
+      }
+
+      // Store Django token
+      localStorage.setItem('auth_token', backendToken)
+
+      // Keep Google profile for UI
+      const payload = parseJwt(googleIdToken)
+      if (payload) {
+        const u = {
+          name: payload.name || '',
+          email: payload.email || '',
+          picture: payload.picture || '',
+        }
+        setUser(u)
+        localStorage.setItem('google_user', JSON.stringify(u))
+      }
+
+      setIsAuthenticated(true)
+      showToast('Berhasil masuk.', 'success')
+    } catch (err) {
+      console.error('Login error:', err)
+      showToast('Terjadi kesalahan saat login.', 'error')
+    }
   }
 
   const handleLogout = () => {
     googleLogout()
-    localStorage.removeItem('google_id_token')
+    localStorage.removeItem('auth_token')
     localStorage.removeItem('google_user')
     setUser(null)
     setIsAuthenticated(false)
@@ -299,13 +340,21 @@ function App() {
           <Route
             path="/dashboard/*"
             element={
-              isAuthenticated ? authenticatedElement : <LoginPage onLogin={handleLoginSuccess} />
+              isAuthenticated ? (
+                authenticatedElement
+              ) : (
+                <LoginPage onLogin={handleLoginSuccess} />
+              )
             }
           />
           <Route
             path="/"
             element={
-              isAuthenticated ? authenticatedElement : <LoginPage onLogin={handleLoginSuccess} />
+              isAuthenticated ? (
+                authenticatedElement
+              ) : (
+                <LoginPage onLogin={handleLoginSuccess} />
+              )
             }
           />
         </Routes>

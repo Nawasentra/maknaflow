@@ -12,7 +12,7 @@ function LoginPage({ onLogin }) {
 
     setIsLoggingIn(true)
 
-    // Let App handle storing token + user profile
+    // Let App handle talking to backend + storing token + user profile
     onLogin?.(token)
 
     // Navigate to dashboard immediately for snappier UX
