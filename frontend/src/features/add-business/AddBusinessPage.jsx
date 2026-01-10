@@ -182,7 +182,11 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs }) {
                     justifyContent: 'center',
                     fontSize: 13,
                     fontWeight: 600,
-                    color: isActive ? '#ffffff' : isDone ? '#22c55e' : 'var(--subtext)',
+                    color: isActive
+                      ? 'var(--bg)'          // step number clearly visible
+                      : isDone
+                      ? '#22c55e'
+                      : 'var(--subtext)',
                   }}
                 >
                   {isDone ? '✓' : s.id}
@@ -367,7 +371,7 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs }) {
                         backgroundColor: 'var(--accent)',
                         borderRadius: 9999,
                         border: 'none',
-                        color: '#ffffff',
+                        color: 'var(--bg)',
                         fontSize: 12,
                         fontWeight: 600,
                         padding: '0.45rem 0.9rem',
@@ -475,7 +479,7 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs }) {
                         backgroundColor: 'var(--accent)',
                         borderRadius: 9999,
                         border: 'none',
-                        color: '#ffffff',
+                        color: 'var(--bg)',
                         fontSize: 12,
                         fontWeight: 600,
                         padding: '0.45rem 0.9rem',
@@ -569,7 +573,7 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs }) {
                   backgroundColor: canGoNext ? 'var(--accent)' : '#4b5563',
                   borderRadius: 9999,
                   border: 'none',
-                  color: canGoNext ? '#ffffff' : '#e5e7eb',
+                  color: canGoNext ? 'var(--bg)' : '#e5e7eb',
                   fontSize: 13,
                   fontWeight: 600,
                   padding: '0.6rem 1.6rem',
@@ -783,7 +787,7 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs }) {
                   backgroundColor: canGoNext ? 'var(--accent)' : '#4b5563',
                   borderRadius: 9999,
                   border: 'none',
-                  color: canGoNext ? '#ffffff' : '#e5e7eb',
+                  color: canGoNext ? 'var(--bg)' : '#e5e7eb',
                   fontSize: 13,
                   fontWeight: 600,
                   padding: '0.6rem 1.8rem',

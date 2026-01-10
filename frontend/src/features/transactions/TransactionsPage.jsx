@@ -138,7 +138,7 @@ function TransactionsPage({
           style={{
             padding: '1.5rem',
             borderBottom: '1px solid var(--border)',
-            backgroundColor: 'rgba(0,0,0,0.02)',
+            backgroundColor: 'rgba(148, 163, 184, 0.04)', // subtle neutral, works on both themes
           }}
         >
           <div
@@ -190,7 +190,7 @@ function TransactionsPage({
                 onClick={() => setAddOpen(true)}
                 style={{
                   backgroundColor: 'var(--accent)',
-                  color: '#ffffff',
+                  color: 'var(--bg)',         // ensures contrast in both modes
                   padding: '0.75rem 1.5rem',
                   borderRadius: '8px',
                   fontWeight: '600',
@@ -212,7 +212,7 @@ function TransactionsPage({
               <tr
                 style={{
                   borderBottom: '2px solid var(--border)',
-                  backgroundColor: 'rgba(0,0,0,0.02)',
+                  backgroundColor: 'rgba(148, 163, 184, 0.04)',
                 }}
               >
                 <ThSortable label="Tanggal" onClick={() => handleSort('date')} />
@@ -352,7 +352,7 @@ function ConfirmDialog({ title, description, onCancel, onConfirm }) {
               borderRadius: 9999,
               border: 'none',
               backgroundColor: '#ef4444',
-              color: 'white',
+              color: 'var(--bg)',     // use bg var instead of plain white
               fontWeight: 600,
               fontSize: '0.85rem',
               cursor: 'pointer',
@@ -663,7 +663,7 @@ function AddTransactionModal({
               borderRadius: 9999,
               border: 'none',
               backgroundColor: 'var(--accent)',
-              color: '#ffffff',
+              color: 'var(--bg)',
               fontWeight: 600,
               fontSize: '0.85rem',
               cursor: 'pointer',
