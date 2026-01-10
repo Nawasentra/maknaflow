@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 
-function SettingsPage({ businessConfigs, setBusinessConfigs, appSettings, setAppSettings }) {
+function SettingsPage({ businessConfigs, setBusinessConfigs, appSettings, setAppSettings, showToast }) {
   const [selectedUnitId, setSelectedUnitId] = useState(
     businessConfigs.length ? businessConfigs[0].id : '',
   )
@@ -40,15 +40,22 @@ function SettingsPage({ businessConfigs, setBusinessConfigs, appSettings, setApp
   }
 
   const handleToggleUnitActive = () => {
+    if (!selectedUnit) return
+    const nowActive = !selectedUnit.active
     setBusinessConfigs((prev) =>
       prev.map((b) =>
         b.id === selectedUnitId
           ? {
               ...b,
-              active: !b.active,
+              active: nowActive,
             }
           : b,
       ),
+    )
+    showToast?.(
+      nowActive
+        ? `Berhasil mengaktifkan tipe ${selectedUnit.unitBusiness}.`
+        : `Berhasil menonaktifkan tipe ${selectedUnit.unitBusiness}.`,
     )
   }
 
@@ -60,9 +67,7 @@ function SettingsPage({ businessConfigs, setBusinessConfigs, appSettings, setApp
           ? {
               ...u,
               branches: u.branches.map((br) =>
-                br.id === selectedBranch.id
-                  ? { ...br, name: newName, id: newName }
-                  : br,
+                br.id === selectedBranch.id ? { ...br, name: newName, id: newName } : br,
               ),
             }
           : u,
@@ -73,6 +78,7 @@ function SettingsPage({ businessConfigs, setBusinessConfigs, appSettings, setApp
 
   const handleToggleBranchActive = () => {
     if (!selectedUnit || !selectedBranch) return
+    const nowActive = selectedBranch.active === false ? true : false
     setBusinessConfigs((prev) =>
       prev.map((u) =>
         u.id === selectedUnit.id
@@ -80,12 +86,17 @@ function SettingsPage({ businessConfigs, setBusinessConfigs, appSettings, setApp
               ...u,
               branches: u.branches.map((br) =>
                 br.id === selectedBranch.id
-                  ? { ...br, active: br.active === false ? true : false }
+                  ? { ...br, active: nowActive }
                   : br,
               ),
             }
           : u,
       ),
+    )
+    showToast?.(
+      nowActive
+        ? `Berhasil mengaktifkan cabang ${selectedBranch.name}.`
+        : `Berhasil menonaktifkan cabang ${selectedBranch.name}.`,
     )
   }
 
@@ -113,6 +124,7 @@ function SettingsPage({ businessConfigs, setBusinessConfigs, appSettings, setApp
           : b,
       )
       setBusinessConfigs(updated)
+      showToast?.('Berhasil menambah kategori pendapatan default.')
     }
     setIncomeInput('')
   }
@@ -134,6 +146,7 @@ function SettingsPage({ businessConfigs, setBusinessConfigs, appSettings, setApp
           : b,
       )
       setBusinessConfigs(updated)
+      showToast?.('Berhasil menambah kategori pengeluaran default.')
     }
     setExpenseInput('')
   }
@@ -168,12 +181,15 @@ function SettingsPage({ businessConfigs, setBusinessConfigs, appSettings, setApp
     setBusinessConfigs(updated)
   }
 
-  const handleExport = () => {
-    alert('Export CSV coming soon (dummy).')
-  }
-
   return (
-    <main style={{ maxWidth: '1280px', margin: '0 auto', padding: '2rem 1.5rem' }}>
+    <main
+      style={{
+        maxWidth: '1280px',
+        margin: '0 auto',
+        padding: '2rem 1.5rem',
+        color: 'var(--text)',
+      }}
+    >
       <h1 style={{ fontSize: '1.875rem', fontWeight: '700', marginBottom: '2rem' }}>
         ⚙️ Settings
       </h1>
@@ -188,8 +204,8 @@ function SettingsPage({ businessConfigs, setBusinessConfigs, appSettings, setApp
         {/* Struktur Bisnis */}
         <div
           style={{
-            backgroundColor: '#1c1c1c',
-            border: '1px solid #27272a',
+            backgroundColor: 'var(--bg-elevated)',
+            border: '1px solid var(--border)',
             borderRadius: '12px',
             padding: '1.5rem',
           }}
@@ -199,18 +215,20 @@ function SettingsPage({ businessConfigs, setBusinessConfigs, appSettings, setApp
           </h2>
 
           <div style={{ marginBottom: '1rem' }}>
-            <p style={{ fontSize: 12, color: '#9ca3af', marginBottom: 6 }}>Tipe Unit Bisnis</p>
+            <p style={{ fontSize: 12, color: 'var(--subtext)', marginBottom: 6 }}>
+              Tipe Unit Bisnis
+            </p>
             <select
               value={selectedUnitId}
               onChange={(e) => setSelectedUnitId(e.target.value)}
               style={{
                 width: '100%',
-                backgroundColor: '#020617',
+                backgroundColor: 'var(--bg)',
                 borderRadius: 12,
-                border: '1px solid #27272a',
+                border: '1px solid var(--border)',
                 padding: '0.7rem 1rem',
                 fontSize: 13,
-                color: 'white',
+                color: 'var(--text)',
                 outline: 'none',
               }}
             >
@@ -225,7 +243,7 @@ function SettingsPage({ businessConfigs, setBusinessConfigs, appSettings, setApp
           {selectedUnit && (
             <>
               <div style={{ marginBottom: '1rem' }}>
-                <p style={{ fontSize: 12, color: '#9ca3af', marginBottom: 6 }}>
+                <p style={{ fontSize: 12, color: 'var(--subtext)', marginBottom: 6 }}>
                   Ganti nama tipe unit
                 </p>
                 <input
@@ -233,12 +251,12 @@ function SettingsPage({ businessConfigs, setBusinessConfigs, appSettings, setApp
                   onChange={(e) => handleRenameUnit(e.target.value)}
                   style={{
                     width: '100%',
-                    backgroundColor: '#020617',
+                    backgroundColor: 'var(--bg)',
                     borderRadius: 12,
-                    border: '1px solid #27272a',
+                    border: '1px solid var(--border)',
                     padding: '0.7rem 1rem',
                     fontSize: 13,
-                    color: 'white',
+                    color: 'var(--text)',
                     outline: 'none',
                   }}
                 />
@@ -250,7 +268,7 @@ function SettingsPage({ businessConfigs, setBusinessConfigs, appSettings, setApp
                   backgroundColor: selectedUnit.active ? '#22c55e' : '#6b7280',
                   borderRadius: 9999,
                   border: 'none',
-                  color: 'black',
+                  color: 'var(--bg)',
                   fontSize: 13,
                   fontWeight: 600,
                   padding: '0.45rem 1.1rem',
@@ -266,8 +284,8 @@ function SettingsPage({ businessConfigs, setBusinessConfigs, appSettings, setApp
         {/* Cabang */}
         <div
           style={{
-            backgroundColor: '#1c1c1c',
-            border: '1px solid #27272a',
+            backgroundColor: 'var(--bg-elevated)',
+            border: '1px solid var(--border)',
             borderRadius: '12px',
             padding: '1.5rem',
           }}
@@ -278,7 +296,7 @@ function SettingsPage({ businessConfigs, setBusinessConfigs, appSettings, setApp
           {selectedUnit ? (
             <>
               <div style={{ marginBottom: '1rem' }}>
-                <p style={{ fontSize: 12, color: '#9ca3af', marginBottom: 6 }}>
+                <p style={{ fontSize: 12, color: 'var(--subtext)', marginBottom: 6 }}>
                   Pilih cabang dari tipe ini
                 </p>
                 <select
@@ -286,12 +304,12 @@ function SettingsPage({ businessConfigs, setBusinessConfigs, appSettings, setApp
                   onChange={(e) => setSelectedBranchId(e.target.value)}
                   style={{
                     width: '100%',
-                    backgroundColor: '#020617',
+                    backgroundColor: 'var(--bg)',
                     borderRadius: 12,
-                    border: '1px solid #27272a',
+                    border: '1px solid var(--border)',
                     padding: '0.7rem 1rem',
                     fontSize: 13,
-                    color: 'white',
+                    color: 'var(--text)',
                     outline: 'none',
                   }}
                 >
@@ -306,7 +324,7 @@ function SettingsPage({ businessConfigs, setBusinessConfigs, appSettings, setApp
               {selectedBranch && (
                 <>
                   <div style={{ marginBottom: '1rem' }}>
-                    <p style={{ fontSize: 12, color: '#9ca3af', marginBottom: 6 }}>
+                    <p style={{ fontSize: 12, color: 'var(--subtext)', marginBottom: 6 }}>
                       Ganti nama cabang
                     </p>
                     <input
@@ -314,12 +332,12 @@ function SettingsPage({ businessConfigs, setBusinessConfigs, appSettings, setApp
                       onChange={(e) => handleRenameBranch(e.target.value)}
                       style={{
                         width: '100%',
-                        backgroundColor: '#020617',
+                        backgroundColor: 'var(--bg)',
                         borderRadius: 12,
-                        border: '1px solid #27272a',
+                        border: '1px solid var(--border)',
                         padding: '0.7rem 1rem',
                         fontSize: 13,
-                        color: 'white',
+                        color: 'var(--text)',
                         outline: 'none',
                       }}
                     />
@@ -332,7 +350,7 @@ function SettingsPage({ businessConfigs, setBusinessConfigs, appSettings, setApp
                         selectedBranch.active === false ? '#6b7280' : '#22c55e',
                       borderRadius: 9999,
                       border: 'none',
-                      color: 'black',
+                      color: 'var(--bg)',
                       fontSize: 13,
                       fontWeight: 600,
                       padding: '0.45rem 1.1rem',
@@ -347,7 +365,7 @@ function SettingsPage({ businessConfigs, setBusinessConfigs, appSettings, setApp
               )}
             </>
           ) : (
-            <p style={{ fontSize: 12, color: '#9ca3af' }}>
+            <p style={{ fontSize: 12, color: 'var(--subtext)' }}>
               Belum ada tipe unit bisnis yang dikonfigurasi.
             </p>
           )}
@@ -356,8 +374,8 @@ function SettingsPage({ businessConfigs, setBusinessConfigs, appSettings, setApp
         {/* Default kategori per tipe */}
         <div
           style={{
-            backgroundColor: '#1c1c1c',
-            border: '1px solid #27272a',
+            backgroundColor: 'var(--bg-elevated)',
+            border: '1px solid var(--border)',
             borderRadius: '12px',
             padding: '1.5rem',
           }}
@@ -373,7 +391,7 @@ function SettingsPage({ businessConfigs, setBusinessConfigs, appSettings, setApp
                 fontSize: 12,
                 fontWeight: 500,
                 marginBottom: 6,
-                color: '#e5e5e5',
+                color: 'var(--text)',
               }}
             >
               Pilih Tipe Unit Bisnis
@@ -383,12 +401,12 @@ function SettingsPage({ businessConfigs, setBusinessConfigs, appSettings, setApp
               onChange={(e) => setEditSelectedId(e.target.value)}
               style={{
                 width: '100%',
-                backgroundColor: '#020617',
+                backgroundColor: 'var(--bg)',
                 borderRadius: 12,
-                border: '1px solid #27272a',
+                border: '1px solid var(--border)',
                 padding: '0.7rem 1rem',
                 fontSize: 13,
-                color: 'white',
+                color: 'var(--text)',
                 outline: 'none',
               }}
             >
@@ -409,13 +427,14 @@ function SettingsPage({ businessConfigs, setBusinessConfigs, appSettings, setApp
                 marginTop: '1rem',
               }}
             >
+              {/* Income side */}
               <div>
                 <h3
                   style={{
                     fontSize: 13,
                     fontWeight: 600,
                     marginBottom: 8,
-                    color: '#bbf7d0',
+                    color: '#16a34a',
                   }}
                 >
                   Default Kategori Pendapatan
@@ -439,12 +458,12 @@ function SettingsPage({ businessConfigs, setBusinessConfigs, appSettings, setApp
                     }}
                     style={{
                       flex: 1,
-                      backgroundColor: '#020617',
+                      backgroundColor: 'var(--bg)',
                       borderRadius: 9999,
-                      border: '1px solid #27272a',
+                      border: '1px solid var(--border)',
                       padding: '0.5rem 0.9rem',
                       fontSize: 12,
-                      color: 'white',
+                      color: 'var(--text)',
                       outline: 'none',
                     }}
                   />
@@ -452,10 +471,10 @@ function SettingsPage({ businessConfigs, setBusinessConfigs, appSettings, setApp
                     type="button"
                     onClick={handleAddIncome}
                     style={{
-                      backgroundColor: 'white',
+                      backgroundColor: 'var(--accent)',
                       borderRadius: 9999,
                       border: 'none',
-                      color: 'black',
+                      color: 'var(--bg)',
                       fontSize: 12,
                       fontWeight: 600,
                       padding: '0.45rem 0.9rem',
@@ -506,7 +525,7 @@ function SettingsPage({ businessConfigs, setBusinessConfigs, appSettings, setApp
                     <span
                       style={{
                         fontSize: 11,
-                        color: '#6b7280',
+                        color: 'var(--subtext)',
                       }}
                     >
                       Belum ada kategori pendapatan default.
@@ -515,13 +534,14 @@ function SettingsPage({ businessConfigs, setBusinessConfigs, appSettings, setApp
                 </div>
               </div>
 
+              {/* Expense side */}
               <div>
                 <h3
                   style={{
                     fontSize: 13,
                     fontWeight: 600,
                     marginBottom: 8,
-                    color: '#fecaca',
+                    color: '#dc2626',
                   }}
                 >
                   Default Kategori Pengeluaran
@@ -545,12 +565,12 @@ function SettingsPage({ businessConfigs, setBusinessConfigs, appSettings, setApp
                     }}
                     style={{
                       flex: 1,
-                      backgroundColor: '#020617',
+                      backgroundColor: 'var(--bg)',
                       borderRadius: 9999,
-                      border: '1px solid #27272a',
+                      border: '1px solid var(--border)',
                       padding: '0.5rem 0.9rem',
                       fontSize: 12,
-                      color: 'white',
+                      color: 'var(--text)',
                       outline: 'none',
                     }}
                   />
@@ -558,10 +578,10 @@ function SettingsPage({ businessConfigs, setBusinessConfigs, appSettings, setApp
                     type="button"
                     onClick={handleAddExpense}
                     style={{
-                      backgroundColor: 'white',
+                      backgroundColor: 'var(--accent)',
                       borderRadius: 9999,
                       border: 'none',
-                      color: 'black',
+                      color: 'var(--bg)',
                       fontSize: 12,
                       fontWeight: 600,
                       padding: '0.45rem 0.9rem',
@@ -612,7 +632,7 @@ function SettingsPage({ businessConfigs, setBusinessConfigs, appSettings, setApp
                     <span
                       style={{
                         fontSize: 11,
-                        color: '#6b7280',
+                        color: 'var(--subtext)',
                       }}
                     >
                       Belum ada kategori pengeluaran default.
@@ -627,8 +647,8 @@ function SettingsPage({ businessConfigs, setBusinessConfigs, appSettings, setApp
         {/* Preferensi Transaksi */}
         <div
           style={{
-            backgroundColor: '#1c1c1c',
-            border: '1px solid #27272a',
+            backgroundColor: 'var(--bg-elevated)',
+            border: '1px solid var(--border)',
             borderRadius: '12px',
             padding: '1.5rem',
           }}
@@ -637,7 +657,7 @@ function SettingsPage({ businessConfigs, setBusinessConfigs, appSettings, setApp
             Preferensi Transaksi
           </h2>
           <div style={{ marginBottom: '0.75rem' }}>
-            <p style={{ fontSize: 12, color: '#9ca3af', marginBottom: 4 }}>
+            <p style={{ fontSize: 12, color: 'var(--subtext)', marginBottom: 4 }}>
               Default tipe transaksi
             </p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -669,7 +689,7 @@ function SettingsPage({ businessConfigs, setBusinessConfigs, appSettings, setApp
           </div>
 
           <div>
-            <p style={{ fontSize: 12, color: '#9ca3af', marginBottom: 4 }}>
+            <p style={{ fontSize: 12, color: 'var(--subtext)', marginBottom: 4 }}>
               Default tanggal transaksi
             </p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -697,40 +717,6 @@ function SettingsPage({ businessConfigs, setBusinessConfigs, appSettings, setApp
               ))}
             </div>
           </div>
-        </div>
-
-        {/* Export */}
-        <div
-          style={{
-            backgroundColor: '#1c1c1c',
-            border: '1px solid #27272a',
-            borderRadius: '12px',
-            padding: '1.5rem',
-            textAlign: 'center',
-          }}
-        >
-          <h2 style={{ fontSize: '1.05rem', fontWeight: 600, marginBottom: '0.75rem' }}>
-            Export Data
-          </h2>
-          <p style={{ fontSize: 12, color: '#9ca3af', marginBottom: '0.75rem' }}>
-            Simpan transaksi dan konfigurasi dalam format CSV.
-          </p>
-          <button
-            type="button"
-            onClick={handleExport}
-            style={{
-              backgroundColor: 'white',
-              borderRadius: 9999,
-              border: 'none',
-              color: 'black',
-              fontSize: 13,
-              fontWeight: 600,
-              padding: '0.55rem 1.4rem',
-              cursor: 'pointer',
-            }}
-          >
-            Export CSV (Dummy)
-          </button>
         </div>
       </div>
     </main>

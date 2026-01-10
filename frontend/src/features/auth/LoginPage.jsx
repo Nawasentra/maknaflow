@@ -1,22 +1,27 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { GoogleLogin } from '@react-oauth/google'
 
-function LoginPage() {
+function LoginPage({ onLogin }) {
   const navigate = useNavigate()
+  const [isLoggingIn, setIsLoggingIn] = useState(false)
 
   const handleSuccess = (credentialResponse) => {
     const token = credentialResponse?.credential
-    if (!token) return
+    if (!token || isLoggingIn) return
 
-    // Save token locally (MVP-level auth)
-    localStorage.setItem('google_id_token', token)
+    setIsLoggingIn(true)
 
+    // Let App handle storing token + user profile
+    onLogin?.(token)
+
+    // Navigate to dashboard immediately for snappier UX
     navigate('/dashboard')
   }
 
   const handleError = () => {
     console.error('Google Login failed')
+    setIsLoggingIn(false)
   }
 
   return (
@@ -26,23 +31,29 @@ function LoginPage() {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: '#09090b',
-        color: 'white',
+        backgroundColor: 'var(--bg)',
+        color: 'var(--text)',
       }}
     >
       <div
         style={{
-          backgroundColor: '#18181b',
+          backgroundColor: 'var(--bg-elevated)',
           padding: '2rem',
           borderRadius: '1rem',
-          border: '1px solid #27272a',
+          border: '1px solid var(--border)',
           width: '100%',
           maxWidth: '420px',
           textAlign: 'center',
         }}
       >
         <h1 style={{ fontSize: '1.5rem', marginBottom: '1rem' }}>Masuk ke MaknaFlow</h1>
-        <p style={{ fontSize: '0.9rem', color: '#a1a1aa', marginBottom: '1.5rem' }}>
+        <p
+          style={{
+            fontSize: '0.9rem',
+            color: 'var(--subtext)',
+            marginBottom: '1.5rem',
+          }}
+        >
           Gunakan akun Google untuk mengakses dashboard.
         </p>
 
@@ -53,6 +64,7 @@ function LoginPage() {
               padding: '2px',
               background: 'linear-gradient(180deg, #e5e5e5, #d4d4d8)',
               boxShadow: '0 1px 3px rgba(0,0,0,0.25)',
+              opacity: isLoggingIn ? 0.7 : 1,
             }}
           >
             <div
@@ -66,7 +78,7 @@ function LoginPage() {
               <GoogleLogin
                 onSuccess={handleSuccess}
                 onError={handleError}
-                text="continue_with"
+                text={isLoggingIn ? 'continue_with' : 'continue_with'}
                 shape="pill"
                 theme="outline"
                 locale="id"
@@ -76,6 +88,17 @@ function LoginPage() {
           </div>
         </div>
 
+        {isLoggingIn && (
+          <p
+            style={{
+              marginTop: '1rem',
+              fontSize: '0.85rem',
+              color: 'var(--subtext)',
+            }}
+          >
+            Sedang masuk dengan Google...
+          </p>
+        )}
       </div>
     </div>
   )

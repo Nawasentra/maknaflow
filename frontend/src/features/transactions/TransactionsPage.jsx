@@ -2,11 +2,11 @@ import React, { useState, useMemo } from 'react'
 
 const inputStyle = {
   width: '100%',
-  backgroundColor: '#020617',
+  backgroundColor: 'var(--bg)',
   borderRadius: 8,
-  border: '1px solid #27272a',
+  border: '1px solid var(--border)',
   padding: '0.5rem 0.75rem',
-  color: 'white',
+  color: 'var(--text)',
   fontSize: '0.85rem',
   outline: 'none',
 }
@@ -18,7 +18,7 @@ function Field({ label, children }) {
         style={{
           display: 'block',
           fontSize: '0.8rem',
-          color: '#e5e5e5',
+          color: 'var(--subtext)',
           marginBottom: 4,
         }}
       >
@@ -36,6 +36,7 @@ function TransactionsPage({
   appSettings,
   lastUsedType,
   setLastUsedType,
+  showToast,
 }) {
   const [searchTerm, setSearchTerm] = useState('')
   const [confirmOpen, setConfirmOpen] = useState(false)
@@ -55,7 +56,8 @@ function TransactionsPage({
       t.unitBusiness.toLowerCase().includes(q) ||
       t.category.toLowerCase().includes(q) ||
       t.type.toLowerCase().includes(q) ||
-      t.payment.toLowerCase().includes(q)
+      t.payment.toLowerCase().includes(q) ||
+      (t.source || '').toLowerCase().includes(q)
     )
   })
 
@@ -68,7 +70,7 @@ function TransactionsPage({
     } else if (key === 'amount') {
       cmp = a.amount - b.amount
     } else {
-      cmp = String(a[key]).localeCompare(String(b[key]))
+      cmp = String(a[key] ?? '').localeCompare(String(b[key] ?? ''))
     }
 
     return direction === 'asc' ? cmp : -cmp
@@ -97,6 +99,7 @@ function TransactionsPage({
     }
     setConfirmOpen(false)
     setTransactionToDelete(null)
+    showToast?.('Berhasil menghapus transaksi.')
   }
 
   const handleCancelDelete = () => {
@@ -107,22 +110,34 @@ function TransactionsPage({
   const handleAddTransaction = (newTx) => {
     setTransactions((prev) => [
       ...prev,
-      { ...newTx, id: prev.length ? Math.max(...prev.map((p) => p.id)) + 1 : 1 },
+      {
+        ...newTx,
+        id: prev.length ? Math.max(...prev.map((p) => p.id)) + 1 : 1,
+        source: 'Manual',
+      },
     ])
     setLastUsedType(newTx.type)
     setAddOpen(false)
+    showToast?.('Berhasil menambahkan transaksi.')
   }
 
   return (
-    <main style={{ maxWidth: '1280px', margin: '0 auto', padding: '2rem 1.5rem' }}>
+    <main
+      style={{
+        maxWidth: '1280px',
+        margin: '0 auto',
+        padding: '2rem 1.5rem',
+        color: 'var(--text)',
+      }}
+    >
       <h1 style={{ fontSize: '1.875rem', fontWeight: '700', marginBottom: '1.5rem' }}>
         📋 Transaksi
       </h1>
 
       <div
         style={{
-          backgroundColor: '#1c1c1c',
-          border: '1px solid #27272a',
+          backgroundColor: 'var(--bg-elevated)',
+          border: '1px solid var(--border)',
           borderRadius: '12px',
           overflow: 'hidden',
         }}
@@ -130,8 +145,8 @@ function TransactionsPage({
         <div
           style={{
             padding: '1.5rem',
-            borderBottom: '1px solid #27272a',
-            backgroundColor: 'rgba(0,0,0,0.2)',
+            borderBottom: '1px solid var(--border)',
+            backgroundColor: 'rgba(148, 163, 184, 0.04)',
           }}
         >
           <div
@@ -149,7 +164,7 @@ function TransactionsPage({
               </h3>
               <p
                 style={{
-                  color: '#a1a1aa',
+                  color: 'var(--subtext)',
                   fontSize: '0.875rem',
                   margin: '0.25rem 0 0 0',
                 }}
@@ -171,19 +186,19 @@ function TransactionsPage({
                 onChange={(e) => setSearchTerm(e.target.value)}
                 style={{
                   flex: 1,
-                  backgroundColor: '#1c1c1c',
-                  border: '1px solid #27272a',
+                  backgroundColor: 'var(--bg)',
+                  border: '1px solid var(--border)',
                   borderRadius: '8px',
                   padding: '0.75rem 1rem',
-                  color: 'white',
+                  color: 'var(--text)',
                   fontSize: '0.875rem',
                 }}
               />
               <button
                 onClick={() => setAddOpen(true)}
                 style={{
-                  backgroundColor: 'white',
-                  color: 'black',
+                  backgroundColor: 'var(--accent)',
+                  color: 'var(--bg)',
                   padding: '0.75rem 1.5rem',
                   borderRadius: '8px',
                   fontWeight: '600',
@@ -204,8 +219,8 @@ function TransactionsPage({
             <thead>
               <tr
                 style={{
-                  borderBottom: '2px solid #27272a',
-                  backgroundColor: 'rgba(0,0,0,0.2)',
+                  borderBottom: '2px solid var(--border)',
+                  backgroundColor: 'rgba(148, 163, 184, 0.04)',
                 }}
               >
                 <ThSortable label="Tanggal" onClick={() => handleSort('date')} />
@@ -215,13 +230,14 @@ function TransactionsPage({
                 <ThSortable label="Tipe" onClick={() => handleSort('type')} />
                 <ThSortable label="Jumlah" onClick={() => handleSort('amount')} />
                 <ThSortable label="Pembayaran" onClick={() => handleSort('payment')} />
+                <ThSortable label="Source" onClick={() => handleSort('source')} />
                 <th
                   style={{
                     padding: '1rem 1.5rem',
                     textAlign: 'left',
                     fontSize: '0.75rem',
                     fontWeight: '600',
-                    color: '#a1a1aa',
+                    color: 'var(--subtext)',
                     textTransform: 'uppercase',
                   }}
                 >
@@ -233,11 +249,11 @@ function TransactionsPage({
               {sortedTransactions.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={8}
+                    colSpan={9}
                     style={{
                       padding: '1.5rem',
                       textAlign: 'center',
-                      color: '#6b7280',
+                      color: 'var(--subtext)',
                       fontSize: '0.9rem',
                     }}
                   >
@@ -286,7 +302,7 @@ function ThSortable({ label, onClick }) {
         textAlign: 'left',
         fontSize: '0.75rem',
         fontWeight: '600',
-        color: '#a1a1aa',
+        color: 'var(--subtext)',
         textTransform: 'uppercase',
         cursor: 'pointer',
         userSelect: 'none',
@@ -313,14 +329,14 @@ function ConfirmDialog({ title, description, onCancel, onConfirm }) {
       <div
         style={{
           width: 380,
-          backgroundColor: '#020617',
+          backgroundColor: 'var(--bg-elevated)',
           borderRadius: 16,
-          border: '1px solid #27272a',
+          border: '1px solid var(--border)',
           padding: '1.5rem',
         }}
       >
         <h2 style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '0.5rem' }}>{title}</h2>
-        <p style={{ fontSize: '0.9rem', color: '#a1a1aa', marginBottom: '1.5rem' }}>
+        <p style={{ fontSize: '0.9rem', color: 'var(--subtext)', marginBottom: '1.5rem' }}>
           {description}
         </p>
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
@@ -329,9 +345,9 @@ function ConfirmDialog({ title, description, onCancel, onConfirm }) {
             style={{
               padding: '0.6rem 1.3rem',
               borderRadius: 9999,
-              border: '1px solid #27272a',
+              border: '1px solid var(--border)',
               backgroundColor: 'transparent',
-              color: '#e5e5e5',
+              color: 'var(--text)',
               fontSize: '0.85rem',
               cursor: 'pointer',
             }}
@@ -345,7 +361,7 @@ function ConfirmDialog({ title, description, onCancel, onConfirm }) {
               borderRadius: 9999,
               border: 'none',
               backgroundColor: '#ef4444',
-              color: 'white',
+              color: 'var(--bg)',
               fontWeight: 600,
               fontSize: '0.85rem',
               cursor: 'pointer',
@@ -497,9 +513,9 @@ function AddTransactionModal({
       <div
         style={{
           width: 420,
-          backgroundColor: '#020617',
+          backgroundColor: 'var(--bg-elevated)',
           borderRadius: 16,
-          border: '1px solid #27272a',
+          border: '1px solid var(--border)',
           padding: '1.5rem',
           boxSizing: 'border-box',
         }}
@@ -518,7 +534,7 @@ function AddTransactionModal({
             style={{
               border: 'none',
               background: 'none',
-              color: '#a1a1aa',
+              color: 'var(--subtext)',
               cursor: 'pointer',
               fontSize: '1.25rem',
             }}
@@ -608,7 +624,7 @@ function AddTransactionModal({
 
           <Field label="Jumlah">
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-              <span style={{ fontSize: '0.9rem', color: '#a1a1aa' }}>Rp</span>
+              <span style={{ fontSize: '0.9rem', color: 'var(--subtext)' }}>Rp</span>
               <input
                 type="text"
                 value={amountInput}
@@ -640,9 +656,9 @@ function AddTransactionModal({
             style={{
               padding: '0.6rem 1.3rem',
               borderRadius: 9999,
-              border: '1px solid #27272a',
+              border: '1px solid var(--border)',
               backgroundColor: 'transparent',
-              color: '#e5e5e5',
+              color: 'var(--text)',
               fontSize: '0.85rem',
               cursor: 'pointer',
             }}
@@ -655,8 +671,8 @@ function AddTransactionModal({
               padding: '0.6rem 1.4rem',
               borderRadius: 9999,
               border: 'none',
-              backgroundColor: 'white',
-              color: 'black',
+              backgroundColor: 'var(--accent)',
+              color: 'var(--bg)',
               fontWeight: 600,
               fontSize: '0.85rem',
               cursor: 'pointer',
@@ -671,20 +687,39 @@ function AddTransactionModal({
 }
 
 function TransactionRow({ transaction, onAskDelete }) {
+  const isIncome = transaction.type === 'Income'
+  const source = transaction.source || 'Manual'
+
+  const sourceColor =
+    source === 'Email'
+      ? '#60a5fa'
+      : source === 'Whatsapp'
+      ? '#22c55e'
+      : '#e5e7eb'
+
+  const sourceBg =
+    source === 'Email'
+      ? 'rgba(59, 130, 246, 0.15)'
+      : source === 'Whatsapp'
+      ? 'rgba(34, 197, 94, 0.15)'
+      : 'rgba(148, 163, 184, 0.12)'
+
   return (
-    <tr style={{ borderBottom: '1px solid #27272a' }}>
-      <td style={{ padding: '1rem 1.5rem', fontWeight: '500', color: 'white' }}>
+    <tr style={{ borderBottom: '1px solid var(--border)' }}>
+      <td style={{ padding: '1rem 1.5rem', fontWeight: '500', color: 'var(--text)' }}>
         {new Date(transaction.date).toLocaleDateString('id-ID', {
           day: 'numeric',
           month: 'short',
         })}
       </td>
-      <td style={{ padding: '1rem 1.5rem', color: '#d1d5db' }}>{transaction.unitBusiness}</td>
+      <td style={{ padding: '1rem 1.5rem', color: 'var(--text)' }}>
+        {transaction.unitBusiness}
+      </td>
       <td style={{ padding: '1rem 1.5rem' }}>
         <span
           style={{
             padding: '0.375rem 0.75rem',
-            backgroundColor: 'rgba(59, 130, 246, 0.2)',
+            backgroundColor: 'rgba(59, 130, 246, 0.15)',
             color: '#60a5fa',
             borderRadius: '9999px',
             fontSize: '0.75rem',
@@ -694,16 +729,17 @@ function TransactionRow({ transaction, onAskDelete }) {
           {transaction.branch}
         </span>
       </td>
-      <td style={{ padding: '1rem 1.5rem', color: '#d1d5db' }}>{transaction.category}</td>
+      <td style={{ padding: '1rem 1.5rem', color: 'var(--text)' }}>
+        {transaction.category}
+      </td>
       <td style={{ padding: '1rem 1.5rem' }}>
         <span
           style={{
             padding: '0.375rem 0.75rem',
-            backgroundColor:
-              transaction.type === 'Income'
-                ? 'rgba(34, 197, 94, 0.2)'
-                : 'rgba(239, 68, 68, 0.2)',
-            color: transaction.type === 'Income' ? '#4ade80' : '#f87171',
+            backgroundColor: isIncome
+              ? 'rgba(34, 197, 94, 0.15)'
+              : 'rgba(239, 68, 68, 0.15)',
+            color: isIncome ? '#4ade80' : '#f87171',
             borderRadius: '9999px',
             fontSize: '0.75rem',
             fontWeight: '500',
@@ -716,12 +752,28 @@ function TransactionRow({ transaction, onAskDelete }) {
         style={{
           padding: '1rem 1.5rem',
           fontWeight: '600',
-          color: transaction.type === 'Income' ? '#10b981' : '#ef4444',
+          color: isIncome ? '#10b981' : '#ef4444',
         }}
       >
         Rp {new Intl.NumberFormat('id-ID').format(transaction.amount)}
       </td>
-      <td style={{ padding: '1rem 1.5rem', color: '#a1a1aa' }}>{transaction.payment}</td>
+      <td style={{ padding: '1rem 1.5rem', color: 'var(--subtext)' }}>
+        {transaction.payment}
+      </td>
+      <td style={{ padding: '1rem 1.5rem' }}>
+        <span
+          style={{
+            padding: '0.375rem 0.75rem',
+            borderRadius: 9999,
+            backgroundColor: sourceBg,
+            color: sourceColor,
+            fontSize: '0.75rem',
+            fontWeight: 500,
+          }}
+        >
+          {source}
+        </span>
+      </td>
       <td style={{ padding: '1rem 1.5rem' }}>
         <button
           onClick={() => onAskDelete(transaction)}
