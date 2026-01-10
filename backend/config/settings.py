@@ -190,12 +190,12 @@ REST_FRAMEWORK = {
 ACCOUNT_EMAIL_REQUIRED = True
 ACCOUNT_USERNAME_REQUIRED = False
 ACCOUNT_AUTHENTICATION_METHOD = 'email'
-ACCOUNT_EMAIL_VERIFICATION = 'none'  # Change to 'mandatory' for production
+ACCOUNT_EMAIL_VERIFICATION = 'mandatory'
 ACCOUNT_UNIQUE_EMAIL = True
 
 # Social account settings
 SOCIALACCOUNT_EMAIL_REQUIRED = True
-SOCIALACCOUNT_EMAIL_VERIFICATION = 'none'
+SOCIALACCOUNT_EMAIL_VERIFICATION = 'mandatory'
 SOCIALACCOUNT_QUERY_EMAIL = True
 SOCIALACCOUNT_AUTO_SIGNUP = True  # Controlled by adapter
 SOCIALACCOUNT_ADAPTER = 'app.adapters.OwnerOnlyAdapter'
@@ -216,6 +216,8 @@ SOCIALACCOUNT_PROVIDERS = {
             'access_type': 'online',
         },
         'VERIFIED_EMAIL': True,
+        # Accept both access_token and id_token
+        'OAUTH_PKCE_ENABLED': True,
     }
 }
 
