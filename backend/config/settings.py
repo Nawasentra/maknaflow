@@ -161,8 +161,8 @@ AUTH_USER_MODEL = 'app.User'
 # =============================================================================
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
-        'rest_framework.authentication.TokenAuthentication',
-        'rest_framework.authentication.SessionAuthentication',
+        'rest_framework.authentication.TokenAuthentication',  # Primary
+        'rest_framework.authentication.SessionAuthentication',  # Fallback for browsable API
     ],
     'DEFAULT_FILTER_BACKENDS': [
         'django_filters.rest_framework.DjangoFilterBackend',
@@ -223,9 +223,11 @@ SOCIALACCOUNT_PROVIDERS = {
 # DJ-REST-AUTH CONFIGURATION
 # =============================================================================
 REST_AUTH = {
-    'USE_JWT': False,
+    'USE_JWT': False,  # Using Token Authentication
     'SESSION_LOGIN': True,
     'USER_DETAILS_SERIALIZER': 'app.serializers.UserSerializer',
+    'TOKEN_MODEL': 'rest_framework.authtoken.models.Token',  # Explicit token model
+    'TOKEN_CREATOR': 'dj_rest_auth.utils.default_create_token',  # Auto-create tokens
 }
 
 LOGIN_REDIRECT_URL = '/'
