@@ -70,12 +70,18 @@ const initialAppSettings = {
   defaultDateMode: 'today',
 }
 
+// INITIAL THEME HELPER
 const getInitialTheme = () => {
   const stored = localStorage.getItem('theme')
+  console.log('stored theme =', stored)
   if (stored === 'light' || stored === 'dark') return stored
+
   if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+    console.log('system prefers dark, using dark')
     return 'dark'
   }
+
+  console.log('no stored theme, using light')
   return 'light'
 }
 
@@ -114,6 +120,7 @@ function App() {
   // theme state
   const [theme, setTheme] = useState(getInitialTheme)
 
+  // LOAD TRANSACTIONS
   useEffect(() => {
     let cancelled = false
     async function load() {
@@ -138,7 +145,7 @@ function App() {
     }
   }, [])
 
-  // build simple notifications from latest transactions
+  // BUILD NOTIFICATIONS
   useEffect(() => {
     if (!transactions || transactions.length === 0) return
 
@@ -161,14 +168,19 @@ function App() {
     setUnreadCount(0)
   }
 
-  // apply theme to <html> and persist
+  // APPLY THEME TO <html> AND PERSIST
   useEffect(() => {
+    console.log('applying theme to html:', theme)
     document.documentElement.setAttribute('data-theme', theme)
     localStorage.setItem('theme', theme)
   }, [theme])
 
   const toggleTheme = () => {
-    setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'))
+    setTheme((prev) => {
+      const next = prev === 'dark' ? 'light' : 'dark'
+      console.log('toggling theme:', prev, '->', next)
+      return next
+    })
   }
 
   const handleLoginSuccess = (token) => {
