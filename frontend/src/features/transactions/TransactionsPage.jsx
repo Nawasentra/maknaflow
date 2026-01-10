@@ -55,7 +55,8 @@ function TransactionsPage({
       t.unitBusiness.toLowerCase().includes(q) ||
       t.category.toLowerCase().includes(q) ||
       t.type.toLowerCase().includes(q) ||
-      t.payment.toLowerCase().includes(q)
+      t.payment.toLowerCase().includes(q) ||
+      (t.source || '').toLowerCase().includes(q)
     )
   })
 
@@ -68,7 +69,7 @@ function TransactionsPage({
     } else if (key === 'amount') {
       cmp = a.amount - b.amount
     } else {
-      cmp = String(a[key]).localeCompare(String(b[key]))
+      cmp = String(a[key] ?? '').localeCompare(String(b[key] ?? ''))
     }
 
     return direction === 'asc' ? cmp : -cmp
@@ -107,7 +108,12 @@ function TransactionsPage({
   const handleAddTransaction = (newTx) => {
     setTransactions((prev) => [
       ...prev,
-      { ...newTx, id: prev.length ? Math.max(...prev.map((p) => p.id)) + 1 : 1 },
+      {
+        ...newTx,
+        id: prev.length ? Math.max(...prev.map((p) => p.id)) + 1 : 1,
+        // ensure manual for anything created from this modal
+        source: 'Manual',
+      },
     ])
     setLastUsedType(newTx.type)
     setAddOpen(false)
@@ -138,7 +144,7 @@ function TransactionsPage({
           style={{
             padding: '1.5rem',
             borderBottom: '1px solid var(--border)',
-            backgroundColor: 'rgba(148, 163, 184, 0.04)', // subtle neutral, works on both themes
+            backgroundColor: 'rgba(148, 163, 184, 0.04)',
           }}
         >
           <div
@@ -190,7 +196,7 @@ function TransactionsPage({
                 onClick={() => setAddOpen(true)}
                 style={{
                   backgroundColor: 'var(--accent)',
-                  color: 'var(--bg)',         // ensures contrast in both modes
+                  color: 'var(--bg)',
                   padding: '0.75rem 1.5rem',
                   borderRadius: '8px',
                   fontWeight: '600',
@@ -222,6 +228,7 @@ function TransactionsPage({
                 <ThSortable label="Tipe" onClick={() => handleSort('type')} />
                 <ThSortable label="Jumlah" onClick={() => handleSort('amount')} />
                 <ThSortable label="Pembayaran" onClick={() => handleSort('payment')} />
+                <ThSortable label="Source" onClick={() => handleSort('source')} />
                 <th
                   style={{
                     padding: '1rem 1.5rem',
@@ -240,7 +247,7 @@ function TransactionsPage({
               {sortedTransactions.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={8}
+                    colSpan={9}
                     style={{
                       padding: '1.5rem',
                       textAlign: 'center',
@@ -352,7 +359,7 @@ function ConfirmDialog({ title, description, onCancel, onConfirm }) {
               borderRadius: 9999,
               border: 'none',
               backgroundColor: '#ef4444',
-              color: 'var(--bg)',     // use bg var instead of plain white
+              color: 'var(--bg)',
               fontWeight: 600,
               fontSize: '0.85rem',
               cursor: 'pointer',
@@ -486,6 +493,7 @@ function AddTransactionModal({
       type,
       amount: Number(digits),
       payment,
+      // source intentionally not passed; wrapper sets it to 'Manual'
     })
   }
 
@@ -679,6 +687,22 @@ function AddTransactionModal({
 
 function TransactionRow({ transaction, onAskDelete }) {
   const isIncome = transaction.type === 'Income'
+  const source = transaction.source || 'Manual'
+
+  const sourceColor =
+    source === 'Email'
+      ? '#60a5fa'
+      : source === 'Whatsapp'
+      ? '#22c55e'
+      : '#e5e7eb'
+
+  const sourceBg =
+    source === 'Email'
+      ? 'rgba(59, 130, 246, 0.15)'
+      : source === 'Whatsapp'
+      ? 'rgba(34, 197, 94, 0.15)'
+      : 'rgba(148, 163, 184, 0.12)'
+
   return (
     <tr style={{ borderBottom: '1px solid var(--border)' }}>
       <td style={{ padding: '1rem 1.5rem', fontWeight: '500', color: 'var(--text)' }}>
@@ -734,6 +758,20 @@ function TransactionRow({ transaction, onAskDelete }) {
       </td>
       <td style={{ padding: '1rem 1.5rem', color: 'var(--subtext)' }}>
         {transaction.payment}
+      </td>
+      <td style={{ padding: '1rem 1.5rem' }}>
+        <span
+          style={{
+            padding: '0.375rem 0.75rem',
+            borderRadius: 9999,
+            backgroundColor: sourceBg,
+            color: sourceColor,
+            fontSize: '0.75rem',
+            fontWeight: 500,
+          }}
+        >
+          {source}
+        </span>
       </td>
       <td style={{ padding: '1rem 1.5rem' }}>
         <button
