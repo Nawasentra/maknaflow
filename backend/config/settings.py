@@ -41,61 +41,42 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    "app",
+    'django.contrib.sites',
+    
+    # Project app
+    'app',
 
-    # Project dependencies
+    # Third-party dependencies
     'rest_framework',
     'rest_framework.authtoken',
     'corsheaders',
+    'django_filters',
+    
+    # Authentication
     'dj_rest_auth',
-    'django.contrib.sites',
     'allauth',
     'allauth.account',
     'allauth.socialaccount',
     'allauth.socialaccount.providers.google',
     'dj_rest_auth.registration',
-    'django_filters',
 ]
 
 SITE_ID = 1
 
-# REST Framework settings
-REST_FRAMEWORK = {
-    'DEFAULT_AUTHENTICATION_CLASSES': [
-        'rest_framework.authentication.TokenAuthentication',
-        'rest_framework.authentication.SessionAuthentication',
-    ],
-    'DEFAULT_FILTER_BACKENDS': [
-        'django_filters.rest_framework.DjangoFilterBackend',
-        'rest_framework.filters.SearchFilter',
-        'rest_framework.filters.OrderingFilter',
-    ],
-    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
-    'PAGE_SIZE': 50,
-    'DEFAULT_PERMISSION_CLASSES': [
-        'rest_framework.permissions.IsAuthenticated',
-    ],
-    'DEFAULT_THROTTLE_CLASSES': [
-        'rest_framework.throttling.AnonRateThrottle',
-        'rest_framework.throttling.UserRateThrottle'
-    ],
-    'DEFAULT_THROTTLE_RATES': {
-        'anon': '100/hour',
-        'user': '1000/hour'
-    }
-}
-
+# =============================================================================
+# MIDDLEWARE
+# =============================================================================
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
-    'whitenoise.middleware.WhiteNoiseMiddleware', 
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'corsheaders.middleware.CorsMiddleware',
-    'allauth.account.middleware.AccountMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'allauth.account.middleware.AccountMiddleware',
 ]
 
 ROOT_URLCONF = 'config.urls'
@@ -175,11 +156,51 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # Custom User Model
 AUTH_USER_MODEL = 'app.User'
 
-# Ingestion Webhook API Key
-INGESTION_API_KEY = config('INGESTION_API_KEY', default='')
-OWNER_EMAILS = config('OWNER_EMAILS', default='', cast=Csv())
+# =============================================================================
+# REST FRAMEWORK
+# =============================================================================
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework.authentication.TokenAuthentication',
+        'rest_framework.authentication.SessionAuthentication',
+    ],
+    'DEFAULT_FILTER_BACKENDS': [
+        'django_filters.rest_framework.DjangoFilterBackend',
+        'rest_framework.filters.SearchFilter',
+        'rest_framework.filters.OrderingFilter',
+    ],
+    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
+    'PAGE_SIZE': 50,
+    'DEFAULT_PERMISSION_CLASSES': [
+        'rest_framework.permissions.IsAuthenticated',
+    ],
+    'DEFAULT_THROTTLE_CLASSES': [
+        'rest_framework.throttling.AnonRateThrottle',
+        'rest_framework.throttling.UserRateThrottle'
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': '100/hour',
+        'user': '1000/hour'
+    }
+}
 
-# Google Configuration
+# =============================================================================
+# DJANGO-ALLAUTH CONFIGURATION
+# =============================================================================
+ACCOUNT_EMAIL_REQUIRED = True
+ACCOUNT_USERNAME_REQUIRED = False
+ACCOUNT_AUTHENTICATION_METHOD = 'email'
+ACCOUNT_EMAIL_VERIFICATION = 'none'  # Change to 'mandatory' for production
+ACCOUNT_UNIQUE_EMAIL = True
+
+# Social account settings
+SOCIALACCOUNT_EMAIL_REQUIRED = True
+SOCIALACCOUNT_EMAIL_VERIFICATION = 'none'
+SOCIALACCOUNT_QUERY_EMAIL = True
+SOCIALACCOUNT_AUTO_SIGNUP = True  # Controlled by adapter
+SOCIALACCOUNT_ADAPTER = 'app.adapters.OwnerOnlyAdapter'
+
+# Google OAuth Configuration
 SOCIALACCOUNT_PROVIDERS = {
     'google': {
         'APP': {
@@ -193,15 +214,22 @@ SOCIALACCOUNT_PROVIDERS = {
         ],
         'AUTH_PARAMS': {
             'access_type': 'online',
-        }
+        },
+        'VERIFIED_EMAIL': True,
     }
 }
 
-# Custom adapter
-SOCIALACCOUNT_ADAPTER = 'app.adapters.OwnerOnlyAdapter'
+# =============================================================================
+# DJ-REST-AUTH CONFIGURATION
+# =============================================================================
+REST_AUTH = {
+    'USE_JWT': False,
+    'SESSION_LOGIN': True,
+    'USER_DETAILS_SERIALIZER': 'app.serializers.UserSerializer',
+}
 
-# Email whitelist
-ALLOWED_EMAILS = config('ALLOWED_EMAILS', default='', cast=Csv())
+LOGIN_REDIRECT_URL = '/'
+LOGOUT_REDIRECT_URL = '/'
 
 # =============================================================================
 # CORS CONFIGURATION
@@ -211,23 +239,11 @@ CORS_ALLOWED_ORIGINS = config(
     default='http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000',
     cast=Csv()
 )
-
 CORS_ALLOW_CREDENTIALS = True
-
-# For production, you might want to be more restrictive:
-# CORS_ALLOW_METHODS = [
-#     'DELETE',
-#     'GET',
-#     'OPTIONS',
-#     'PATCH',
-#     'POST',
-#     'PUT',
-# ]
 
 # =============================================================================
 # CSRF CONFIGURATION
 # =============================================================================
-# Build CSRF trusted origins from ALLOWED_HOSTS
 CSRF_TRUSTED_ORIGINS = []
 
 # Add localhost variants for development
@@ -244,13 +260,22 @@ for host in ALLOWED_HOSTS:
     if host not in ['localhost', '127.0.0.1', '.localhost']:
         CSRF_TRUSTED_ORIGINS.append(f'https://{host}')
 
-# Allow from environment variable (for flexibility)
+# Allow additional origins from environment
 extra_csrf_origins = config('CSRF_TRUSTED_ORIGINS', default='', cast=Csv())
 if extra_csrf_origins:
     CSRF_TRUSTED_ORIGINS.extend(extra_csrf_origins)
 
 # =============================================================================
-# SECURITY SETTINGS (Production)
+# CUSTOM SETTINGS
+# =============================================================================
+# Webhook API Key
+INGESTION_API_KEY = config('INGESTION_API_KEY', default='')
+
+# Owner email whitelist (for Google OAuth)
+OWNER_EMAILS = config('ALLOWED_EMAILS', default='', cast=Csv())
+
+# =============================================================================
+# SECURITY SETTINGS (Production Only)
 # =============================================================================
 if not DEBUG:
     # HTTPS/SSL
