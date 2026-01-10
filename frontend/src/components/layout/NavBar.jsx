@@ -51,10 +51,12 @@ function NavBar({
             fontWeight: 'bold',
             background:
               theme === 'dark'
-                ? 'linear-gradient(to right, #f9fafb, #d1d5db)'
+                ? 'linear-gradient(to right, #e5e7eb, #9ca3af)' // light gradient for dark bg
                 : 'linear-gradient(to right, #0f172a, #6b7280)',
             WebkitBackgroundClip: 'text',
             WebkitTextFillColor: 'transparent',
+            // fallback color if gradient/clip is not supported
+            color: theme === 'dark' ? '#e5e7eb' : '#0f172a',
           }}
         >
           MaknaFlow Dashboard
