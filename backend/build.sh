@@ -2,11 +2,17 @@
 # Exit on error
 set -o errexit
 
-# 1. Install Dependencies
-pip install -r requirements.txt
+echo "--- Building with uv ---"
+
+# 1. Install dependencies
+# --frozen ensures we use exactly the versions in uv.lock
+uv sync --frozen --no-dev
 
 # 2. Collect Static Files
-python manage.py collectstatic --no-input
+# We use 'uv run' to execute commands inside the virtual environment uv created
+echo "--- Collecting Static Files ---"
+uv run python manage.py collectstatic --no-input
 
 # 3. Run Migrations
-python manage.py migrate
+echo "--- Running Migrations ---"
+uv run python manage.py migrate
