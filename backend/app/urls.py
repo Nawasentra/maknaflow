@@ -8,7 +8,7 @@ from app.views import (
     TransactionViewSet,
     UserViewSet,
     IngestionLogViewSet,
-    EmailWebhookView,
+    EmailIngestionWebhook,
     WhatsAppWebhookView,
 )
 
@@ -18,7 +18,7 @@ router.register(r'branches', BranchViewSet, basename='branch')
 router.register(r'categories', CategoryViewSet, basename='category')
 router.register(r'transactions', TransactionViewSet, basename='transaction')
 router.register(r'users', UserViewSet, basename='user')
-router.register(r'ingestion-logs', IngestionLogViewSet, basename='ingestion-log')
+router.register(r'ingestion-logs', IngestionLogViewSet, basename='ingestionlog')
 
 urlpatterns = [
     path('', views.home, name='home'),
@@ -26,6 +26,6 @@ urlpatterns = [
     path('api/', include(router.urls)),
     
     # Webhook endpoints (API Key protected)
-    path('webhooks/email/', EmailWebhookView.as_view(), name='email_webhook'),
-    path('webhooks/whatsapp/', WhatsAppWebhookView.as_view(), name='whatsapp_webhook'),
+    path('webhooks/make/', EmailIngestionWebhook.as_view(), name='email-webhook'),  # Changed URL path and view
+    path('webhooks/whatsapp/', WhatsAppWebhookView.as_view(), name='whatsapp-webhook'),
 ]
