@@ -142,14 +142,51 @@ function App() {
     async function load() {
       try {
         setIsLoading(true)
-        const data = await fetchTransactions({})
-        if (!cancelled) {
-          setTransactions(data)
-          setError('')
-        }
+        const raw = await fetchTransactions({})
+
+        if (cancelled) return
+
+        // Map backend shape -> frontend shape
+        const mapped = raw.map((t) => {
+          const type =
+            t.transaction_type === 'INCOME'
+              ? 'Income'
+              : t.transaction_type === 'EXPENSE'
+              ? 'Expense'
+              : 'Income'
+
+          const source =
+            t.source === 'EMAIL'
+              ? 'Email'
+              : t.source === 'WHATSAPP'
+              ? 'Whatsapp'
+              : 'Manual'
+
+          return {
+            id: t.id,
+            date: t.date, // "YYYY-MM-DD"
+            // For now: use branch_name for both unitBusiness and branch
+            unitBusiness: t.branch_name || 'Unknown',
+            branch: t.branch_name || 'Unknown',
+            category: t.category_name || 'Lainnya',
+            type,
+            amount: Number(t.amount ?? 0),
+            // TEMP: use reporter email as "payment" label or fallback
+            payment: t.reported_by_email || 'Unknown',
+            source,
+            description: t.description,
+            createdAt: t.created_at,
+            // keep raw IDs for possible future editing
+            branchId: t.branch,
+            categoryId: t.category,
+          }
+        })
+
+        setTransactions(mapped)
+        setError('')
       } catch (e) {
         if (!cancelled) {
-          setError('Gagal memuat data transaksi (mode mock).')
+          setError('Gagal memuat data transaksi.')
         }
       } finally {
         if (!cancelled) setIsLoading(false)
@@ -166,12 +203,12 @@ function App() {
     if (!transactions || transactions.length === 0) return
 
     const latest = transactions.slice(-5).map((t) => ({
-      id: t.id ?? `${t.branchName}-${t.date}-${t.amount}`,
-      branchName: t.branchName ?? t.branch ?? 'Unknown',
-      date: t.date ?? t.createdAt ?? '',
-      description: t.description ?? t.category ?? 'Transaksi baru',
-      type: t.type ?? 'Income',
-      amountFormatted: t.amountFormatted ?? `${t.amount ?? 0}`,
+      id: t.id,
+      branchName: t.branch || 'Unknown',
+      date: t.date || t.createdAt || '',
+      description: t.description || t.category || 'Transaksi baru',
+      type: t.type || 'Income',
+      amountFormatted: new Intl.NumberFormat('id-ID').format(t.amount || 0),
       read: false,
     }))
 
