@@ -478,7 +478,7 @@ function SettingsPage({ businessConfigs, setBusinessConfigs, appSettings, setApp
                       backgroundColor: 'var(--accent)',
                       borderRadius: 9999,
                       border: 'none',
-                      color: '#ffffff',
+                      color: 'var(--bg)',   // changed from '#ffffff'
                       fontSize: 12,
                       fontWeight: 600,
                       padding: '0.45rem 0.9rem',
@@ -585,7 +585,7 @@ function SettingsPage({ businessConfigs, setBusinessConfigs, appSettings, setApp
                       backgroundColor: 'var(--accent)',
                       borderRadius: 9999,
                       border: 'none',
-                      color: '#ffffff',
+                      color: 'var(--bg)',   // changed from '#ffffff'
                       fontSize: 12,
                       fontWeight: 600,
                       padding: '0.45rem 0.9rem',
