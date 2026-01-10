@@ -17,10 +17,25 @@ function AuthenticatedLayout({
   setLastUsedType,
   isLoading,
   error,
+  notifications,
+  unreadCount,
+  onAllNotificationsRead,
+  user,
+  onLogout,
+  theme,
+  onToggleTheme,
 }) {
   return (
     <>
-      <NavBar />
+      <NavBar
+        user={user}
+        onLogout={onLogout}
+        notifications={notifications}
+        unreadCount={unreadCount}
+        onAllNotificationsRead={onAllNotificationsRead}
+        theme={theme}
+        onToggleTheme={onToggleTheme}
+      />
       <Routes>
         <Route
           path="/"

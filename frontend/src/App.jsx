@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
 import LoginPage from './features/auth/LoginPage'
 import AuthenticatedLayout from './layout/AuthenticatedLayout'
 import { fetchTransactions } from './lib/api/transactions'
+import { googleLogout } from '@react-oauth/google'
 
 // CONFIG: tipe + cabang + default kategori
 const initialBusinessConfigs = [
@@ -69,6 +70,26 @@ const initialAppSettings = {
   defaultDateMode: 'today',
 }
 
+const getInitialTheme = () => {
+  const stored = localStorage.getItem('theme')
+  if (stored === 'light' || stored === 'dark') return stored
+  if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+    return 'dark'
+  }
+  return 'light'
+}
+
+function parseJwt(token) {
+  try {
+    const base64 = token.split('.')[1]
+    const padded = base64.replace(/-/g, '+').replace(/_/g, '/')
+    const json = atob(padded)
+    return JSON.parse(json)
+  } catch {
+    return null
+  }
+}
+
 function App() {
   const [transactions, setTransactions] = useState([])
   const [businessConfigs, setBusinessConfigs] = useState(initialBusinessConfigs)
@@ -80,6 +101,18 @@ function App() {
   // notification state
   const [notifications, setNotifications] = useState([])
   const [unreadCount, setUnreadCount] = useState(0)
+
+  // auth + user profile
+  const [isAuthenticated, setIsAuthenticated] = useState(
+    Boolean(localStorage.getItem('google_id_token')),
+  )
+  const [user, setUser] = useState(() => {
+    const stored = localStorage.getItem('google_user')
+    return stored ? JSON.parse(stored) : null
+  })
+
+  // theme state
+  const [theme, setTheme] = useState(getInitialTheme)
 
   useEffect(() => {
     let cancelled = false
@@ -128,59 +161,87 @@ function App() {
     setUnreadCount(0)
   }
 
-  const isAuthenticated = Boolean(localStorage.getItem('google_id_token'))
+  // apply theme to <html> and persist
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme)
+    localStorage.setItem('theme', theme)
+  }, [theme])
+
+  const toggleTheme = () => {
+    setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'))
+  }
+
+  const handleLoginSuccess = (token) => {
+    localStorage.setItem('google_id_token', token)
+
+    const payload = parseJwt(token)
+    if (payload) {
+      const u = {
+        name: payload.name || '',
+        email: payload.email || '',
+        picture: payload.picture || '',
+      }
+      setUser(u)
+      localStorage.setItem('google_user', JSON.stringify(u))
+    }
+
+    setIsAuthenticated(true)
+  }
+
+  const handleLogout = () => {
+    googleLogout()
+    localStorage.removeItem('google_id_token')
+    localStorage.removeItem('google_user')
+    setUser(null)
+    setIsAuthenticated(false)
+  }
+
+  const authenticatedElement = (
+    <AuthenticatedLayout
+      transactions={transactions}
+      setTransactions={setTransactions}
+      businessConfigs={businessConfigs}
+      setBusinessConfigs={setBusinessConfigs}
+      appSettings={appSettings}
+      setAppSettings={setAppSettings}
+      lastUsedType={lastUsedType}
+      setLastUsedType={setLastUsedType}
+      isLoading={isLoading}
+      error={error}
+      notifications={notifications}
+      unreadCount={unreadCount}
+      onAllNotificationsRead={handleMarkAllNotificationsRead}
+      user={user}
+      onLogout={handleLogout}
+      theme={theme}
+      onToggleTheme={toggleTheme}
+    />
+  )
 
   return (
     <Router>
       <div
         style={{
           minHeight: '100vh',
-          backgroundColor: '#09090b',
-          color: 'white',
+          backgroundColor: 'var(--bg)',
+          color: 'var(--text)',
           fontFamily: 'system-ui, sans-serif',
         }}
       >
         <Routes>
-          <Route path="/login" element={<LoginPage />} />
+          <Route path="/login" element={<LoginPage onLogin={handleLoginSuccess} />} />
           <Route
             path="/dashboard/*"
             element={
-              isAuthenticated ? (
-                <AuthenticatedLayout
-                  transactions={transactions}
-                  setTransactions={setTransactions}
-                  businessConfigs={businessConfigs}
-                  setBusinessConfigs={setBusinessConfigs}
-                  appSettings={appSettings}
-                  setAppSettings={setAppSettings}
-                  lastUsedType={lastUsedType}
-                  setLastUsedType={setLastUsedType}
-                  isLoading={isLoading}
-                  error={error}
-                  notifications={notifications}
-                  unreadCount={unreadCount}
-                  onAllNotificationsRead={handleMarkAllNotificationsRead}
-                />
-              ) : (
-                <LoginPage />
-              )
+              isAuthenticated ? authenticatedElement : <LoginPage onLogin={handleLoginSuccess} />
             }
           />
-          <Route path="/" element={isAuthenticated ? <AuthenticatedLayout
-            transactions={transactions}
-            setTransactions={setTransactions}
-            businessConfigs={businessConfigs}
-            setBusinessConfigs={setBusinessConfigs}
-            appSettings={appSettings}
-            setAppSettings={setAppSettings}
-            lastUsedType={lastUsedType}
-            setLastUsedType={setLastUsedType}
-            isLoading={isLoading}
-            error={error}
-            notifications={notifications}
-            unreadCount={unreadCount}
-            onAllNotificationsRead={handleMarkAllNotificationsRead}
-          /> : <LoginPage />} />
+          <Route
+            path="/"
+            element={
+              isAuthenticated ? authenticatedElement : <LoginPage onLogin={handleLoginSuccess} />
+            }
+          />
         </Routes>
       </div>
     </Router>

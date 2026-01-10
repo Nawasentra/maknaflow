@@ -125,26 +125,48 @@ function DashboardPage({ transactions, isLoading, error }) {
 
   if (isLoading) {
     return (
-      <main style={{ maxWidth: '1280px', margin: '0 auto', padding: '2rem 1.5rem' }}>
-        <p style={{ color: '#a1a1aa' }}>Memuat data transaksi...</p>
+      <main
+        style={{
+          maxWidth: '1280px',
+          margin: '0 auto',
+          padding: '2rem 1.5rem',
+          color: 'var(--subtext)',
+        }}
+      >
+        <p>Memuat data transaksi...</p>
       </main>
     )
   }
 
   if (error) {
     return (
-      <main style={{ maxWidth: '1280px', margin: '0 auto', padding: '2rem 1.5rem' }}>
-        <p style={{ color: '#f97316' }}>{error}</p>
+      <main
+        style={{
+          maxWidth: '1280px',
+          margin: '0 auto',
+          padding: '2rem 1.5rem',
+          color: '#f97316',
+        }}
+      >
+        <p>{error}</p>
       </main>
     )
   }
 
   return (
-    <main style={{ maxWidth: '1280px', margin: '0 auto', padding: '2rem 1.5rem' }}>
+    <main
+      style={{
+        maxWidth: '1280px',
+        margin: '0 auto',
+        padding: '2rem 1.5rem',
+        color: 'var(--text)',
+      }}
+    >
+      {/* Filter Global */}
       <div
         style={{
-          backgroundColor: '#1c1c1c',
-          border: '1px solid #27272a',
+          backgroundColor: 'var(--bg-elevated)',
+          border: '1px solid var(--border)',
           borderRadius: '12px',
           padding: '1.5rem',
           marginBottom: '2rem',
@@ -174,7 +196,7 @@ function DashboardPage({ transactions, isLoading, error }) {
             <label
               style={{
                 display: 'block',
-                color: '#a1a1aa',
+                color: 'var(--subtext)',
                 fontSize: '0.875rem',
                 marginBottom: '0.5rem',
               }}
@@ -196,11 +218,11 @@ function DashboardPage({ transactions, isLoading, error }) {
                 style={{
                   width: '140px',
                   maxWidth: '210px',
-                  backgroundColor: '#1c1c1c',
-                  border: '1px solid #27272a',
+                  backgroundColor: 'var(--bg)',
+                  border: '1px solid var(--border)',
                   borderRadius: '8px',
                   padding: '0.7rem 0.9rem',
-                  color: 'white',
+                  color: 'var(--text)',
                   fontSize: '0.95rem',
                 }}
               >
@@ -217,11 +239,11 @@ function DashboardPage({ transactions, isLoading, error }) {
                 disabled={filterDate !== 'Custom'}
                 style={{
                   width: '110px',
-                  backgroundColor: filterDate === 'Custom' ? '#111827' : '#020617',
-                  border: '1px solid #27272a',
+                  backgroundColor: 'var(--bg)',
+                  border: '1px solid var(--border)',
                   borderRadius: '8px',
                   padding: '0.45rem 0.5rem',
-                  color: filterDate === 'Custom' ? 'white' : '#6b7280',
+                  color: 'var(--text)',
                   fontSize: '0.8rem',
                   cursor: filterDate === 'Custom' ? 'pointer' : 'not-allowed',
                   opacity: filterDate === 'Custom' ? 1 : 0.5,
@@ -235,11 +257,11 @@ function DashboardPage({ transactions, isLoading, error }) {
                 disabled={filterDate !== 'Custom'}
                 style={{
                   width: '110px',
-                  backgroundColor: filterDate === 'Custom' ? '#111827' : '#020617',
-                  border: '1px solid #27272a',
+                  backgroundColor: 'var(--bg)',
+                  border: '1px solid var(--border)',
                   borderRadius: '8px',
                   padding: '0.45rem 0.5rem',
-                  color: filterDate === 'Custom' ? 'white' : '#6b7280',
+                  color: 'var(--text)',
                   fontSize: '0.8rem',
                   cursor: filterDate === 'Custom' ? 'pointer' : 'not-allowed',
                   opacity: filterDate === 'Custom' ? 1 : 0.5,
@@ -252,7 +274,7 @@ function DashboardPage({ transactions, isLoading, error }) {
             <label
               style={{
                 display: 'block',
-                color: '#a1a1aa',
+                color: 'var(--subtext)',
                 fontSize: '0.875rem',
                 marginBottom: '0.5rem',
               }}
@@ -267,11 +289,11 @@ function DashboardPage({ transactions, isLoading, error }) {
               }}
               style={{
                 width: '100%',
-                backgroundColor: '#1c1c1c',
-                border: '1px solid #27272a',
+                backgroundColor: 'var(--bg)',
+                border: '1px solid var(--border)',
                 borderRadius: '8px',
                 padding: '0.75rem',
-                color: 'white',
+                color: 'var(--text)',
                 fontSize: '1rem',
               }}
             >
@@ -285,7 +307,7 @@ function DashboardPage({ transactions, isLoading, error }) {
             <label
               style={{
                 display: 'block',
-                color: '#a1a1aa',
+                color: 'var(--subtext)',
                 fontSize: '0.875rem',
                 marginBottom: '0.5rem',
               }}
@@ -297,11 +319,11 @@ function DashboardPage({ transactions, isLoading, error }) {
               onChange={(e) => setFilterBranch(e.target.value)}
               style={{
                 width: '100%',
-                backgroundColor: '#1c1c1c',
-                border: '1px solid #27272a',
+                backgroundColor: 'var(--bg)',
+                border: '1px solid var(--border)',
                 borderRadius: '8px',
                 padding: '0.75rem',
-                color: 'white',
+                color: 'var(--text)',
                 fontSize: '1rem',
               }}
             >
@@ -313,6 +335,7 @@ function DashboardPage({ transactions, isLoading, error }) {
         </div>
       </div>
 
+      {/* KPI cards */}
       <div
         style={{
           display: 'grid',
@@ -321,12 +344,33 @@ function DashboardPage({ transactions, isLoading, error }) {
           marginBottom: '2rem',
         }}
       >
-        <KpiCard title="Total Pendapatan" value={`Rp ${formatCurrency(incomeTotal)}`} icon="💰" color="#10b981" />
-        <KpiCard title="Total Pengeluaran" value={`Rp ${formatCurrency(expenseTotal)}`} icon="💸" color="#ef4444" />
-        <KpiCard title="Pendapatan Bersih" value={`Rp ${formatCurrency(netProfit)}`} icon="✅" color="#10b981" />
-        <KpiCard title="Jumlah Transaksi" value={totalTransactions} icon="📊" color="#8b5cf6" />
+        <KpiCard
+          title="Total Pendapatan"
+          value={`Rp ${formatCurrency(incomeTotal)}`}
+          icon="💰"
+          color="#10b981"
+        />
+        <KpiCard
+          title="Total Pengeluaran"
+          value={`Rp ${formatCurrency(expenseTotal)}`}
+          icon="💸"
+          color="#ef4444"
+        />
+        <KpiCard
+          title="Pendapatan Bersih"
+          value={`Rp ${formatCurrency(netProfit)}`}
+          icon="✅"
+          color="#10b981"
+        />
+        <KpiCard
+          title="Jumlah Transaksi"
+          value={totalTransactions}
+          icon="📊"
+          color="#8b5cf6"
+        />
       </div>
 
+      {/* Charts */}
       <div
         style={{
           display: 'grid',
@@ -335,10 +379,11 @@ function DashboardPage({ transactions, isLoading, error }) {
           marginBottom: '2rem',
         }}
       >
+        {/* Line chart */}
         <div
           style={{
-            backgroundColor: '#1c1c1c',
-            border: '1px solid #27272a',
+            backgroundColor: 'var(--bg-elevated)',
+            border: '1px solid var(--border)',
             borderRadius: '12px',
             padding: '1.5rem',
           }}
@@ -349,7 +394,7 @@ function DashboardPage({ transactions, isLoading, error }) {
           <div style={{ height: 400 }}>
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={trendData} margin={{ top: 20, right: 20, left: 0, bottom: 0 }}>
-                <CartesianGrid stroke="#27272a" strokeDasharray="3 3" />
+                <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" />
                 <XAxis dataKey="date" stroke="#9ca3af" />
                 <YAxis stroke="#9ca3af" />
                 <Tooltip />
@@ -375,10 +420,11 @@ function DashboardPage({ transactions, isLoading, error }) {
           </div>
         </div>
 
+        {/* Pie + bar */}
         <div
           style={{
-            backgroundColor: '#1c1c1c',
-            border: '1px solid #27272a',
+            backgroundColor: 'var(--bg-elevated)',
+            border: '1px solid var(--border)',
             borderRadius: '12px',
             padding: '1.5rem',
             display: 'flex',
@@ -425,7 +471,7 @@ function DashboardPage({ transactions, isLoading, error }) {
                   layout="vertical"
                   margin={{ top: 10, right: 20, left: 40, bottom: 10 }}
                 >
-                  <CartesianGrid stroke="#27272a" />
+                  <CartesianGrid stroke="var(--border)" />
                   <XAxis type="number" stroke="#9ca3af" />
                   <YAxis type="category" dataKey="name" stroke="#9ca3af" />
                   <Tooltip />
@@ -444,8 +490,8 @@ function KpiCard({ title, value, icon, color }) {
   return (
     <div
       style={{
-        backgroundColor: '#1c1c1c',
-        border: '1px solid #27272a',
+        backgroundColor: 'var(--bg-elevated)',
+        border: '1px solid var(--border)',
         borderRadius: '12px',
         padding: '1.5rem',
         transition: 'all 0.2s',
@@ -469,7 +515,7 @@ function KpiCard({ title, value, icon, color }) {
         <div>
           <p
             style={{
-              color: '#a1a1aa',
+              color: 'var(--subtext)',
               fontSize: '0.875rem',
               margin: 0,
               marginBottom: '0.25rem',
@@ -482,7 +528,7 @@ function KpiCard({ title, value, icon, color }) {
               fontSize: '1.875rem',
               fontWeight: '700',
               margin: 0,
-              color: 'white',
+              color: 'var(--text)',
             }}
           >
             {value}
