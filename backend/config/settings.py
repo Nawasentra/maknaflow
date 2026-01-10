@@ -26,9 +26,10 @@ SECRET_KEY = config('SECRET_KEY')
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = config('DEBUG', default=False, cast=bool)
 
-ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='127.0.0.1', cast=Csv())
+ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='127.0.0.1,localhost', cast=Csv())
 
-RENDER_EXTERNAL_HOSTNAME = config('RENDER_EXTERNAL_HOSTNAME', default='None')
+# Render deployment support
+RENDER_EXTERNAL_HOSTNAME = config('RENDER_EXTERNAL_HOSTNAME', default='')
 if RENDER_EXTERNAL_HOSTNAME:
     ALLOWED_HOSTS.append(RENDER_EXTERNAL_HOSTNAME)
 
@@ -86,6 +87,7 @@ REST_FRAMEWORK = {
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware', 
     'corsheaders.middleware.CorsMiddleware',
     'allauth.account.middleware.AccountMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
@@ -162,12 +164,8 @@ USE_TZ = True
 
 # Static files (Whitenoise for Render)
 STATIC_URL = '/static/'
-MIDDLEWARE.insert(1, 'whitenoise.middleware.WhiteNoiseMiddleware')
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
-
-# CRSF Trusted Origins for Production
-CSRF_TRUSTED_ORIGINS = [f"https://{host}" for host in ALLOWED_HOSTS if host != '127.0.0.1']
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
@@ -204,3 +202,69 @@ SOCIALACCOUNT_ADAPTER = 'app.adapters.OwnerOnlyAdapter'
 
 # Email whitelist
 ALLOWED_EMAILS = config('ALLOWED_EMAILS', default='', cast=Csv())
+
+# =============================================================================
+# CORS CONFIGURATION
+# =============================================================================
+CORS_ALLOWED_ORIGINS = config(
+    'CORS_ALLOWED_ORIGINS',
+    default='http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000',
+    cast=Csv()
+)
+
+CORS_ALLOW_CREDENTIALS = True
+
+# For production, you might want to be more restrictive:
+# CORS_ALLOW_METHODS = [
+#     'DELETE',
+#     'GET',
+#     'OPTIONS',
+#     'PATCH',
+#     'POST',
+#     'PUT',
+# ]
+
+# =============================================================================
+# CSRF CONFIGURATION
+# =============================================================================
+# Build CSRF trusted origins from ALLOWED_HOSTS
+CSRF_TRUSTED_ORIGINS = []
+
+# Add localhost variants for development
+if DEBUG:
+    CSRF_TRUSTED_ORIGINS.extend([
+        'http://localhost:3000',
+        'http://localhost:5173',
+        'http://127.0.0.1:3000',
+        'http://127.0.0.1:8000',
+    ])
+
+# Add production domains with HTTPS
+for host in ALLOWED_HOSTS:
+    if host not in ['localhost', '127.0.0.1', '.localhost']:
+        CSRF_TRUSTED_ORIGINS.append(f'https://{host}')
+
+# Allow from environment variable (for flexibility)
+extra_csrf_origins = config('CSRF_TRUSTED_ORIGINS', default='', cast=Csv())
+if extra_csrf_origins:
+    CSRF_TRUSTED_ORIGINS.extend(extra_csrf_origins)
+
+# =============================================================================
+# SECURITY SETTINGS (Production)
+# =============================================================================
+if not DEBUG:
+    # HTTPS/SSL
+    SECURE_SSL_REDIRECT = True
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_HSTS_SECONDS = 31536000  # 1 year
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
+    
+    # Content Security
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    SECURE_BROWSER_XSS_FILTER = True
+    X_FRAME_OPTIONS = 'DENY'
+    
+    # Proxy headers (for Render/other platforms)
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
