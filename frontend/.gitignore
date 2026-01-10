@@ -8,6 +8,8 @@ pnpm-debug.log*
 lerna-debug.log*
 
 .env
+.env.local
+.env.*.local
 node_modules
 dist
 dist-ssr
@@ -23,3 +25,24 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# React/Build specific
+build/
+.cache/
+coverage/
+.eslintcache
+
+# OS specific
+Thumbs.db
+.DS_Store
+
+# IDE specific
+*.swp
+*.swo
+*~
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+*.sublime-workspace
