@@ -120,14 +120,19 @@ function App() {
   // theme state
   const [theme, setTheme] = useState(getInitialTheme)
 
-  // toast state
-  const [toast, setToast] = useState(null) // { message, type } | null
+  // toast state (stacked)
+  const [toasts, setToasts] = useState([]) // [{ id, message, type }]
 
   const showToast = (message, type = 'success') => {
-    setToast({ message, type })
+    const id = Date.now() + Math.random()
+    const toast = { id, message, type }
+
+    // newest on top
+    setToasts((prev) => [toast, ...prev])
+
     // auto-hide after 3s
     setTimeout(() => {
-      setToast(null)
+      setToasts((prev) => prev.filter((t) => t.id !== id))
     }, 3000)
   }
 
@@ -268,30 +273,42 @@ function App() {
           />
         </Routes>
 
-        {toast && (
+        {toasts.length > 0 && (
           <div
             style={{
               position: 'fixed',
               top: '1.25rem',
               right: '1.25rem',
               zIndex: 100,
-              backgroundColor:
-                toast.type === 'error'
-                  ? 'rgba(239, 68, 68, 0.96)'
-                  : 'rgba(34, 197, 94, 0.96)',
-              color: '#f9fafb',
-              padding: '0.75rem 1rem',
-              borderRadius: 12,
-              boxShadow: '0 10px 25px rgba(0,0,0,0.35)',
-              fontSize: '0.85rem',
-              maxWidth: 320,
               display: 'flex',
-              alignItems: 'center',
-              gap: 8,
+              flexDirection: 'column',
+              gap: '0.5rem',
+              alignItems: 'flex-end',
             }}
           >
-            <span>{toast.type === 'error' ? '⚠️' : '✅'}</span>
-            <span>{toast.message}</span>
+            {toasts.map((toast) => (
+              <div
+                key={toast.id}
+                style={{
+                  backgroundColor:
+                    toast.type === 'error'
+                      ? 'rgba(239, 68, 68, 0.96)'
+                      : 'rgba(34, 197, 94, 0.96)',
+                  color: '#f9fafb',
+                  padding: '0.75rem 1rem',
+                  borderRadius: 12,
+                  boxShadow: '0 10px 25px rgba(0,0,0,0.35)',
+                  fontSize: '0.85rem',
+                  maxWidth: 320,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                }}
+              >
+                <span>{toast.type === 'error' ? '⚠️' : '✅'}</span>
+                <span>{toast.message}</span>
+              </div>
+            ))}
           </div>
         )}
       </div>
