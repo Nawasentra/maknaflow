@@ -161,6 +161,7 @@ USE_TZ = True
 
 
 # Static files (Whitenoise for Render)
+STATIC_URL = '/static/'
 MIDDLEWARE.insert(1, 'whitenoise.middleware.WhiteNoiseMiddleware')
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
