@@ -6,6 +6,9 @@ from .models import IngestionLog, TransactionSource, IngestionStatus
 from .serializers import EmailWebhookPayloadSerializer
 from .ingestion.email_webhook import EmailWebhookService
 from rest_framework.parsers import JSONParser, MultiPartParser, FormParser
+from rest_framework.views import APIView
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import AllowAny
 import logging
 
 logger = logging.getLogger(__name__)
@@ -79,6 +82,7 @@ from .serializers import (
     TransactionSerializer,
     UserSerializer,
     IngestionLogSerializer,
+    WhatsAppWebhookPayloadSerializer,
 )
 from .permissions import (
     IsOwner,
@@ -176,12 +180,17 @@ class TransactionViewSet(viewsets.ModelViewSet):
         """
         Auto-set reported_by and auto-verify if staff is verified
         """
-        transaction = serializer.save(reported_by=self.request.user)
+        # Prepare additional fields
+        extra_fields = {
+            'reported_by': self.request.user
+        }
         
         # Auto-verify if the staff member is verified
         if self.request.user.is_verified:
-            transaction.is_verified = True
-            transaction.save()
+            extra_fields['is_verified'] = True
+        
+        # Save with all fields at once
+        serializer.save(**extra_fields)
 
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated, IsOwner])
     def verify(self, request, pk=None):
@@ -322,116 +331,6 @@ class IngestionLogViewSet(viewsets.ReadOnlyModelViewSet):
 # WEBHOOK VIEWS (API Key Protected)
 # ==========================================
 
-from rest_framework.views import APIView
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import AllowAny
-from decouple import config as decouple_config
-
-
-class EmailWebhookView(APIView):
-    """
-    Webhook endpoint for email ingestion (Mailgun)
-    Requires INGESTION_API_KEY in Authorization header
-    """
-    permission_classes = [AllowAny]
-
-    def post(self, request):
-        # Verify API Key
-        api_key = request.headers.get('X-API-Key')
-        expected_key = decouple_config('INGESTION_API_KEY', default='')
-        
-        if not expected_key or api_key != expected_key:
-            return Response(
-                {'error': 'Invalid or missing API key'},
-                status=status.HTTP_401_UNAUTHORIZED
-            )
-
-        # Validate payload
-        from .serializers import EmailWebhookPayloadSerializer
-        serializer = EmailWebhookPayloadSerializer(data=request.data)
-        
-        if not serializer.is_valid():
-            # Log failed ingestion
-            IngestionLog.objects.create(
-                source=TransactionSource.EMAIL,
-                raw_payload=request.data,
-                status=IngestionStatus.FAILED,
-                error_message=str(serializer.errors)
-            )
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-        try:
-            # Get validated data
-            data = serializer.validated_data
-            branch = Branch.objects.get(id=data['branch_id'])
-            category = Category.objects.get(id=data['category_id'])
-
-            # Create transaction
-            transaction = Transaction.objects.create(
-                branch=branch,
-                category=category,
-                amount=data['amount'],
-                transaction_type=data['transaction_type'],
-                date=data['date'],
-                description=data.get('description', ''),
-                source=TransactionSource.EMAIL,
-                source_identifier=data.get('source_identifier', ''),
-                is_verified=False,
-            )
-
-            # Log successful ingestion
-            IngestionLog.objects.create(
-                source=TransactionSource.EMAIL,
-                raw_payload=request.data,
-                status=IngestionStatus.SUCCESS,
-                created_transaction=transaction
-            )
-
-            return Response(
-                {
-                    'detail': 'Transaction created successfully',
-                    'transaction_id': transaction.id
-                },
-                status=status.HTTP_201_CREATED
-            )
-
-        except Branch.DoesNotExist:
-            IngestionLog.objects.create(
-                source=TransactionSource.EMAIL,
-                raw_payload=request.data,
-                status=IngestionStatus.FAILED,
-                error_message='Branch not found'
-            )
-            return Response(
-                {'error': 'Branch not found'},
-                status=status.HTTP_404_NOT_FOUND
-            )
-
-        except Category.DoesNotExist:
-            IngestionLog.objects.create(
-                source=TransactionSource.EMAIL,
-                raw_payload=request.data,
-                status=IngestionStatus.FAILED,
-                error_message='Category not found'
-            )
-            return Response(
-                {'error': 'Category not found'},
-                status=status.HTTP_404_NOT_FOUND
-            )
-
-        except Exception as e:
-            IngestionLog.objects.create(
-                source=TransactionSource.EMAIL,
-                raw_payload=request.data,
-                status=IngestionStatus.FAILED,
-                error_message=str(e)
-            )
-            return Response(
-                {'error': str(e)},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-
-
 class WhatsAppWebhookView(APIView):
     """
     Webhook endpoint for WhatsApp ingestion (Twilio/Make.com)
@@ -440,11 +339,21 @@ class WhatsAppWebhookView(APIView):
     permission_classes = [AllowAny]
 
     def post(self, request):
-        # Verify API Key
-        api_key = request.headers.get('X-API-Key')
-        expected_key = decouple_config('INGESTION_API_KEY', default='')
+        # Verify API Key is configured
+        expected_key = config('INGESTION_API_KEY', default='')
         
-        if not expected_key or api_key != expected_key:
+        if not expected_key:
+            logger.error("INGESTION_API_KEY is not configured or is empty.")
+            return Response(
+                {'error': 'Server misconfiguration'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+        
+        # Verify API Key matches
+        api_key = request.headers.get('X-Api-Key')
+        
+        if api_key != expected_key:
+            logger.warning("Unauthorized WhatsApp webhook access attempt with API key: %s", api_key)
             return Response(
                 {'error': 'Invalid or missing API key'},
                 status=status.HTTP_401_UNAUTHORIZED
@@ -459,7 +368,6 @@ class WhatsAppWebhookView(APIView):
 
         try:
             # Validate payload
-            from .serializers import WhatsAppWebhookPayloadSerializer
             serializer = WhatsAppWebhookPayloadSerializer(data=request.data)
             
             if not serializer.is_valid():
@@ -475,6 +383,16 @@ class WhatsAppWebhookView(APIView):
             try:
                 user = User.objects.get(phone_number=data['phone_number'])
                 branch = user.assigned_branch
+                
+                if not branch:
+                    ingestion_log.status = IngestionStatus.FAILED
+                    ingestion_log.error_message = 'User has no assigned branch'
+                    ingestion_log.save()
+                    return Response(
+                        {'error': 'User has no assigned branch'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                    
             except User.DoesNotExist:
                 ingestion_log.status = IngestionStatus.FAILED
                 ingestion_log.error_message = 'User with phone number not found'
@@ -484,14 +402,20 @@ class WhatsAppWebhookView(APIView):
                     status=status.HTTP_404_NOT_FOUND
                 )
 
-            # Parse message and create transaction
-            # This is where you'd integrate with a message parser
-            # For now, we'll just log it as pending processing
+            # Store the message for processing
+            # TODO: Integrate with a message parser to extract transaction details
+            message_text = data['message']
+            
+            # For now, just log it as pending processing
             ingestion_log.status = IngestionStatus.SUCCESS
             ingestion_log.save()
 
             return Response(
-                {'detail': 'WhatsApp message received and queued for processing'},
+                {
+                    'detail': 'WhatsApp message received and queued for processing',
+                    'user': user.username,
+                    'branch': branch.name
+                },
                 status=status.HTTP_202_ACCEPTED
             )
 
