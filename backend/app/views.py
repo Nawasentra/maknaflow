@@ -7,7 +7,6 @@ from .serializers import EmailWebhookPayloadSerializer
 from .ingestion.email_webhook import EmailWebhookService
 from rest_framework.parsers import JSONParser, MultiPartParser, FormParser
 from rest_framework.views import APIView
-from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
 import logging
 
@@ -60,8 +59,11 @@ class EmailIngestionWebhook(APIView):
             log.status = IngestionStatus.FAILED
             log.error_message = str(e)
             log.save()
-            logger.error(f"Webhook processing failed: {e}")
-            return Response({"status": "error", "message": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+            logger.error(f"Webhook processing failed: {e}", exc_info=True)
+            return Response(
+                {"status": "error", "message": "Failed to process webhook"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
           
 from django.http import HttpResponse
 from django.utils import timezone
@@ -264,11 +266,10 @@ class UserViewSet(viewsets.ModelViewSet):
         """
         if self.action == 'profile':
             return [IsAuthenticated()]
-        
-        if self.action in ['list', 'retrieve']:
+        elif self.action in ['list', 'retrieve']:
             return [IsAuthenticated(), IsOwner()]
-        
-        return [IsAuthenticated(), IsOwner()]
+        else:
+            return [IsAuthenticated(), IsOwner()]
 
     @action(detail=False, methods=['get'], permission_classes=[IsAuthenticated])
     def profile(self, request):
@@ -340,7 +341,7 @@ class WhatsAppWebhookView(APIView):
 
     def post(self, request):
         # Verify API Key is configured
-        expected_key = config('INGESTION_API_KEY', default='')
+        expected_key = getattr(settings, 'INGESTION_API_KEY', None)
         
         if not expected_key:
             logger.error("INGESTION_API_KEY is not configured or is empty.")
@@ -374,7 +375,11 @@ class WhatsAppWebhookView(APIView):
                 ingestion_log.status = IngestionStatus.FAILED
                 ingestion_log.error_message = str(serializer.errors)
                 ingestion_log.save()
-                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+                logger.warning(f"Invalid WhatsApp webhook payload: {serializer.errors}")
+                return Response(
+                    {'error': 'Invalid payload format'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
 
             # Get validated data
             data = serializer.validated_data
@@ -389,7 +394,7 @@ class WhatsAppWebhookView(APIView):
                     ingestion_log.error_message = 'User has no assigned branch'
                     ingestion_log.save()
                     return Response(
-                        {'error': 'User has no assigned branch'},
+                        {'error': 'Invalid request'},
                         status=status.HTTP_400_BAD_REQUEST
                     )
                     
@@ -398,7 +403,7 @@ class WhatsAppWebhookView(APIView):
                 ingestion_log.error_message = 'User with phone number not found'
                 ingestion_log.save()
                 return Response(
-                    {'error': 'User with phone number not found'},
+                    {'error': 'Invalid request'},
                     status=status.HTTP_404_NOT_FOUND
                 )
 
@@ -423,7 +428,8 @@ class WhatsAppWebhookView(APIView):
             ingestion_log.status = IngestionStatus.FAILED
             ingestion_log.error_message = str(e)
             ingestion_log.save()
+            logger.error(f"WhatsApp webhook processing failed: {e}", exc_info=True)
             return Response(
-                {'error': str(e)},
+                {'error': 'Failed to process webhook'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
