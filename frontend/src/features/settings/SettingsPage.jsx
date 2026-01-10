@@ -181,10 +181,6 @@ function SettingsPage({ businessConfigs, setBusinessConfigs, appSettings, setApp
     setBusinessConfigs(updated)
   }
 
-  const handleExport = () => {
-    alert('Export CSV coming soon (dummy).')
-  }
-
   return (
     <main
       style={{
@@ -478,7 +474,7 @@ function SettingsPage({ businessConfigs, setBusinessConfigs, appSettings, setApp
                       backgroundColor: 'var(--accent)',
                       borderRadius: 9999,
                       border: 'none',
-                      color: 'var(--bg)',   // changed from '#ffffff'
+                      color: 'var(--bg)',
                       fontSize: 12,
                       fontWeight: 600,
                       padding: '0.45rem 0.9rem',
@@ -585,7 +581,7 @@ function SettingsPage({ businessConfigs, setBusinessConfigs, appSettings, setApp
                       backgroundColor: 'var(--accent)',
                       borderRadius: 9999,
                       border: 'none',
-                      color: 'var(--bg)',   // changed from '#ffffff'
+                      color: 'var(--bg)',
                       fontSize: 12,
                       fontWeight: 600,
                       padding: '0.45rem 0.9rem',
@@ -721,40 +717,6 @@ function SettingsPage({ businessConfigs, setBusinessConfigs, appSettings, setApp
               ))}
             </div>
           </div>
-        </div>
-
-        {/* Export */}
-        <div
-          style={{
-            backgroundColor: 'var(--bg-elevated)',
-            border: '1px solid var(--border)',
-            borderRadius: '12px',
-            padding: '1.5rem',
-            textAlign: 'center',
-          }}
-        >
-          <h2 style={{ fontSize: '1.05rem', fontWeight: 600, marginBottom: '0.75rem' }}>
-            Export Data
-          </h2>
-          <p style={{ fontSize: 12, color: 'var(--subtext)', marginBottom: '0.75rem' }}>
-            Simpan transaksi dan konfigurasi dalam format CSV.
-          </p>
-          <button
-            type="button"
-            onClick={handleExport}
-            style={{
-              backgroundColor: 'var(--accent)',
-              borderRadius: 9999,
-              border: 'none',
-              color: 'var(--bg)',
-              fontSize: 13,
-              fontWeight: 600,
-              padding: '0.55rem 1.4rem',
-              cursor: 'pointer',
-            }}
-          >
-            Export CSV (Dummy)
-          </button>
         </div>
       </div>
     </main>
