@@ -1,38 +1,22 @@
-// src/features/auth/LoginPage.jsx
 import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { GoogleLogin } from '@react-oauth/google'
-import api from '../../lib/api/axios' // change path if this file is elsewhere
 
 function LoginPage({ onLogin }) {
   const navigate = useNavigate()
   const [isLoggingIn, setIsLoggingIn] = useState(false)
 
-  const handleSuccess = async (credentialResponse) => {
-    const id_token = credentialResponse?.credential
-    if (!id_token || isLoggingIn) return
+  const handleSuccess = (credentialResponse) => {
+    const token = credentialResponse?.credential
+    if (!token || isLoggingIn) return
 
     setIsLoggingIn(true)
 
-    try {
-      // Send Google ID token to backend for verification + allow-list check
-      const res = await api.post('/auth/google/', { id_token })
+    // Let App handle storing token + user profile
+    onLogin?.(token)
 
-      // Backend should return your app's auth payload (e.g. user + tokens)
-      // Adjust this line if needed, e.g. onLogin?.(res.data.access)
-      onLogin?.(res.data)
-
-      // Navigate to dashboard after successful login
-      navigate('/dashboard')
-    } catch (err) {
-      if (err?.response?.status === 403) {
-        alert('This Google account is not allowed to access MaknaFlow.')
-      } else {
-        alert('Login failed, please try again.')
-        console.error('Google login error:', err)
-      }
-      setIsLoggingIn(false)
-    }
+    // Navigate to dashboard immediately for snappier UX
+    navigate('/dashboard')
   }
 
   const handleError = () => {
@@ -62,9 +46,7 @@ function LoginPage({ onLogin }) {
           textAlign: 'center',
         }}
       >
-        <h1 style={{ fontSize: '1.5rem', marginBottom: '1rem' }}>
-          Masuk ke MaknaFlow
-        </h1>
+        <h1 style={{ fontSize: '1.5rem', marginBottom: '1rem' }}>Masuk ke MaknaFlow</h1>
         <p
           style={{
             fontSize: '0.9rem',
@@ -98,9 +80,9 @@ function LoginPage({ onLogin }) {
                 onError={handleError}
                 text={isLoggingIn ? 'continue_with' : 'continue_with'}
                 shape="pill"
-                theme='outline'
-                locale='id'
-                width='320'
+                theme="outline"
+                locale="id"
+                width="320"
               />
             </div>
           </div>
