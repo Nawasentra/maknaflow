@@ -9,6 +9,7 @@ from rest_framework.parsers import JSONParser, MultiPartParser, FormParser
 from rest_framework.views import APIView
 from rest_framework.permissions import AllowAny
 import logging
+import traceback
 
 logger = logging.getLogger(__name__)
 
@@ -99,26 +100,30 @@ logger = logging.getLogger(__name__)
 
 
 class GoogleLogin(SocialLoginView):
-    """
-    Google OAuth2 login endpoint for owner accounts only
-    
-    POST /api/auth/google/
-    Body: {
-        "access_token": "google_access_token_here",  # For frontend OAuth flow
-        OR
-        "code": "google_auth_code_here",  # For backend OAuth flow
-        OR
-        "id_token": "google_id_token_here"  # For Google One Tap
-    }
-    
-    Returns: {
-        "key": "rest_framework_auth_token",
-        "user": {...}
-    }
-    """
     adapter_class = GoogleOAuth2Adapter
     client_class = OAuth2Client
     
+    def get_callback_url(self, request, app):
+        """
+        Override to provide the callback URL.
+        This is called by the OAuth2Client.
+        """
+        callback = config(
+            'GOOGLE_OAUTH_CALLBACK_URL',
+            default=None
+        )
+        
+        if not callback:
+            # Build from request if not configured
+            protocol = 'https' if request.is_secure() else 'http'
+            host = request.get_host()
+            callback = f"{protocol}://{host}/accounts/google/login/callback/"
+            logger.info(f"Auto-generated callback URL: {callback}")
+        else:
+            logger.info(f"Using configured callback URL: {callback}")
+        
+        return callback
+
     @property
     def callback_url(self):
         """Get callback URL from settings"""
@@ -128,18 +133,20 @@ class GoogleLogin(SocialLoginView):
         )
     
     def post(self, request, *args, **kwargs):
-        """Handle Google OAuth login with detailed logging"""
+        """Handle Google OAuth login with comprehensive error handling"""
         logger.info("=" * 80)
         logger.info("Google OAuth Login Attempt")
         logger.info("=" * 80)
         
-        # Log request details
+        # 1. Log request metadata
         logger.info(f"Request method: {request.method}")
         logger.info(f"Request path: {request.path}")
-        logger.info(f"Request headers: {dict(request.headers)}")
-        logger.info(f"Request data keys: {list(request.data.keys())}")
+        logger.info(f"Content-Type: {request.content_type}")
+        logger.info(f"Origin: {request.headers.get('Origin', 'No Origin header')}")
+        logger.info(f"User-Agent: {request.headers.get('User-Agent', 'Unknown')}")
         
-        # Don't log the actual token for security, just check if it exists
+        # 2. Log request data (without sensitive info)
+        logger.info(f"Request data keys: {list(request.data.keys())}")
         has_access_token = 'access_token' in request.data
         has_code = 'code' in request.data
         has_id_token = 'id_token' in request.data
@@ -148,54 +155,115 @@ class GoogleLogin(SocialLoginView):
         logger.info(f"Has code: {has_code}")
         logger.info(f"Has id_token: {has_id_token}")
         
-        # Check if Google OAuth is configured
+        if not (has_access_token or has_code or has_id_token):
+            logger.error("No authentication token provided")
+            return Response(
+                {
+                    "error": "Missing authentication token",
+                    "detail": "Please provide one of: access_token, code, or id_token"
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # 3. Check Google OAuth configuration
         google_config = settings.SOCIALACCOUNT_PROVIDERS.get('google', {})
         client_id = google_config.get('APP', {}).get('client_id')
+        client_secret = google_config.get('APP', {}).get('secret')
         
         if not client_id:
-            logger.error("Google OAuth CLIENT_ID is not configured")
+            logger.error("❌ GOOGLE_OAUTH_CLIENT_ID is not configured")
             return Response(
-                {"error": "Google authentication is not configured"},
+                {
+                    "error": "Server misconfiguration",
+                    "detail": "Google OAuth client ID not configured"
+                },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
         
-        logger.info(f"Google Client ID configured: {client_id[:20]}...")
+        if not client_secret:
+            logger.error("❌ GOOGLE_OAUTH_CLIENT_SECRET is not configured")
+            return Response(
+                {
+                    "error": "Server misconfiguration",
+                    "detail": "Google OAuth client secret not configured"
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
         
-        # Check if owner emails are configured
+        logger.info(f"✅ Google Client ID configured (first 20 chars): {client_id[:20]}...")
+        logger.info(f"✅ Google Client Secret configured: {'*' * len(client_secret)}")
+        
+        # 4. Check owner emails configuration
         if not settings.OWNER_EMAILS:
-            logger.error("OWNER_EMAILS not configured")
+            logger.error("❌ OWNER_EMAILS not configured")
             return Response(
-                {"error": "Owner authentication is not configured"},
+                {
+                    "error": "Server misconfiguration",
+                    "detail": "Owner emails not configured"
+                },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
         
-        logger.info(f"Owner emails configured: {len(settings.OWNER_EMAILS)} email(s)")
+        logger.info(f"✅ Owner emails configured: {settings.OWNER_EMAILS}")
+        
+        # 5. Log callback URL
+        callback = self.callback_url
+        logger.info(f"Callback URL: {callback}")
         
         try:
-            # Call parent class method
+            # 6. Call parent class method
             logger.info("Calling parent SocialLoginView.post()...")
             response = super().post(request, *args, **kwargs)
             
-            # Log success
+            # 7. Log response
+            logger.info(f"Response status code: {response.status_code}")
+            
             if response.status_code == 200:
-                user_email = response.data.get('user', {}).get('email', 'unknown')
-                logger.info(f"✅ Google OAuth login successful for: {user_email}")
+                user_data = response.data.get('user', {})
+                user_email = user_data.get('email', 'unknown')
+                logger.info(f"✅ Google OAuth login successful")
+                logger.info(f"User email: {user_email}")
+                logger.info(f"User ID: {user_data.get('pk', 'unknown')}")
+                logger.info(f"Token created: {'key' in response.data}")
             else:
-                logger.warning(f"⚠️ Response status: {response.status_code}")
+                logger.warning(f"⚠️ Non-200 response: {response.status_code}")
                 logger.warning(f"Response data: {response.data}")
             
+            logger.info("=" * 80)
             return response
             
         except Exception as e:
-            logger.error(f"❌ Google OAuth login failed: {str(e)}")
+            # 8. Comprehensive error logging
+            logger.error("=" * 80)
+            logger.error(f"❌ Google OAuth login exception caught")
             logger.error(f"Exception type: {type(e).__name__}")
-            logger.error(f"Exception details: {e}", exc_info=True)
+            logger.error(f"Exception message: {str(e)}")
+            logger.error(f"Exception args: {e.args}")
+            logger.error("Full traceback:")
+            logger.error(traceback.format_exc())
+            logger.error("=" * 80)
+            
+            # 9. Build error response
+            error_response = {
+                "error": "Authentication failed",
+                "message": "Please try again"
+            }
+            
+            # Include more details in DEBUG mode
+            if settings.DEBUG:
+                error_response["debug_info"] = {
+                    "exception_type": type(e).__name__,
+                    "exception_message": str(e),
+                    "has_access_token": has_access_token,
+                    "has_code": has_code,
+                    "has_id_token": has_id_token,
+                    "callback_url": callback,
+                }
+            else:
+                error_response["detail"] = "Please check server logs for more information"
             
             return Response(
-                {
-                    "error": "Authentication failed. Please try again.",
-                    "detail": str(e) if settings.DEBUG else "Please check server logs."
-                },
+                error_response,
                 status=status.HTTP_400_BAD_REQUEST
             )
 
