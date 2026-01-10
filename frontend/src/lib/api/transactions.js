@@ -110,8 +110,13 @@ function mapTransaction(t) {
 }
 
 export async function fetchTransactions(params = {}) {
+  const token = localStorage.getItem('auth_token')   // NEW
+
   try {
-    const res = await api.get('/transactions/', { params })
+    const res = await api.get('/transactions/', {
+      params,
+      headers: token ? { Authorization: `Token ${token}` } : {}, // NEW
+    })
     const data = Array.isArray(res.data) ? res.data : res.data.results || []
     return data.map(mapTransaction)
   } catch (err) {
@@ -121,8 +126,12 @@ export async function fetchTransactions(params = {}) {
 }
 
 export async function createTransaction(payload) {
+  const token = localStorage.getItem('auth_token')   // NEW
+
   try {
-    const res = await api.post('/transactions/', payload)
+    const res = await api.post('/transactions/', payload, {
+      headers: token ? { Authorization: `Token ${token}` } : {}, // NEW
+    })
     return mapTransaction(res.data)
   } catch (err) {
     console.error('createTransaction failed, falling back to mock:', err)
@@ -137,8 +146,12 @@ export async function createTransaction(payload) {
 }
 
 export async function deleteTransaction(id) {
+  const token = localStorage.getItem('auth_token')   // NEW
+
   try {
-    await api.delete(`/transactions/${id}/`)
+    await api.delete(`/transactions/${id}/`, {
+      headers: token ? { Authorization: `Token ${token}` } : {}, // NEW
+    })
   } catch (err) {
     console.error('deleteTransaction failed, removing only from mock:', err)
   }

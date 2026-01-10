@@ -109,8 +109,9 @@ function App() {
   const [unreadCount, setUnreadCount] = useState(0)
 
   // auth + user profile
+  // IMPORTANT: use backend token as truth
   const [isAuthenticated, setIsAuthenticated] = useState(
-    Boolean(localStorage.getItem('google_id_token')),
+    Boolean(localStorage.getItem('auth_token')),
   )
   const [user, setUser] = useState(() => {
     const stored = localStorage.getItem('google_user')
@@ -127,10 +128,8 @@ function App() {
     const id = Date.now() + Math.random()
     const toast = { id, message, type }
 
-    // newest on top
     setToasts((prev) => [toast, ...prev])
 
-    // auto-hide after 3s
     setTimeout(() => {
       setToasts((prev) => prev.filter((t) => t.id !== id))
     }, 3000)
@@ -146,43 +145,7 @@ function App() {
 
         if (cancelled) return
 
-        // Map backend shape -> frontend shape
-        const mapped = raw.map((t) => {
-          const type =
-            t.transaction_type === 'INCOME'
-              ? 'Income'
-              : t.transaction_type === 'EXPENSE'
-              ? 'Expense'
-              : 'Income'
-
-          const source =
-            t.source === 'EMAIL'
-              ? 'Email'
-              : t.source === 'WHATSAPP'
-              ? 'Whatsapp'
-              : 'Manual'
-
-          return {
-            id: t.id,
-            date: t.date, // "YYYY-MM-DD"
-            // For now: use branch_name for both unitBusiness and branch
-            unitBusiness: t.branch_name || 'Unknown',
-            branch: t.branch_name || 'Unknown',
-            category: t.category_name || 'Lainnya',
-            type,
-            amount: Number(t.amount ?? 0),
-            // TEMP: use reporter email as "payment" label or fallback
-            payment: t.reported_by_email || 'Unknown',
-            source,
-            description: t.description,
-            createdAt: t.created_at,
-            // keep raw IDs for possible future editing
-            branchId: t.branch,
-            categoryId: t.category,
-          }
-        })
-
-        setTransactions(mapped)
+        setTransactions(raw)
         setError('')
       } catch (e) {
         if (!cancelled) {
@@ -193,11 +156,14 @@ function App() {
         if (!cancelled) setIsLoading(false)
       }
     }
-    load()
+    if (isAuthenticated) {
+      // only try backend when logged in
+      load()
+    }
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [isAuthenticated])
 
   // BUILD NOTIFICATIONS
   useEffect(() => {
@@ -237,27 +203,66 @@ function App() {
     })
   }
 
-  // ORIGINAL: only store Google token and parsed profile
-  const handleLoginSuccess = (token) => {
-    localStorage.setItem('google_id_token', token)
+  // NEW: login that talks to backend
+  const handleLoginSuccess = async (googleIdToken) => {
+    try {
+      // 1) Call backend Google social login endpoint
+      const res = await fetch(
+        'https://maknaflow-staging.onrender.com/api/auth/google/',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            // Confirm with backend: id_token or access_token.
+            id_token: googleIdToken,
+          }),
+        },
+      )
 
-    const payload = parseJwt(token)
-    if (payload) {
-      const u = {
-        name: payload.name || '',
-        email: payload.email || '',
-        picture: payload.picture || '',
+      if (!res.ok) {
+        const text = await res.text()
+        console.error('Backend Google login failed:', text)
+        showToast('Login gagal. Coba lagi atau hubungi admin.', 'error')
+        return
       }
-      setUser(u)
-      localStorage.setItem('google_user', JSON.stringify(u))
-    }
 
-    setIsAuthenticated(true)
+      const data = await res.json() // expect { key: '...' } or JWT
+      const backendToken = data.key
+
+      if (!backendToken) {
+        console.error('No token in backend response:', data)
+        showToast('Login gagal. Token tidak ditemukan.', 'error')
+        return
+      }
+
+      // 2) Store Django token
+      localStorage.setItem('auth_token', backendToken)
+
+      // 3) Keep Google profile just for UI
+      const payload = parseJwt(googleIdToken)
+      if (payload) {
+        const u = {
+          name: payload.name || '',
+          email: payload.email || '',
+          picture: payload.picture || '',
+        }
+        setUser(u)
+        localStorage.setItem('google_user', JSON.stringify(u))
+      }
+
+      setIsAuthenticated(true)
+      showToast('Berhasil masuk.', 'success')
+    } catch (err) {
+      console.error('Login error:', err)
+      showToast('Terjadi kesalahan saat login.', 'error')
+    }
   }
 
   const handleLogout = () => {
     googleLogout()
-    localStorage.removeItem('google_id_token')
+    localStorage.removeItem('auth_token')
     localStorage.removeItem('google_user')
     setUser(null)
     setIsAuthenticated(false)
