@@ -1,21 +1,8 @@
 // src/lib/api/transactions.js
-// Sementara masih pakai data dummy dari paste.txt (rawTransactions).
 
 import api from '../axios'
 
-// Bentuk data transaksi untuk referensi:
-// {
-//   id: number,
-//   date: string (YYYY-MM-DD),
-//   unitBusiness: string,
-//   branch: string,
-//   category: string,
-//   type: 'Income' | 'Expense',
-//   amount: number,
-//   payment: string,
-// }
-
-// --- MOCK DATA LOKAL (boleh import dari file lain kalau mau) ---
+// --- MOCK DATA (fallback only) ---
 const mockTransactions = [
   {
     id: 1,
@@ -89,39 +76,74 @@ const mockTransactions = [
   },
 ]
 
-// --- FUNGSI API (nanti tinggal ganti ke backend beneran) ---
+// Map backend TransactionSerializer -> frontend shape
+function mapTransaction(t) {
+  const type =
+    t.transaction_type === 'INCOME'
+      ? 'Income'
+      : t.transaction_type === 'EXPENSE'
+      ? 'Expense'
+      : 'Income'
 
-export async function fetchTransactions(params) {
-  // NANTI:
-  // const res = await api.get('/transactions/', { params })
-  // return res.data
+  const source =
+    t.source === 'EMAIL'
+      ? 'Email'
+      : t.source === 'WHATSAPP'
+      ? 'Whatsapp'
+      : 'Manual'
 
-  // SEKARANG: ignore params, balikin mock
-  return Promise.resolve(mockTransactions)
+  return {
+    id: t.id,
+    date: t.date,
+    unitBusiness: t.branch_name || 'Unknown',
+    branch: t.branch_name || 'Unknown',
+    category: t.category_name || 'Lainnya',
+    type,
+    amount: Number(t.amount ?? 0),
+    payment: t.reported_by_email || 'Unknown', // temporary label
+    source,
+    description: t.description,
+    createdAt: t.created_at,
+    branchId: t.branch,
+    categoryId: t.category,
+  }
+}
+
+export async function fetchTransactions(params = {}) {
+  try {
+    const res = await api.get('/transactions/', { params })
+    const data = Array.isArray(res.data) ? res.data : res.data.results || []
+    return data.map(mapTransaction)
+  } catch (err) {
+    console.error('fetchTransactions failed, using mock:', err)
+    return mockTransactions
+  }
 }
 
 export async function createTransaction(payload) {
-  // NANTI:
-  // const res = await api.post('/transactions/', payload)
-  // return res.data
-
-  const newId =
-    mockTransactions.length === 0
-      ? 1
-      : Math.max(...mockTransactions.map((t) => t.id)) + 1
-
-  const tx = { id: newId, ...payload }
-  mockTransactions.push(tx)
-  return Promise.resolve(tx)
+  try {
+    const res = await api.post('/transactions/', payload)
+    return mapTransaction(res.data)
+  } catch (err) {
+    console.error('createTransaction failed, falling back to mock:', err)
+    const newId =
+      mockTransactions.length === 0
+        ? 1
+        : Math.max(...mockTransactions.map((t) => t.id)) + 1
+    const tx = { id: newId, ...payload }
+    mockTransactions.push(tx)
+    return tx
+  }
 }
 
 export async function deleteTransaction(id) {
-  // NANTI:
-  // await api.delete(`/transactions/${id}/`)
-
+  try {
+    await api.delete(`/transactions/${id}/`)
+  } catch (err) {
+    console.error('deleteTransaction failed, removing only from mock:', err)
+  }
   const idx = mockTransactions.findIndex((t) => t.id === id)
   if (idx !== -1) {
     mockTransactions.splice(idx, 1)
   }
-  return Promise.resolve()
 }
