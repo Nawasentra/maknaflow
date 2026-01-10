@@ -208,16 +208,16 @@ SOCIALACCOUNT_PROVIDERS = {
             'secret': config('GOOGLE_OAUTH_CLIENT_SECRET', default=''),
             'key': ''
         },
+        # Use People API
         'SCOPE': [
             'profile',
             'email',
+            'openid',  # Required for modern OAuth
         ],
         'AUTH_PARAMS': {
             'access_type': 'online',
         },
         'VERIFIED_EMAIL': True,
-        # Accept both access_token and id_token
-        'OAUTH_PKCE_ENABLED': True,
     }
 }
 
