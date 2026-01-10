@@ -1,8 +1,9 @@
 // src/lib/api/transactions.js
+// Sekarang: coba ke backend, kalau gagal pakai mockTransactions.
 
 import api from '../axios'
 
-// --- MOCK DATA (fallback only) ---
+// --- MOCK DATA LOKAL ---
 const mockTransactions = [
   {
     id: 1,
@@ -76,46 +77,21 @@ const mockTransactions = [
   },
 ]
 
-// Map backend TransactionSerializer -> frontend shape
-function mapTransaction(t) {
-  const type =
-    t.transaction_type === 'INCOME'
-      ? 'Income'
-      : t.transaction_type === 'EXPENSE'
-      ? 'Expense'
-      : 'Income'
-
-  const source =
-    t.source === 'EMAIL'
-      ? 'Email'
-      : t.source === 'WHATSAPP'
-      ? 'Whatsapp'
-      : 'Manual'
-
-  return {
-    id: t.id,
-    date: t.date,
-    unitBusiness: t.branch_name || 'Unknown',
-    branch: t.branch_name || 'Unknown',
-    category: t.category_name || 'Lainnya',
-    type,
-    amount: Number(t.amount ?? 0),
-    payment: t.reported_by_email || 'Unknown', // temporary label
-    source,
-    description: t.description,
-    createdAt: t.created_at,
-    branchId: t.branch,
-    categoryId: t.category,
-  }
+// Helper ID untuk mock
+function getNextId(list) {
+  if (!list || list.length === 0) return 1
+  return Math.max(...list.map((t) => Number(t.id) || 0)) + 1
 }
 
-export async function fetchTransactions(params = {}) {
+// --- FUNGSI API ---
+
+export async function fetchTransactions(params) {
   try {
+    // PANGGIL BACKEND BENARAN
     const res = await api.get('/transactions/', { params })
-    const data = Array.isArray(res.data) ? res.data : res.data.results || []
-    return data.map(mapTransaction)
+    return res.data
   } catch (err) {
-    console.error('fetchTransactions failed, using mock:', err)
+    console.warn('fetchTransactions failed, using mock:', err)
     return mockTransactions
   }
 }
@@ -123,13 +99,10 @@ export async function fetchTransactions(params = {}) {
 export async function createTransaction(payload) {
   try {
     const res = await api.post('/transactions/', payload)
-    return mapTransaction(res.data)
+    return res.data
   } catch (err) {
-    console.error('createTransaction failed, falling back to mock:', err)
-    const newId =
-      mockTransactions.length === 0
-        ? 1
-        : Math.max(...mockTransactions.map((t) => t.id)) + 1
+    console.warn('createTransaction failed, falling back to mock:', err)
+    const newId = getNextId(mockTransactions)
     const tx = { id: newId, ...payload }
     mockTransactions.push(tx)
     return tx
@@ -140,7 +113,7 @@ export async function deleteTransaction(id) {
   try {
     await api.delete(`/transactions/${id}/`)
   } catch (err) {
-    console.error('deleteTransaction failed, removing only from mock:', err)
+    console.warn('deleteTransaction failed, deleting from mock only:', err)
   }
   const idx = mockTransactions.findIndex((t) => t.id === id)
   if (idx !== -1) {
