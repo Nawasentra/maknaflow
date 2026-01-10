@@ -109,7 +109,6 @@ function App() {
   const [unreadCount, setUnreadCount] = useState(0)
 
   // auth + user profile
-  // IMPORTANT: use backend token as truth
   const [isAuthenticated, setIsAuthenticated] = useState(
     Boolean(localStorage.getItem('auth_token')),
   )
@@ -122,14 +121,12 @@ function App() {
   const [theme, setTheme] = useState(getInitialTheme)
 
   // toast state (stacked)
-  const [toasts, setToasts] = useState([]) // [{ id, message, type }]
+  const [toasts, setToasts] = useState([])
 
   const showToast = (message, type = 'success') => {
     const id = Date.now() + Math.random()
     const toast = { id, message, type }
-
     setToasts((prev) => [toast, ...prev])
-
     setTimeout(() => {
       setToasts((prev) => prev.filter((t) => t.id !== id))
     }, 3000)
@@ -142,9 +139,7 @@ function App() {
       try {
         setIsLoading(true)
         const raw = await fetchTransactions({})
-
         if (cancelled) return
-
         setTransactions(raw)
         setError('')
       } catch (e) {
@@ -157,7 +152,6 @@ function App() {
       }
     }
     if (isAuthenticated) {
-      // only try backend when logged in
       load()
     }
     return () => {
@@ -168,7 +162,6 @@ function App() {
   // BUILD NOTIFICATIONS
   useEffect(() => {
     if (!transactions || transactions.length === 0) return
-
     const latest = transactions.slice(-5).map((t) => ({
       id: t.id,
       branchName: t.branch || 'Unknown',
@@ -178,7 +171,6 @@ function App() {
       amountFormatted: new Intl.NumberFormat('id-ID').format(t.amount || 0),
       read: false,
     }))
-
     setNotifications(latest)
     setUnreadCount(latest.length)
   }, [transactions])
@@ -203,10 +195,9 @@ function App() {
     })
   }
 
-  // NEW: login that talks to backend
+  // login that talks to backend
   const handleLoginSuccess = async (googleIdToken) => {
     try {
-      // 1) Call backend Google social login endpoint
       const res = await fetch(
         'https://maknaflow-staging.onrender.com/api/auth/google/',
         {
@@ -215,8 +206,8 @@ function App() {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            // Confirm with backend: id_token or access_token.
-            id_token: googleIdToken,
+            // important: dj-rest-auth SocialLoginView usually expects access_token
+            access_token: googleIdToken,
           }),
         },
       )
@@ -228,7 +219,7 @@ function App() {
         return
       }
 
-      const data = await res.json() // expect { key: '...' } or JWT
+      const data = await res.json()
       const backendToken = data.key
 
       if (!backendToken) {
@@ -237,10 +228,8 @@ function App() {
         return
       }
 
-      // 2) Store Django token
       localStorage.setItem('auth_token', backendToken)
 
-      // 3) Keep Google profile just for UI
       const payload = parseJwt(googleIdToken)
       if (payload) {
         const u = {
