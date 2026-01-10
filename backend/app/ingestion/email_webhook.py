@@ -31,11 +31,6 @@ class EmailWebhookService:
         # Detect and parse email type
         email_type, parsed_data = self._detect_and_parse_email(subject, sender, text_body)
 
-        # Ignore non-Luna/Hitachi emails
-        if email_type not in ["LUNA", "HITACHI"]:
-            logger.info(f"Ignoring non Luna/Hitachi email")
-            return "Ignoring non Luna/Hitachi email"
-
         # Find branch
         branch = self._find_branch_from_metadata(parsed_data, email_type, subject)
 
@@ -53,6 +48,10 @@ class EmailWebhookService:
         elif email_type == "HITACHI":
             transactions = self._create_transactions(branch, user, subject, parsed_data, TransactionType.INCOME, "top_items", "Hitachi")
             return f"Created {len(transactions)} transactions from Hitachi"
+        else:
+            # Add this to handle SIMPLE emails or unrecognized types
+            logger.warning(f"Unhandled email type: {email_type}")
+            return "Email received but no transactions created (unsupported format)"
 
     def _detect_and_parse_email(self, subject, sender, body):
         """
