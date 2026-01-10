@@ -23,15 +23,18 @@ router.register(r'ingestion-logs', IngestionLogViewSet, basename='ingestionlog')
 urlpatterns = [
     path('', views.home, name='home'),
     
-    # Authentication endpoints
-    path('auth/google/', GoogleLogin.as_view(), name='google_login'),
-    path('auth/', include('dj_rest_auth.urls')),  # login, logout, password reset, etc.
-    path('auth/registration/', include('dj_rest_auth.registration.urls')),  # signup (disabled for regular users)
+    # API endpoints (with /api/ prefix)
+    path('api/', include([
+        # Authentication endpoints under /api/
+        path('auth/google/', GoogleLogin.as_view(), name='google_login'),
+        path('auth/', include('dj_rest_auth.urls')),
+        path('auth/registration/', include('dj_rest_auth.registration.urls')),
+        
+        # ViewSet endpoints
+        path('', include(router.urls)),
+    ])),
     
-    # API endpoints
-    path('api/', include(router.urls)),
-    
-    # Webhook endpoints (API Key protected)
+    # Webhook endpoints (NOT under /api/)
     path('webhooks/make/', EmailIngestionWebhook.as_view(), name='email-webhook'),
     path('webhooks/whatsapp/', WhatsAppWebhookView.as_view(), name='whatsapp-webhook'),
 ]

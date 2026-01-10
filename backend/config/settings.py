@@ -161,8 +161,8 @@ AUTH_USER_MODEL = 'app.User'
 # =============================================================================
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
-        'rest_framework.authentication.TokenAuthentication',  # Primary
-        'rest_framework.authentication.SessionAuthentication',  # Fallback for browsable API
+        'rest_framework.authentication.TokenAuthentication',
+        'rest_framework.authentication.SessionAuthentication',
     ],
     'DEFAULT_FILTER_BACKENDS': [
         'django_filters.rest_framework.DjangoFilterBackend',
@@ -226,8 +226,6 @@ REST_AUTH = {
     'USE_JWT': False,  # Using Token Authentication
     'SESSION_LOGIN': True,
     'USER_DETAILS_SERIALIZER': 'app.serializers.UserSerializer',
-    'TOKEN_MODEL': 'rest_framework.authtoken.models.Token',  # Explicit token model
-    'TOKEN_CREATOR': 'dj_rest_auth.utils.default_create_token',  # Auto-create tokens
 }
 
 LOGIN_REDIRECT_URL = '/'
@@ -241,31 +239,50 @@ CORS_ALLOWED_ORIGINS = config(
     default='http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000',
     cast=Csv()
 )
+
 CORS_ALLOW_CREDENTIALS = True
+
+# Allow these HTTP methods
+CORS_ALLOW_METHODS = [
+    'DELETE',
+    'GET',
+    'OPTIONS',
+    'PATCH',
+    'POST',
+    'PUT',
+]
+
+# Allow these headers
+CORS_ALLOW_HEADERS = [
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
+    'x-api-key',
+]
 
 # =============================================================================
 # CSRF CONFIGURATION
 # =============================================================================
-CSRF_TRUSTED_ORIGINS = []
+# Get CSRF trusted origins from environment
+CSRF_TRUSTED_ORIGINS = config(
+    'CSRF_TRUSTED_ORIGINS',
+    default='http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000,http://127.0.0.1:8000',
+    cast=Csv()
+)
 
-# Add localhost variants for development
-if DEBUG:
-    CSRF_TRUSTED_ORIGINS.extend([
-        'http://localhost:3000',
-        'http://localhost:5173',
-        'http://127.0.0.1:3000',
-        'http://127.0.0.1:8000',
-    ])
-
-# Add production domains with HTTPS
-for host in ALLOWED_HOSTS:
-    if host not in ['localhost', '127.0.0.1', '.localhost']:
-        CSRF_TRUSTED_ORIGINS.append(f'https://{host}')
-
-# Allow additional origins from environment
-extra_csrf_origins = config('CSRF_TRUSTED_ORIGINS', default='', cast=Csv())
-if extra_csrf_origins:
-    CSRF_TRUSTED_ORIGINS.extend(extra_csrf_origins)
+# Automatically add HTTPS versions of ALLOWED_HOSTS for production
+if not DEBUG:
+    for host in ALLOWED_HOSTS:
+        if host not in ['localhost', '127.0.0.1', '.localhost', '*']:
+            https_origin = f'https://{host}'
+            if https_origin not in CSRF_TRUSTED_ORIGINS:
+                CSRF_TRUSTED_ORIGINS.append(https_origin)
 
 # =============================================================================
 # CUSTOM SETTINGS
@@ -273,7 +290,10 @@ if extra_csrf_origins:
 # Webhook API Key
 INGESTION_API_KEY = config('INGESTION_API_KEY', default='')
 
-# Owner email whitelist (for Google OAuth)
+# Owner email whitelist
+# Only these emails can:
+# - Use Google OAuth to login
+# - Automatically get staff and superuser privileges
 OWNER_EMAILS = config('ALLOWED_EMAILS', default='', cast=Csv())
 
 # =============================================================================
@@ -281,10 +301,10 @@ OWNER_EMAILS = config('ALLOWED_EMAILS', default='', cast=Csv())
 # =============================================================================
 if not DEBUG:
     # HTTPS/SSL
-    SECURE_SSL_REDIRECT = True
+    SECURE_SSL_REDIRECT = config('SECURE_SSL_REDIRECT', default=True, cast=bool)
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
-    SECURE_HSTS_SECONDS = 31536000  # 1 year
+    SECURE_HSTS_SECONDS = config('SECURE_HSTS_SECONDS', default=31536000, cast=int)
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
     SECURE_HSTS_PRELOAD = True
     
