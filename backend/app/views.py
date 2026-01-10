@@ -76,6 +76,8 @@ from allauth.socialaccount.providers.google.views import GoogleOAuth2Adapter
 from allauth.socialaccount.providers.oauth2.client import OAuth2Client
 from dj_rest_auth.registration.views import SocialLoginView
 from decouple import config
+from django.conf import settings
+import logging
 
 from .models import Branch, Category, Transaction, User, IngestionLog, TransactionSource, IngestionStatus
 from .serializers import (
@@ -93,19 +95,104 @@ from .permissions import (
     CanVerifyTransaction,
 )
 
-
-def home(request):
-    return HttpResponse("Hello, world!")
+logger = logging.getLogger(__name__)
 
 
 class GoogleLogin(SocialLoginView):
     """
-    Google OAuth2 login view for dj-rest-auth
-    Ensure callback_url matches the frontend and Google Console settings
+    Google OAuth2 login endpoint for owner accounts only
+    
+    Frontend:
+    1. access_token: Google access token from frontend OAuth flow
+    2. code: Authorization code from Google redirect
+    
+    POST /auth/google/
+    Body: {
+        "access_token": "google_access_token_here"
+    }
+    OR
+    Body: {
+        "code": "google_auth_code_here"
+    }
+    
+    Returns: {
+        "key": "rest_framework_auth_token",
+        "user": {
+            "pk": 1,
+            "username": "owner@example.com",
+            "email": "owner@example.com",
+            "first_name": "Owner",
+            "last_name": "Name"
+        }
+    }
     """
     adapter_class = GoogleOAuth2Adapter
-    callback_url = config('GOOGLE_OAUTH_CALLBACK_URL', default='http://localhost:5173')
     client_class = OAuth2Client
+    
+    @property
+    def callback_url(self):
+        """Get callback URL from settings or use default"""
+        return config(
+            'GOOGLE_OAUTH_CALLBACK_URL',
+            default='http://localhost:8000/accounts/google/login/callback/'
+        )
+    
+    def post(self, request, *args, **kwargs):
+        """Handle Google OAuth login"""
+        logger.info("Google OAuth login attempt")
+        
+        # Check if Google OAuth is configured
+        if not settings.SOCIALACCOUNT_PROVIDERS.get('google', {}).get('APP', {}).get('client_id'):
+            logger.error("Google OAuth not configured")
+            return Response(
+                {"error": "Google authentication is not configured"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+        
+        # Check if owner emails are configured
+        if not settings.OWNER_EMAILS:
+            logger.error("OWNER_EMAILS not configured")
+            return Response(
+                {"error": "Owner authentication is not configured"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+        
+        try:
+            response = super().post(request, *args, **kwargs)
+            
+            # Log successful authentication
+            if response.status_code == 200:
+                user_email = response.data.get('user', {}).get('email', 'unknown')
+                logger.info(f"Google OAuth login successful for: {user_email}")
+            
+            return response
+            
+        except Exception as e:
+            logger.error(f"Google OAuth login failed: {str(e)}")
+            return Response(
+                {"error": "Authentication failed. Please try again"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+
+def home(request):
+    """
+    Simple home view for testing
+    """
+    return HttpResponse("""
+        <html>
+        <head><title>MaknaFlow API</title></head>
+        <body>
+            <h1>MaknaFlow Transaction Management API</h1>
+            <p>Server is running!</p>
+            <ul>
+                <li><a href="/admin/">Admin Panel</a></li>
+                <li><a href="/api/">API Browser</a></li>
+                <li><a href="/auth/google/">Google Login (Owners Only)</a></li>
+            </ul>
+        </body>
+        </html>
+    """)
 
 # ==========================================
 # BRANCH VIEWSET
