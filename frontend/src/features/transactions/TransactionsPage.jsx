@@ -57,7 +57,6 @@ function TransactionsPage({
     direction: 'desc',
   })
 
-  // reload from backend when page first used (App already loads, this is safe)
   useEffect(() => {
     const load = async () => {
       try {
