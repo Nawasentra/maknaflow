@@ -1,150 +1,236 @@
 // src/features/transactions/TransactionsPage.jsx
-import React, { useState, useEffect, useMemo } from 'react'
+import React, { useState, useMemo, useEffect } from 'react'
 import {
-  fetchTransactions,
   createTransaction,
   deleteTransaction,
+  fetchBranches,
+  fetchCategories,
 } from '../../lib/api/transactions'
-import { fetchBranches, fetchCategories } from '../../lib/api/branchesCategories'
 
-const PAYMENT_METHODS = [
-  { value: 'CASH', label: 'Tunai' },
-  { value: 'QRIS', label: 'QRIS' },
-  { value: 'TRANSFER', label: 'Transfer' },
-]
+const inputStyle = {
+  width: '100%',
+  backgroundColor: 'var(--bg)',
+  borderRadius: 8,
+  border: '1px solid var(--border)',
+  padding: '0.5rem 0.75rem',
+  color: 'var(--text)',
+  fontSize: '0.85rem',
+  outline: 'none',
+}
 
-function TransactionsPage({ showToast }) {
-  const [transactions, setTransactions] = useState([])
-  const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState(null)
+function Field({ label, children }) {
+  return (
+    <div>
+      <label
+        style={{
+          display: 'block',
+          fontSize: '0.8rem',
+          color: 'var(--subtext)',
+          marginBottom: 4,
+        }}
+      >
+        {label}
+      </label>
+      {children}
+    </div>
+  )
+}
+
+function TransactionsPage({
+  transactions,
+  setTransactions,
+  businessConfigs,
+  appSettings,
+  lastUsedType,
+  setLastUsedType,
+  showToast,
+  onRefresh,
+}) {
+  const [loading, setLoading] = useState(true)
+  const [searchTerm, setSearchTerm] = useState('')
+  const [filterUnit, setFilterUnit] = useState('Semua Unit')
+  const [filterBranch, setFilterBranch] = useState('Semua Cabang')
+  const [confirmOpen, setConfirmOpen] = useState(false)
+  const [transactionToDelete, setTransactionToDelete] = useState(null)
+  const [addOpen, setAddOpen] = useState(false)
 
   const [branches, setBranches] = useState([])
   const [categories, setCategories] = useState([])
 
-  const [filterType, setFilterType] = useState('ALL') // ALL | INCOME | EXPENSE
-  const [filterBranchId, setFilterBranchId] = useState('ALL')
-  const [filterSearch, setFilterSearch] = useState('')
+  const [sortConfig, setSortConfig] = useState({
+    key: 'date',
+    direction: 'desc',
+  })
 
-  const [isAddModalOpen, setIsAddModalOpen] = useState(false)
+  // PAGINATION STATE
+  const [currentPage, setCurrentPage] = useState(1)
+  const pageSize = 10 // ganti kalau mau 20/50 dll
 
-  // pagination
-  const [page, setPage] = useState(1)
-  const [pageSize] = useState(10)
+  const setSafeBranches = (br) => setBranches(Array.isArray(br) ? br : [])
+  const setSafeCategories = (cat) => setCategories(Array.isArray(cat) ? cat : [])
 
-  // initial load
+  // --- Load branches & categories ---
   useEffect(() => {
-    const load = async () => {
+    const loadMeta = async () => {
       try {
-        setIsLoading(true)
-        setError(null)
-        const [tx, br, cat] = await Promise.all([
-          fetchTransactions(),
-          fetchBranches(),
-          fetchCategories(),
-        ])
-        setTransactions(Array.isArray(tx) ? tx : [])
-        setBranches(Array.isArray(br) ? br : [])
-        setCategories(Array.isArray(cat) ? cat : [])
+        setLoading(true)
+        const [br, cat] = await Promise.all([fetchBranches(), fetchCategories()])
+        setSafeBranches(br)
+        setSafeCategories(cat)
       } catch (e) {
         console.error(e)
-        setError('Gagal memuat transaksi.')
-        showToast?.('Gagal memuat transaksi.', 'error')
+        showToast?.('Gagal memuat data referensi.', 'error')
       } finally {
-        setIsLoading(false)
+        setLoading(false)
       }
     }
-    load()
-  }, [showToast])
+    loadMeta()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
-  const filteredTransactions = useMemo(() => {
-    let list = Array.isArray(transactions) ? transactions : []
+  const safeTransactions = Array.isArray(transactions) ? transactions : []
 
-    if (filterType === 'INCOME') {
-      list = list.filter((t) => t.type === 'Income')
-    } else if (filterType === 'EXPENSE') {
-      list = list.filter((t) => t.type === 'Expense')
+  // --- Generate opsi Unit & Cabang dari transactions ---
+  const unitOptions = useMemo(() => {
+    const units = Array.from(
+      new Set(safeTransactions.map((t) => t.unitBusiness).filter(Boolean)),
+    )
+    return ['Semua Unit', ...units]
+  }, [safeTransactions])
+
+  const branchOptions = useMemo(() => {
+    let source = safeTransactions
+    if (filterUnit !== 'Semua Unit') {
+      source = source.filter((t) => t.unitBusiness === filterUnit)
     }
+    const names = Array.from(
+      new Set(source.map((t) => t.branch).filter(Boolean)),
+    )
+    return ['Semua Cabang', ...names]
+  }, [safeTransactions, filterUnit])
 
-    if (filterBranchId !== 'ALL') {
-      list = list.filter((t) => String(t.branchId) === String(filterBranchId))
-    }
-
-    if (filterSearch.trim()) {
-      const q = filterSearch.toLowerCase()
-      list = list.filter((t) => {
-        return (
-          (t.description || '').toLowerCase().includes(q) ||
-          (t.category || '').toLowerCase().includes(q)
-        )
-      })
-    }
-
-    return list
-  }, [transactions, filterType, filterBranchId, filterSearch])
-
-  const totalPages = Math.max(1, Math.ceil(filteredTransactions.length / pageSize))
-
-  const paginatedTransactions = useMemo(() => {
-    const start = (page - 1) * pageSize
-    return filteredTransactions.slice(start, start + pageSize)
-  }, [filteredTransactions, page, pageSize])
-
+  // Pastikan filterBranch tetap valid kalau unit berubah
   useEffect(() => {
-    setPage(1)
-  }, [filterType, filterBranchId, filterSearch])
-
-  const handleDeleteTransaction = async (id) => {
-    if (!window.confirm('Yakin ingin menghapus transaksi ini?')) return
-    try {
-      await deleteTransaction(id)
-      setTransactions((prev) => prev.filter((t) => t.id !== id))
-      showToast?.('Transaksi berhasil dihapus.')
-    } catch (e) {
-      console.error(e)
-      showToast?.('Gagal menghapus transaksi.', 'error')
+    if (!branchOptions.includes(filterBranch)) {
+      setFilterBranch('Semua Cabang')
     }
+  }, [branchOptions, filterBranch])
+
+  // --- Filter transaksi berdasarkan search + Unit + Cabang ---
+  const filteredTransactions = safeTransactions.filter((t) => {
+    // Search term
+    if (searchTerm) {
+      const q = searchTerm.toLowerCase()
+      const matchSearch =
+        t.branch?.toLowerCase().includes(q) ||
+        t.unitBusiness?.toLowerCase().includes(q) ||
+        t.category?.toLowerCase().includes(q) ||
+        t.type?.toLowerCase().includes(q) ||
+        t.payment?.toLowerCase().includes(q) ||
+        (t.source || '').toLowerCase().includes(q)
+      if (!matchSearch) return false
+    }
+
+    // Unit filter
+    if (filterUnit !== 'Semua Unit' && t.unitBusiness !== filterUnit) {
+      return false
+    }
+
+    // Branch filter
+    if (filterBranch !== 'Semua Cabang' && t.branch !== filterBranch) {
+      return false
+    }
+
+    return true
+  })
+
+  // Reset pagination ke page 1 kalau filter/search berubah
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [searchTerm, filterUnit, filterBranch])
+
+  const sortedTransactions = [...filteredTransactions].sort((a, b) => {
+    const { key, direction } = sortConfig
+    let cmp = 0
+
+    if (key === 'date') {
+      cmp = new Date(a.date) - new Date(b.date)
+    } else if (key === 'amount') {
+      cmp = a.amount - b.amount
+    } else {
+      cmp = String(a[key] ?? '').localeCompare(String(b[key] ?? ''))
+    }
+
+    return direction === 'asc' ? cmp : -cmp
+  })
+
+  const handleSort = (key) => {
+    setSortConfig((prev) => {
+      if (prev.key === key) {
+        return { key, direction: prev.direction === 'asc' ? 'desc' : 'asc' }
+      }
+      if (key === 'date' || key === 'amount') {
+        return { key, direction: 'desc' }
+      }
+      return { key, direction: 'asc' }
+    })
   }
 
-  const handleAddTransaction = async (payload) => {
+  const handleAskDelete = (transaction) => {
+    setTransactionToDelete(transaction)
+    setConfirmOpen(true)
+  }
+
+  const handleConfirmDelete = async () => {
+    if (transactionToDelete) {
+      try {
+        await deleteTransaction(transactionToDelete.id)
+        setTransactions((prev) =>
+          (Array.isArray(prev) ? prev : []).filter(
+            (t) => t.id !== transactionToDelete.id,
+          ),
+        )
+        showToast?.('Berhasil menghapus transaksi.')
+      } catch (e) {
+        console.error(e)
+        showToast?.('Gagal menghapus transaksi.', 'error')
+      }
+    }
+    setConfirmOpen(false)
+    setTransactionToDelete(null)
+  }
+
+  const handleCancelDelete = () => {
+    setConfirmOpen(false)
+    setTransactionToDelete(null)
+  }
+
+  const handleAddTransaction = async (newTx) => {
     try {
-      const created = await createTransaction(payload)
-      setTransactions((prev) => [created, ...prev])
-      showToast?.('Transaksi berhasil disimpan.')
-      setIsAddModalOpen(false)
+      const saved = await createTransaction(newTx)
+      setTransactions((prev) => [
+        ...(Array.isArray(prev) ? prev : []),
+        saved,
+      ])
+      setLastUsedType?.(newTx.type)
+      setAddOpen(false)
+      showToast?.('Berhasil menambahkan transaksi.')
     } catch (e) {
-      console.error('handleAddTransaction error:', e.response?.data || e)
+      console.error(e)
       showToast?.('Gagal menyimpan transaksi.', 'error')
     }
   }
 
-  if (isLoading) {
-    return (
-      <main
-        style={{
-          maxWidth: '1280px',
-          margin: '0 auto',
-          padding: '2rem 1.5rem',
-          color: 'var(--subtext)',
-        }}
-      >
-        <p>Memuat transaksi...</p>
-      </main>
-    )
-  }
+  // --- Pagination logic ---
+  const totalItems = sortedTransactions.length
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize))
+  const startIndex = (currentPage - 1) * pageSize
+  const endIndex = startIndex + pageSize
+  const paginatedTransactions = sortedTransactions.slice(startIndex, endIndex)
 
-  if (error) {
-    return (
-      <main
-        style={{
-          maxWidth: '1280px',
-          margin: '0 auto',
-          padding: '2rem 1.5rem',
-          color: '#f97316',
-        }}
-      >
-        <p>{error}</p>
-      </main>
-    )
+  const goToPage = (page) => {
+    if (page < 1 || page > totalPages) return
+    setCurrentPage(page)
   }
 
   return (
@@ -156,335 +242,364 @@ function TransactionsPage({ showToast }) {
         color: 'var(--text)',
       }}
     >
-      <div
+      <h1
         style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
+          fontSize: '1.875rem',
+          fontWeight: '700',
           marginBottom: '1.5rem',
-          gap: '1rem',
         }}
       >
-        <div>
-          <h1 style={{ fontSize: '1.875rem', fontWeight: 700 }}>Transaksi</h1>
-          <p style={{ fontSize: 13, color: 'var(--subtext)', marginTop: 4 }}>
-            Kelola transaksi manual yang tercatat di sistem.
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={() => setIsAddModalOpen(true)}
-          style={{
-            backgroundColor: 'var(--accent)',
-            borderRadius: 9999,
-            border: 'none',
-            color: 'var(--bg)',
-            fontSize: 13,
-            fontWeight: 600,
-            padding: '0.6rem 1.4rem',
-            cursor: 'pointer',
-          }}
-        >
-          + Tambah Transaksi
-        </button>
-      </div>
+        📋 Transaksi
+      </h1>
 
-      {/* Filters */}
       <div
         style={{
           backgroundColor: 'var(--bg-elevated)',
-          borderRadius: 12,
           border: '1px solid var(--border)',
-          padding: '1rem 1.25rem',
-          marginBottom: '1.25rem',
-          display: 'flex',
-          flexWrap: 'wrap',
-          gap: 12,
-          alignItems: 'flex-end',
-        }}
-      >
-        <div style={{ minWidth: 180 }}>
-          <p style={{ fontSize: 12, color: 'var(--subtext)', marginBottom: 4 }}>
-            Tipe transaksi
-          </p>
-          <div style={{ display: 'flex', gap: 8 }}>
-            {[
-              { value: 'ALL', label: 'Semua' },
-              { value: 'INCOME', label: 'Income' },
-              { value: 'EXPENSE', label: 'Expense' },
-            ].map((opt) => (
-              <button
-                key={opt.value}
-                type="button"
-                onClick={() => setFilterType(opt.value)}
-                style={{
-                  padding: '0.4rem 0.9rem',
-                  borderRadius: 9999,
-                  border:
-                    filterType === opt.value
-                      ? '1px solid var(--accent)'
-                      : '1px solid var(--border)',
-                  backgroundColor:
-                    filterType === opt.value ? 'var(--accent)' : 'transparent',
-                  color: filterType === opt.value ? 'var(--bg)' : 'var(--text)',
-                  fontSize: 12,
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                }}
-              >
-                {opt.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div style={{ minWidth: 220 }}>
-          <p style={{ fontSize: 12, color: 'var(--subtext)', marginBottom: 4 }}>
-            Cabang
-          </p>
-          <select
-            value={filterBranchId}
-            onChange={(e) => setFilterBranchId(e.target.value)}
-            style={{
-              width: '100%',
-              backgroundColor: 'var(--bg)',
-              borderRadius: 9999,
-              border: '1px solid var(--border)',
-              padding: '0.55rem 1rem',
-              fontSize: 13,
-              color: 'var(--text)',
-              outline: 'none',
-            }}
-          >
-            <option value="ALL">Semua Cabang</option>
-            {branches.map((b) => (
-              <option key={b.id} value={b.id}>
-                {b.name}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div style={{ flex: 1, minWidth: 220 }}>
-          <p style={{ fontSize: 12, color: 'var(--subtext)', marginBottom: 4 }}>
-            Cari deskripsi / kategori
-          </p>
-          <input
-            placeholder="Cari transaksi..."
-            value={filterSearch}
-            onChange={(e) => setFilterSearch(e.target.value)}
-            style={{
-              width: '100%',
-              backgroundColor: 'var(--bg)',
-              borderRadius: 9999,
-              border: '1px solid var(--border)',
-              padding: '0.55rem 1rem',
-              fontSize: 13,
-              color: 'var(--text)',
-              outline: 'none',
-            }}
-          />
-        </div>
-      </div>
-
-      {/* Table */}
-      <div
-        style={{
-          backgroundColor: 'var(--bg-elevated)',
-          borderRadius: 12,
-          border: '1px solid var(--border)',
-          padding: '1rem 1.25rem',
+          borderRadius: '12px',
+          overflow: 'hidden',
         }}
       >
         <div
           style={{
-            overflowX: 'auto',
+            padding: '1.5rem',
+            borderBottom: '1px solid var(--border)',
+            backgroundColor: 'rgba(148, 163, 184, 0.04)',
           }}
         >
-          <table
+          <div
             style={{
-              width: '100%',
-              borderCollapse: 'collapse',
-              fontSize: 12,
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              flexDirection: 'column',
+              gap: '1rem',
             }}
           >
+            <div>
+              <h3
+                style={{
+                  fontSize: '1.125rem',
+                  fontWeight: '600',
+                  margin: 0,
+                }}
+              >
+                Tabel Transaksi
+              </h3>
+              <p
+                style={{
+                  color: 'var(--subtext)',
+                  fontSize: '0.875rem',
+                  margin: '0.25rem 0 0 0',
+                }}
+              >
+                {loading
+                  ? 'Memuat...'
+                  : `${sortedTransactions.length} transaksi ditemukan`}
+              </p>
+            </div>
+
+            {/* Search & Action Buttons */}
+            <div
+              style={{
+                display: 'flex',
+                gap: '0.5rem',
+                width: '100%',
+                maxWidth: '100%',
+                flexWrap: 'wrap',
+              }}
+            >
+              <input
+                placeholder="🔍 Cari transaksi..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                style={{
+                  flex: 1,
+                  minWidth: '200px',
+                  backgroundColor: 'var(--bg)',
+                  border: '1px solid var(--border)',
+                  borderRadius: '8px',
+                  padding: '0.75rem 1rem',
+                  color: 'var(--text)',
+                  fontSize: '0.875rem',
+                }}
+              />
+              <button
+                onClick={onRefresh}
+                style={{
+                  backgroundColor: 'transparent',
+                  color: 'var(--subtext)',
+                  padding: '0.75rem 0.9rem',
+                  borderRadius: '8px',
+                  border: '1px solid var(--border)',
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                  fontSize: '0.8rem',
+                }}
+              >
+                ⟳ Refresh
+              </button>
+              <button
+                onClick={() => setAddOpen(true)}
+                style={{
+                  backgroundColor: 'var(--accent)',
+                  color: 'var(--bg)',
+                  padding: '0.75rem 1.5rem',
+                  borderRadius: '8px',
+                  fontWeight: '600',
+                  border: 'none',
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                  fontSize: '0.875rem',
+                }}
+              >
+                + Tambah Transaksi
+              </button>
+            </div>
+
+            {/* Filter Unit + Cabang */}
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+                gap: '1rem',
+                width: '100%',
+                alignItems: 'flex-end',
+              }}
+            >
+              {/* Filter Unit Bisnis */}
+              <div>
+                <label
+                  style={{
+                    display: 'block',
+                    color: 'var(--subtext)',
+                    fontSize: '0.875rem',
+                    marginBottom: '0.5rem',
+                  }}
+                >
+                  Unit Bisnis
+                </label>
+                <select
+                  value={filterUnit}
+                  onChange={(e) => {
+                    setFilterUnit(e.target.value)
+                    setFilterBranch('Semua Cabang')
+                  }}
+                  style={{
+                    width: '100%',
+                    backgroundColor: 'var(--bg)',
+                    border: '1px solid var(--border)',
+                    borderRadius: '8px',
+                    padding: '0.75rem',
+                    color: 'var(--text)',
+                    fontSize: '0.875rem',
+                  }}
+                >
+                  {unitOptions.map((u) => (
+                    <option key={u} value={u}>
+                      {u}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Filter Cabang */}
+              <div>
+                <label
+                  style={{
+                    display: 'block',
+                    color: 'var(--subtext)',
+                    fontSize: '0.875rem',
+                    marginBottom: '0.5rem',
+                  }}
+                >
+                  Cabang
+                </label>
+                <select
+                  value={filterBranch}
+                  onChange={(e) => setFilterBranch(e.target.value)}
+                  style={{
+                    width: '100%',
+                    backgroundColor: 'var(--bg)',
+                    border: '1px solid var(--border)',
+                    borderRadius: '8px',
+                    padding: '0.75rem',
+                    color: 'var(--text)',
+                    fontSize: '0.875rem',
+                  }}
+                >
+                  {branchOptions.map((b) => (
+                    <option key={b} value={b}>
+                      {b}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr
                 style={{
-                  borderBottom: '1px solid var(--border)',
-                  color: 'var(--subtext)',
-                  textAlign: 'left',
+                  borderBottom: '2px solid var(--border)',
+                  backgroundColor: 'rgba(148, 163, 184, 0.04)',
                 }}
               >
-                <th style={{ padding: '0.5rem 0.5rem' }}>Tanggal</th>
-                <th style={{ padding: '0.5rem 0.5rem' }}>Cabang</th>
-                <th style={{ padding: '0.5rem 0.5rem' }}>Unit</th>
-                <th style={{ padding: '0.5rem 0.5rem' }}>Tipe</th>
-                <th style={{ padding: '0.5rem 0.5rem' }}>Kategori</th>
-                <th style={{ padding: '0.5rem 0.5rem' }}>Metode Bayar</th>
-                <th style={{ padding: '0.5rem 0.5rem', textAlign: 'right' }}>
-                  Jumlah
+                <ThSortable label="Tanggal" onClick={() => handleSort('date')} />
+                <ThSortable
+                  label="Unit Bisnis"
+                  onClick={() => handleSort('unitBusiness')}
+                />
+                <ThSortable label="Cabang" onClick={() => handleSort('branch')} />
+                <ThSortable
+                  label="Kategori"
+                  onClick={() => handleSort('category')}
+                />
+                <ThSortable label="Tipe" onClick={() => handleSort('type')} />
+                <ThSortable label="Jumlah" onClick={() => handleSort('amount')} />
+                <ThSortable label="Source" onClick={() => handleSort('source')} />
+                <th
+                  style={{
+                    padding: '1rem 1.5rem',
+                    textAlign: 'left',
+                    fontSize: '0.75rem',
+                    fontWeight: '600',
+                    color: 'var(--subtext)',
+                    textTransform: 'uppercase',
+                  }}
+                >
+                  Aksi
                 </th>
-                <th style={{ padding: '0.5rem 0.5rem' }}>Deskripsi</th>
-                <th style={{ padding: '0.5rem 0.5rem' }} />
               </tr>
             </thead>
             <tbody>
               {paginatedTransactions.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={9}
+                    colSpan={8}
                     style={{
-                      padding: '0.75rem 0.5rem',
-                      fontSize: 12,
+                      padding: '1.5rem',
+                      textAlign: 'center',
                       color: 'var(--subtext)',
+                      fontSize: '0.9rem',
                     }}
                   >
-                    Tidak ada transaksi yang cocok dengan filter.
+                    {loading
+                      ? 'Memuat data transaksi...'
+                      : 'Belum ada transaksi yang cocok dengan filter/cari.'}
                   </td>
                 </tr>
               ) : (
                 paginatedTransactions.map((t) => (
-                  <tr
+                  <TransactionRow
                     key={t.id}
-                    style={{
-                      borderBottom: '1px solid rgba(148,163,184,0.2)',
-                    }}
-                  >
-                    <td style={{ padding: '0.55rem 0.5rem' }}>{t.date}</td>
-                    <td style={{ padding: '0.55rem 0.5rem' }}>{t.branch}</td>
-                    <td style={{ padding: '0.55rem 0.5rem' }}>{t.unitBusiness}</td>
-                    <td style={{ padding: '0.55rem 0.5rem' }}>
-                      <span
-                        style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          padding: '0.1rem 0.5rem',
-                          borderRadius: 9999,
-                          fontSize: 11,
-                          fontWeight: 600,
-                          backgroundColor:
-                            t.type === 'Income'
-                              ? 'rgba(34,197,94,0.15)'
-                              : 'rgba(239,68,68,0.15)',
-                          color:
-                            t.type === 'Income' ? '#4ade80' : '#fca5a5',
-                        }}
-                      >
-                        {t.type === 'Income' ? 'Income' : 'Expense'}
-                      </span>
-                    </td>
-                    <td style={{ padding: '0.55rem 0.5rem' }}>{t.category}</td>
-                    <td style={{ padding: '0.55rem 0.5rem' }}>
-                      {t.payment === 'CASH'
-                        ? 'Tunai'
-                        : t.payment === 'QRIS'
-                        ? 'QRIS'
-                        : t.payment === 'TRANSFER'
-                        ? 'Transfer'
-                        : t.payment || '-'}
-                    </td>
-                    <td
-                      style={{
-                        padding: '0.55rem 0.5rem',
-                        textAlign: 'right',
-                      }}
-                    >
-                      {formatCurrency(t.amount || 0)}
-                    </td>
-                    <td style={{ padding: '0.55rem 0.5rem' }}>
-                      {t.description || '-'}
-                    </td>
-                    <td style={{ padding: '0.55rem 0.5rem' }}>
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteTransaction(t.id)}
-                        style={{
-                          border: 'none',
-                          background: 'none',
-                          color: '#f97316',
-                          cursor: 'pointer',
-                          fontSize: 12,
-                        }}
-                      >
-                        Hapus
-                      </button>
-                    </td>
-                  </tr>
+                    transaction={t}
+                    onAskDelete={handleAskDelete}
+                  />
                 ))
               )}
             </tbody>
           </table>
         </div>
 
-        {/* Pagination */}
+        {/* Pagination bar */}
         <div
           style={{
-            marginTop: '0.75rem',
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
-            fontSize: 12,
+            padding: '0.75rem 1.5rem 1.25rem',
+            fontSize: '0.8rem',
             color: 'var(--subtext)',
+            gap: '0.75rem',
+            flexWrap: 'wrap',
           }}
         >
           <span>
-            Menampilkan{' '}
-            {paginatedTransactions.length === 0
-              ? 0
-              : (page - 1) * pageSize + 1}{' '}
-            -{' '}
-            {(page - 1) * pageSize + paginatedTransactions.length} dari{' '}
-            {filteredTransactions.length}{' '}
-            transaksi
+            Menampilkan {totalItems === 0 ? 0 : startIndex + 1}–
+            {Math.min(endIndex, totalItems)} dari {totalItems} transaksi
           </span>
-          <div style={{ display: 'flex', gap: 8 }}>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
             <button
-              type="button"
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={page === 1}
+              onClick={() => goToPage(currentPage - 1)}
+              disabled={currentPage === 1}
               style={{
-                backgroundColor: 'transparent',
-                borderRadius: 9999,
+                padding: '0.3rem 0.6rem',
+                borderRadius: 6,
                 border: '1px solid var(--border)',
-                color: 'var(--text)',
-                fontSize: 12,
-                padding: '0.3rem 0.8rem',
-                cursor: page === 1 ? 'not-allowed' : 'pointer',
-                opacity: page === 1 ? 0.5 : 1,
+                backgroundColor: 'transparent',
+                cursor: currentPage === 1 ? 'not-allowed' : 'pointer',
+                opacity: currentPage === 1 ? 0.5 : 1,
               }}
             >
-              ‹ Sebelumnya
+              ‹
             </button>
+
+            {Array.from({ length: totalPages }).map((_, idx) => {
+              const page = idx + 1
+              const isActive = page === currentPage
+              return (
+                <button
+                  key={page}
+                  onClick={() => goToPage(page)}
+                  style={{
+                    minWidth: 28,
+                    padding: '0.3rem 0.5rem',
+                    borderRadius: 6,
+                    border: '1px solid var(--border)',
+                    backgroundColor: isActive
+                      ? 'var(--accent)'
+                      : 'var(--bg-elevated)',
+                    color: isActive ? 'var(--bg)' : 'var(--text)',
+                    fontSize: '0.8rem',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {page}
+                </button>
+              )
+            })}
+
             <button
-              type="button"
-              onClick={() =>
-                setPage((p) => Math.min(totalPages, p + 1))
-              }
-              disabled={page === totalPages}
+              onClick={() => goToPage(currentPage + 1)}
+              disabled={currentPage === totalPages}
               style={{
-                backgroundColor: 'transparent',
-                borderRadius: 9999,
+                padding: '0.3rem 0.6rem',
+                borderRadius: 6,
                 border: '1px solid var(--border)',
-                color: 'var(--text)',
-                fontSize: 12,
-                padding: '0.3rem 0.8rem',
-                cursor: page === totalPages ? 'not-allowed' : 'pointer',
-                opacity: page === totalPages ? 0.5 : 1,
+                backgroundColor: 'transparent',
+                cursor: currentPage === totalPages ? 'not-allowed' : 'pointer',
+                opacity: currentPage === totalPages ? 0.5 : 1,
               }}
             >
-              Berikutnya ›
+              ›
             </button>
           </div>
         </div>
       </div>
 
-      {isAddModalOpen && (
+      {confirmOpen && (
+        <ConfirmDialog
+          title="Hapus Permanen"
+          description="Transaksi ini akan dihapus secara permanen dari sistem."
+          onCancel={handleCancelDelete}
+          onConfirm={handleConfirmDelete}
+        />
+      )}
+
+      {addOpen && (
         <AddTransactionModal
-          onClose={() => setIsAddModalOpen(false)}
+          onClose={() => setAddOpen(false)}
           onSave={handleAddTransaction}
           branches={branches}
           categories={categories}
+          appSettings={appSettings}
+          lastUsedType={lastUsedType}
+          businessConfigs={businessConfigs}
           showToast={showToast}
         />
       )}
@@ -492,14 +607,102 @@ function TransactionsPage({ showToast }) {
   )
 }
 
-function formatCurrency(amount) {
-  return new Intl.NumberFormat('id-ID', {
-    style: 'currency',
-    currency: 'IDR',
-    minimumFractionDigits: 0,
-  })
-    .format(amount || 0)
-    .replace('Rp', 'Rp ')
+function ThSortable({ label, onClick }) {
+  return (
+    <th
+      onClick={onClick}
+      style={{
+        padding: '1rem 1.5rem',
+        textAlign: 'left',
+        fontSize: '0.75rem',
+        fontWeight: '600',
+        color: 'var(--subtext)',
+        textTransform: 'uppercase',
+        cursor: 'pointer',
+        userSelect: 'none',
+      }}
+    >
+      {label}
+    </th>
+  )
+}
+
+function ConfirmDialog({ title, description, onCancel, onConfirm }) {
+  return (
+    <div
+      style={{
+        position: 'fixed',
+        inset: 0,
+        backgroundColor: 'rgba(0,0,0,0.6)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 50,
+      }}
+    >
+      <div
+        style={{
+          width: 380,
+          backgroundColor: 'var(--bg-elevated)',
+          borderRadius: 16,
+          border: '1px solid var(--border)',
+          padding: '1.5rem',
+        }}
+      >
+        <h2
+          style={{
+            fontSize: '1.1rem',
+            fontWeight: 600,
+            marginBottom: '0.5rem',
+          }}
+        >
+          {title}
+        </h2>
+        <p
+          style={{
+            fontSize: '0.9rem',
+            color: 'var(--subtext)',
+            marginBottom: '1.5rem',
+          }}
+        >
+          {description}
+        </p>
+        <div
+          style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}
+        >
+          <button
+            onClick={onCancel}
+            style={{
+              padding: '0.6rem 1.3rem',
+              borderRadius: 9999,
+              border: '1px solid var(--border)',
+              backgroundColor: 'transparent',
+              color: 'var(--text)',
+              fontSize: '0.85rem',
+              cursor: 'pointer',
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            style={{
+              padding: '0.6rem 1.4rem',
+              borderRadius: 9999,
+              border: 'none',
+              backgroundColor: '#ef4444',
+              color: 'var(--bg)',
+              fontWeight: 600,
+              fontSize: '0.85rem',
+              cursor: 'pointer',
+            }}
+          >
+            Hapus
+          </button>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 function AddTransactionModal({
@@ -507,44 +710,86 @@ function AddTransactionModal({
   onSave,
   branches,
   categories,
+  appSettings,
+  lastUsedType,
+  businessConfigs,
   showToast,
 }) {
-  const today = new Date().toISOString().slice(0, 10)
-
-  const [date, setDate] = useState(today)
   const [branchId, setBranchId] = useState('')
-  const [type, setType] = useState('Income')
   const [categoryId, setCategoryId] = useState('')
-  const [payment, setPayment] = useState('CASH')
+  const [date, setDate] = useState('')
+  const [type, setType] = useState(
+    appSettings.defaultTransactionType === 'Income' ||
+    appSettings.defaultTransactionType === 'Expense'
+      ? appSettings.defaultTransactionType
+      : lastUsedType || 'Income',
+  )
+  const [payment, setPayment] = useState('')
   const [amountInput, setAmountInput] = useState('')
   const [description, setDescription] = useState('')
 
+  const safeBranches = Array.isArray(branches) ? branches : []
+  const safeCategories = Array.isArray(categories) ? categories : []
+  const safeBusinessConfigs = Array.isArray(businessConfigs)
+    ? businessConfigs
+    : []
+
+  // Filter kategori berdasarkan cabang + tipe
   const filteredCategories = useMemo(() => {
     const txType = type === 'Income' ? 'INCOME' : 'EXPENSE'
-    return (categories || []).filter(
-      (c) => c.transaction_type === txType,
-    )
-  }, [categories, type])
+    const pool = safeCategories.filter((c) => c.transaction_type === txType)
 
-  const handleAmountChange = (value) => {
-    const digits = value.replace(/[^\d]/g, '')
-    setAmountInput(digits)
+    const numericBranchId = Number(branchId)
+    if (!numericBranchId) return pool
+    if (!safeBusinessConfigs.length) return pool
+
+    let mappingIds = null
+    safeBusinessConfigs.forEach((unit) => {
+      ;(unit.branches || []).forEach((br) => {
+        if (br.id === numericBranchId) {
+          mappingIds =
+            txType === 'INCOME'
+              ? br.incomeCategories || null
+              : br.expenseCategories || null
+        }
+      })
+    })
+
+    if (!mappingIds || !mappingIds.length) {
+      return pool
+    }
+
+    return pool.filter((c) => mappingIds.includes(c.id))
+  }, [safeCategories, type, branchId, safeBusinessConfigs])
+
+  const pembayaranOptions = [
+    { label: 'QRIS', value: 'QRIS' },
+    { label: 'Cash', value: 'CASH' },
+    { label: 'Transfer', value: 'TRANSFER' },
+  ]
+
+  const formatAmountDisplay = (raw) => {
+    const digits = raw.replace(/[^\d]/g, '')
+    if (!digits) return ''
+    return new Intl.NumberFormat('id-ID').format(Number(digits))
+  }
+
+  const handleAmountChange = (e) => {
+    const raw = e.target.value
+    setAmountInput(formatAmountDisplay(raw))
   }
 
   const handleSubmit = () => {
     const digits = amountInput.replace(/[^\d]/g, '')
-    const numericAmount = Number(digits)
 
-    if (
-      !date ||
-      !branchId ||
-      !categoryId ||
-      !type ||
-      !payment ||
-      !digits ||
-      numericAmount <= 0
-    ) {
-      showToast?.('Lengkapi semua field dan pastikan jumlah > 0.', 'error')
+    if (!date || !branchId || !categoryId || !type || !payment || !digits) {
+      showToast?.('Lengkapi semua field sebelum menyimpan.', 'error')
+      return
+    }
+
+    const numericAmount = Number(digits)
+    if (numericAmount <= 0) {
+      showToast?.('Jumlah harus lebih besar dari 0.', 'error')
       return
     }
 
@@ -556,6 +801,10 @@ function AddTransactionModal({
       amount: numericAmount,
       payment,
       description,
+
+      // Khusus transaksi dari halaman ini (Manual)
+      source: 'Manual',
+      sourceIdentifier: `manual-entry-${Date.now()}`,
     }
 
     onSave(payload)
@@ -566,7 +815,7 @@ function AddTransactionModal({
       style={{
         position: 'fixed',
         inset: 0,
-        backgroundColor: 'rgba(0,0,0,0.5)',
+        backgroundColor: 'rgba(0,0,0,0.6)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -575,12 +824,12 @@ function AddTransactionModal({
     >
       <div
         style={{
+          width: 420,
           backgroundColor: 'var(--bg-elevated)',
           borderRadius: 16,
           border: '1px solid var(--border)',
-          padding: '1.5rem 1.75rem 1.25rem',
-          width: '100%',
-          maxWidth: 540,
+          padding: '1.5rem',
+          boxSizing: 'border-box',
         }}
       >
         <div
@@ -591,19 +840,17 @@ function AddTransactionModal({
             marginBottom: '1rem',
           }}
         >
-          <h2 style={{ fontSize: 16, fontWeight: 600 }}>
+          <h2 style={{ fontSize: '1.1rem', fontWeight: 600 }}>
             Tambah Transaksi
           </h2>
           <button
-            type="button"
             onClick={onClose}
             style={{
               border: 'none',
               background: 'none',
               color: 'var(--subtext)',
               cursor: 'pointer',
-              fontSize: 18,
-              lineHeight: 1,
+              fontSize: '1.25rem',
             }}
           >
             ×
@@ -612,275 +859,139 @@ function AddTransactionModal({
 
         <div
           style={{
-            display: 'grid',
-            gridTemplateColumns: '1fr 1fr',
-            gap: '1rem 1.25rem',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '0.75rem',
             marginBottom: '1.25rem',
           }}
         >
-          <div>
-            <label
-              style={{
-                display: 'block',
-                fontSize: 12,
-                fontWeight: 500,
-                marginBottom: 4,
-              }}
-            >
-              Tanggal
-            </label>
+          <Field label="Tanggal">
             <input
               type="date"
               value={date}
               onChange={(e) => setDate(e.target.value)}
-              style={{
-                width: '100%',
-                backgroundColor: 'var(--bg)',
-                borderRadius: 8,
-                border: '1px solid var(--border)',
-                padding: '0.45rem 0.7rem',
-                fontSize: 12,
-                color: 'var(--text)',
-                outline: 'none',
-              }}
+              style={{ ...inputStyle, width: '100%' }}
             />
-          </div>
+          </Field>
 
-          <div>
-            <label
-              style={{
-                display: 'block',
-                fontSize: 12,
-                fontWeight: 500,
-                marginBottom: 4,
-              }}
-            >
-              Cabang
-            </label>
+          <Field label="Cabang">
             <select
               value={branchId}
-              onChange={(e) => setBranchId(e.target.value)}
-              style={{
-                width: '100%',
-                backgroundColor: 'var(--bg)',
-                borderRadius: 8,
-                border: '1px solid var(--border)',
-                padding: '0.45rem 0.7rem',
-                fontSize: 12,
-                color: 'var(--text)',
-                outline: 'none',
+              onChange={(e) => {
+                setBranchId(e.target.value)
+                setCategoryId('')
               }}
+              style={inputStyle}
             >
-              <option value="">Pilih cabang...</option>
-              {branches.map((b) => (
+              <option value="">Pilih cabang</option>
+              {safeBranches.map((b) => (
                 <option key={b.id} value={b.id}>
                   {b.name}
                 </option>
               ))}
             </select>
-          </div>
+          </Field>
 
-          <div>
-            <label
-              style={{
-                display: 'block',
-                fontSize: 12,
-                fontWeight: 500,
-                marginBottom: 4,
+          <Field label="Tipe">
+            <select
+              value={type}
+              onChange={(e) => {
+                setType(e.target.value)
+                setCategoryId('')
               }}
+              style={inputStyle}
             >
-              Tipe
-            </label>
-            <div style={{ display: 'flex', gap: 8 }}>
-              {[
-                { value: 'Income', label: 'Income' },
-                { value: 'Expense', label: 'Expense' },
-              ].map((opt) => (
-                <button
-                  key={opt.value}
-                  type="button"
-                  onClick={() => setType(opt.value)}
-                  style={{
-                    padding: '0.35rem 0.7rem',
-                    borderRadius: 9999,
-                    border:
-                      type === opt.value
-                        ? '1px solid var(--accent)'
-                        : '1px solid var(--border)',
-                    backgroundColor:
-                      type === opt.value ? 'var(--accent)' : 'transparent',
-                    color:
-                      type === opt.value ? 'var(--bg)' : 'var(--text)',
-                    fontSize: 12,
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                  }}
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
-          </div>
+              <option value="Income">Income</option>
+              <option value="Expense">Expense</option>
+            </select>
+          </Field>
 
-          <div>
-            <label
-              style={{
-                display: 'block',
-                fontSize: 12,
-                fontWeight: 500,
-                marginBottom: 4,
-              }}
-            >
-              Kategori
-            </label>
+          <Field label="Kategori">
             <select
               value={categoryId}
               onChange={(e) => setCategoryId(e.target.value)}
-              style={{
-                width: '100%',
-                backgroundColor: 'var(--bg)',
-                borderRadius: 8,
-                border: '1px solid var(--border)',
-                padding: '0.45rem 0.7rem',
-                fontSize: 12,
-                color: 'var(--text)',
-                outline: 'none',
-              }}
+              style={inputStyle}
             >
-              <option value="">Pilih kategori...</option>
+              <option value="">Pilih kategori</option>
               {filteredCategories.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}
                 </option>
               ))}
             </select>
-          </div>
+          </Field>
 
-          <div>
-            <label
-              style={{
-                display: 'block',
-                fontSize: 12,
-                fontWeight: 500,
-                marginBottom: 4,
-              }}
+          <Field label="Jumlah">
+            <div
+              style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}
             >
-              Metode Pembayaran
-            </label>
+              <span
+                style={{ fontSize: '0.9rem', color: 'var(--subtext)' }}
+              >
+                Rp
+              </span>
+              <input
+                type="text"
+                value={amountInput}
+                onChange={handleAmountChange}
+                placeholder="250000"
+                style={{ ...inputStyle, flex: 1 }}
+              />
+            </div>
+          </Field>
+
+          <Field label="Pembayaran">
             <select
               value={payment}
               onChange={(e) => setPayment(e.target.value)}
-              style={{
-                width: '100%',
-                backgroundColor: 'var(--bg)',
-                borderRadius: 8,
-                border: '1px solid var(--border)',
-                padding: '0.45rem 0.7rem',
-                fontSize: 12,
-                color: 'var(--text)',
-                outline: 'none',
-              }}
+              style={inputStyle}
             >
-              {PAYMENT_METHODS.map((m) => (
-                <option key={m.value} value={m.value}>
-                  {m.label}
+              <option value="">Pilih pembayaran</option>
+              {pembayaranOptions.map((p) => (
+                <option key={p.value} value={p.value}>
+                  {p.label}
                 </option>
               ))}
             </select>
-          </div>
+          </Field>
 
-          <div>
-            <label
-              style={{
-                display: 'block',
-                fontSize: 12,
-                fontWeight: 500,
-                marginBottom: 4,
-              }}
-            >
-              Jumlah
-            </label>
-            <input
-              value={amountInput}
-              onChange={(e) => handleAmountChange(e.target.value)}
-              placeholder="Masukkan nominal"
-              style={{
-                width: '100%',
-                backgroundColor: 'var(--bg)',
-                borderRadius: 8,
-                border: '1px solid var(--border)',
-                padding: '0.45rem 0.7rem',
-                fontSize: 12,
-                color: 'var(--text)',
-                outline: 'none',
-              }}
+          <Field label="Deskripsi (opsional)">
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              rows={3}
+              style={{ ...inputStyle, resize: 'vertical' }}
             />
-          </div>
-        </div>
-
-        <div style={{ marginBottom: '1rem' }}>
-          <label
-            style={{
-              display: 'block',
-              fontSize: 12,
-              fontWeight: 500,
-              marginBottom: 4,
-            }}
-          >
-            Deskripsi (opsional)
-          </label>
-          <textarea
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            rows={3}
-            placeholder="Catatan tambahan..."
-            style={{
-              width: '100%',
-              backgroundColor: 'var(--bg)',
-              borderRadius: 8,
-              border: '1px solid var(--border)',
-              padding: '0.55rem 0.7rem',
-              fontSize: 12,
-              color: 'var(--text)',
-              outline: 'none',
-              resize: 'vertical',
-            }}
-          />
+          </Field>
         </div>
 
         <div
-          style={{
-            display: 'flex',
-            justifyContent: 'flex-end',
-            gap: 8,
-          }}
+          style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}
         >
           <button
-            type="button"
             onClick={onClose}
             style={{
-              backgroundColor: 'transparent',
+              padding: '0.6rem 1.3rem',
               borderRadius: 9999,
               border: '1px solid var(--border)',
+              backgroundColor: 'transparent',
               color: 'var(--text)',
-              fontSize: 12,
-              padding: '0.45rem 1rem',
+              fontSize: '0.85rem',
               cursor: 'pointer',
             }}
           >
             Batal
           </button>
           <button
-            type="button"
             onClick={handleSubmit}
             style={{
-              backgroundColor: 'var(--accent)',
+              padding: '0.6rem 1.4rem',
               borderRadius: 9999,
               border: 'none',
+              backgroundColor: 'var(--accent)',
               color: 'var(--bg)',
-              fontSize: 12,
               fontWeight: 600,
-              padding: '0.45rem 1.2rem',
+              fontSize: '0.85rem',
               cursor: 'pointer',
             }}
           >
@@ -889,6 +1000,119 @@ function AddTransactionModal({
         </div>
       </div>
     </div>
+  )
+}
+
+function TransactionRow({ transaction, onAskDelete }) {
+  const isIncome = transaction.type === 'Income'
+  const source = transaction.source || 'Manual'
+
+  const sourceColor =
+    source === 'Email'
+      ? '#60a5fa'
+      : source === 'Whatsapp'
+      ? '#22c55e'
+      : '#e5e7eb'
+
+  const sourceBg =
+    source === 'Email'
+      ? 'rgba(59, 130, 246, 0.15)'
+      : source === 'Whatsapp'
+      ? 'rgba(34, 197, 94, 0.15)'
+      : 'rgba(148, 163, 184, 0.12)'
+
+  return (
+    <tr style={{ borderBottom: '1px solid var(--border)' }}>
+      <td
+        style={{
+          padding: '1rem 1.5rem',
+          fontWeight: '500',
+          color: 'var(--text)',
+        }}
+      >
+        {new Date(transaction.date).toLocaleDateString('id-ID', {
+          day: 'numeric',
+          month: 'short',
+        })}
+      </td>
+      <td style={{ padding: '1rem 1.5rem', color: 'var(--text)' }}>
+        {transaction.unitBusiness}
+      </td>
+      <td style={{ padding: '1rem 1.5rem' }}>
+        <span
+          style={{
+            padding: '0.375rem 0.75rem',
+            backgroundColor: 'rgba(59, 130, 246, 0.15)',
+            color: '#60a5fa',
+            borderRadius: '9999px',
+            fontSize: '0.75rem',
+            fontWeight: '500',
+          }}
+        >
+          {transaction.branch}
+        </span>
+      </td>
+      <td style={{ padding: '1rem 1.5rem', color: 'var(--text)' }}>
+        {transaction.category}
+      </td>
+      <td style={{ padding: '1rem 1.5rem' }}>
+        <span
+          style={{
+            padding: '0.375rem 0.75rem',
+            backgroundColor: isIncome
+              ? 'rgba(34, 197, 94, 0.15)'
+              : 'rgba(239, 68, 68, 0.15)',
+            color: isIncome ? '#4ade80' : '#f87171',
+            borderRadius: '9999px',
+            fontSize: '0.75rem',
+            fontWeight: '500',
+          }}
+        >
+          {transaction.type}
+        </span>
+      </td>
+      <td
+        style={{
+          padding: '1rem 1.5rem',
+          fontWeight: '600',
+          color: isIncome ? '#10b981' : '#ef4444',
+        }}
+      >
+        Rp {new Intl.NumberFormat('id-ID').format(transaction.amount)}
+      </td>
+      <td style={{ padding: '1rem 1.5rem' }}>
+        <span
+          style={{
+            padding: '0.375rem 0.75rem',
+            borderRadius: 9999,
+            backgroundColor: sourceBg,
+            color: sourceColor,
+            fontSize: '0.75rem',
+            fontWeight: 500,
+          }}
+        >
+          {source}
+        </span>
+      </td>
+      <td style={{ padding: '1rem 1.5rem' }}>
+        <button
+          onClick={() => onAskDelete(transaction)}
+          title="Hapus Permanen"
+          style={{
+            color: '#f87171',
+            padding: '0.5rem',
+            borderRadius: '8px',
+            border: 'none',
+            background: 'none',
+            cursor: 'pointer',
+            fontSize: '1.25rem',
+            transition: 'all 0.2s',
+          }}
+        >
+          🗑️
+        </button>
+      </td>
+    </tr>
   )
 }
 

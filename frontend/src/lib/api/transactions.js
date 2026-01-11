@@ -73,7 +73,16 @@ function mapToBackendPayload(frontendTx) {
     payment_method: frontendTx.payment, // "CASH" | "QRIS" | "TRANSFER"
     transaction_type:
       frontendTx.type === 'Income' ? 'INCOME' : 'EXPENSE',
-    source: 'MANUAL',
+
+    // sumber transaksi (Manual / Whatsapp / Email).
+    // untuk halaman transaksi manual: selalu 'MANUAL'
+    source: frontendTx.source
+      ? frontendTx.source.toUpperCase()
+      : 'MANUAL',
+
+    // WAJIB untuk serializer → minimal string sederhana
+    source_identifier:
+      frontendTx.sourceIdentifier || 'manual-entry',
   }
 }
 
