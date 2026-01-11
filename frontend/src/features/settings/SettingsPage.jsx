@@ -232,6 +232,78 @@ function SettingsPage({
     setBusinessConfigs(updated)
   }
 
+  // Kategori (UI only, with rename + delete)
+  const [selectedCategoryTypeId, setSelectedCategoryTypeId] = useState(
+    businessConfigs.length ? businessConfigs[0].id : '',
+  )
+  const categoryUnit =
+    businessConfigs.find((b) => b.id === selectedCategoryTypeId) || null
+  const [newCategoryName, setNewCategoryName] = useState('')
+  const [editingCategoryIndex, setEditingCategoryIndex] = useState(null)
+  const [editingCategoryName, setEditingCategoryName] = useState('')
+
+  const categoryList = categoryUnit?.categories || []
+
+  const handleAddCategory = () => {
+    if (!categoryUnit) return
+    const trimmed = newCategoryName.trim()
+    if (!trimmed) return
+    const updated = businessConfigs.map((b) =>
+      b.id === categoryUnit.id
+        ? {
+            ...b,
+            categories: [...(b.categories || []), trimmed],
+          }
+        : b,
+    )
+    setBusinessConfigs(updated)
+    setNewCategoryName('')
+    showToast?.('Kategori berhasil ditambahkan.')
+  }
+
+  const handleDeleteCategory = (index) => {
+    if (!categoryUnit) return
+    const updatedList = (categoryUnit.categories || []).filter(
+      (_, i) => i !== index,
+    )
+    const updated = businessConfigs.map((b) =>
+      b.id === categoryUnit.id
+        ? {
+            ...b,
+            categories: updatedList,
+          }
+        : b,
+    )
+    setBusinessConfigs(updated)
+    showToast?.('Kategori berhasil dihapus.')
+  }
+
+  const handleStartEditCategory = (index, name) => {
+    setEditingCategoryIndex(index)
+    setEditingCategoryName(name)
+  }
+
+  const handleSaveEditCategory = () => {
+    if (!categoryUnit || editingCategoryIndex === null) return
+    const trimmed = editingCategoryName.trim()
+    if (!trimmed) return
+    const updatedList = (categoryUnit.categories || []).map((cat, idx) =>
+      idx === editingCategoryIndex ? trimmed : cat,
+    )
+    const updated = businessConfigs.map((b) =>
+      b.id === categoryUnit.id
+        ? {
+            ...b,
+            categories: updatedList,
+          }
+        : b,
+    )
+    setBusinessConfigs(updated)
+    setEditingCategoryIndex(null)
+    setEditingCategoryName('')
+    showToast?.('Kategori berhasil diubah.')
+  }
+
   const renderConfirmModal = () => {
     if (!confirmModal || !confirmModal.branch) return null
     const { type, branch } = confirmModal
@@ -375,7 +447,7 @@ function SettingsPage({
 
           <div style={{ marginBottom: '1rem' }}>
             <p style={{ fontSize: 12, color: 'var(--subtext)', marginBottom: 6 }}>
-              Tipe Unit Bisnis (branch_type)
+              Tipe Unit Bisnis
             </p>
             <select
               value={selectedTypeId}
@@ -391,20 +463,196 @@ function SettingsPage({
                 outline: 'none',
               }}
             >
-              {businessConfigs.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {branchTypeLabel(b.id)}
+              {BRANCH_TYPES.map((t) => (
+                <option key={t.value} value={t.value}>
+                  {t.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {/* Kategori (baru) */}
+        <div
+          style={{
+            backgroundColor: 'var(--bg-elevated)',
+            border: '1px solid var(--border)',
+            borderRadius: '12px',
+            padding: '1.5rem',
+          }}
+        >
+          <h2 style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '1rem' }}>
+            Kategori
+          </h2>
+
+          <div style={{ marginBottom: '1rem' }}>
+            <p style={{ fontSize: 12, color: 'var(--subtext)', marginBottom: 6 }}>
+              Pilih Tipe Unit Bisnis
+            </p>
+            <select
+              value={selectedCategoryTypeId}
+              onChange={(e) => setSelectedCategoryTypeId(e.target.value)}
+              style={{
+                width: '100%',
+                backgroundColor: 'var(--bg)',
+                borderRadius: 12,
+                border: '1px solid var(--border)',
+                padding: '0.7rem 1rem',
+                fontSize: 13,
+                color: 'var(--text)',
+                outline: 'none',
+              }}
+            >
+              {BRANCH_TYPES.map((t) => (
+                <option key={t.value} value={t.value}>
+                  {t.label}
                 </option>
               ))}
             </select>
           </div>
 
-          {selectedUnit && (
-            <p style={{ fontSize: 12, color: 'var(--subtext)' }}>
-              Tipe ini mewakili semua cabang dengan branch_type{' '}
-              <strong>{selectedUnit.id}</strong>.
+          <div style={{ marginBottom: '0.75rem' }}>
+            <p style={{ fontSize: 12, color: 'var(--subtext)', marginBottom: 4 }}>
+              Tambah kategori
             </p>
-          )}
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input
+                placeholder="Nama kategori..."
+                value={newCategoryName}
+                onChange={(e) => setNewCategoryName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    handleAddCategory()
+                  }
+                }}
+                style={{
+                  flex: 1,
+                  backgroundColor: 'var(--bg)',
+                  borderRadius: 9999,
+                  border: '1px solid var(--border)',
+                  padding: '0.5rem 0.9rem',
+                  fontSize: 12,
+                  color: 'var(--text)',
+                  outline: 'none',
+                }}
+              />
+              <button
+                type="button"
+                onClick={handleAddCategory}
+                style={{
+                  backgroundColor: 'var(--accent)',
+                  borderRadius: 9999,
+                  border: 'none',
+                  color: 'var(--bg)',
+                  fontSize: 12,
+                  fontWeight: 600,
+                  padding: '0.45rem 0.9rem',
+                  cursor: 'pointer',
+                }}
+              >
+                Tambah
+              </button>
+            </div>
+          </div>
+
+          <div
+            style={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: 8,
+            }}
+          >
+            {categoryList && categoryList.length > 0 ? (
+              categoryList.map((cat, idx) => (
+                <div
+                  key={`${cat}-${idx}`}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    padding: '0.35rem 0.8rem',
+                    borderRadius: 9999,
+                    backgroundColor: 'rgba(59,130,246,0.15)',
+                    color: '#bfdbfe',
+                    fontSize: 11,
+                  }}
+                >
+                  {editingCategoryIndex === idx ? (
+                    <>
+                      <input
+                        value={editingCategoryName}
+                        onChange={(e) => setEditingCategoryName(e.target.value)}
+                        style={{
+                          backgroundColor: 'var(--bg)',
+                          borderRadius: 9999,
+                          border: '1px solid var(--border)',
+                          padding: '0.25rem 0.5rem',
+                          fontSize: 11,
+                          color: 'var(--text)',
+                          outline: 'none',
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={handleSaveEditCategory}
+                        style={{
+                          border: 'none',
+                          backgroundColor: '#22c55e',
+                          color: 'white',
+                          cursor: 'pointer',
+                          fontSize: 11,
+                          borderRadius: 9999,
+                          padding: '0.2rem 0.6rem',
+                        }}
+                      >
+                        Simpan
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <span>{cat}</span>
+                      <button
+                        type="button"
+                        onClick={() => handleStartEditCategory(idx, cat)}
+                        style={{
+                          border: 'none',
+                          background: 'none',
+                          color: '#93c5fd',
+                          cursor: 'pointer',
+                          fontSize: 11,
+                        }}
+                      >
+                        Ubah
+                      </button>
+                    </>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteCategory(idx)}
+                    style={{
+                      border: 'none',
+                      background: 'none',
+                      color: '#fecaca',
+                      cursor: 'pointer',
+                      fontSize: 12,
+                    }}
+                  >
+                    ×
+                  </button>
+                </div>
+              ))
+            ) : (
+              <span
+                style={{
+                  fontSize: 11,
+                  color: 'var(--subtext)',
+                }}
+              >
+                Belum ada kategori untuk tipe ini.
+              </span>
+            )}
+          </div>
         </div>
 
         {/* Cabang */}
@@ -786,81 +1034,6 @@ function SettingsPage({
               </div>
             </div>
           )}
-        </div>
-
-        {/* Preferensi Transaksi */}
-        <div
-          style={{
-            backgroundColor: 'var(--bg-elevated)',
-            border: '1px solid var(--border)',
-            borderRadius: '12px',
-            padding: '1.5rem',
-          }}
-        >
-          <h2 style={{ fontSize: '1.05rem', fontWeight: 600, marginBottom: '0.75rem' }}>
-            Preferensi Transaksi
-          </h2>
-          <div style={{ marginBottom: '0.75rem' }}>
-            <p style={{ fontSize: 12, color: 'var(--subtext)', marginBottom: 4 }}>
-              Default tipe transaksi
-            </p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              {['Income', 'Expense', 'LastUsed'].map((opt) => (
-                <label
-                  key={opt}
-                  style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}
-                >
-                  <input
-                    type="radio"
-                    checked={appSettings.defaultTransactionType === opt}
-                    onChange={() =>
-                      setAppSettings((prev) => ({
-                        ...prev,
-                        defaultTransactionType: opt,
-                      }))
-                    }
-                  />
-                  <span>
-                    {opt === 'Income'
-                      ? 'Income'
-                      : opt === 'Expense'
-                      ? 'Expense'
-                      : 'Gunakan tipe terakhir'}
-                  </span>
-                </label>
-              ))}
-            </div>
-          </div>
-
-          <div>
-            <p style={{ fontSize: 12, color: 'var(--subtext)', marginBottom: 4 }}>
-              Default tanggal transaksi
-            </p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              {['today', 'empty'].map((mode) => (
-                <label
-                  key={mode}
-                  style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}
-                >
-                  <input
-                    type="radio"
-                    checked={appSettings.defaultDateMode === mode}
-                    onChange={() =>
-                      setAppSettings((prev) => ({
-                        ...prev,
-                        defaultDateMode: mode,
-                      }))
-                    }
-                  />
-                  <span>
-                    {mode === 'today'
-                      ? 'Otomatis isi hari ini'
-                      : 'Biarkan kosong (isi manual)'}
-                  </span>
-                </label>
-              ))}
-            </div>
-          </div>
         </div>
       </div>
 
