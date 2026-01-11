@@ -202,12 +202,12 @@ class Transaction(TimeStampedModel):
         ]
 
         # Constrain to prevent duplicate transactions
-        constraints = [
-            models.UniqueConstraint(
-                fields=['branch', 'date', 'amount', 'transaction_type', 'category', 'source', 'source_identifier'],
-                name='unique_transaction_per_source'
-            ),
-        ]
+        #constraints = [
+         #   models.UniqueConstraint(
+          #      fields=['branch', 'date', 'amount', 'transaction_type', 'category', 'source', 'source_identifier'],
+           #     name='unique_transaction_per_source'
+            #),
+        #]
 
     def __str__(self):
         status = "✓" if self.is_verified else "⏳"
