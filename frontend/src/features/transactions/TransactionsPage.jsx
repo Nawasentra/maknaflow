@@ -62,14 +62,13 @@ function TransactionsPage({
     direction: 'desc',
   })
 
-  // PAGINATION STATE
   const [currentPage, setCurrentPage] = useState(1)
   const pageSize = 10
 
   const setSafeBranches = (br) => setBranches(Array.isArray(br) ? br : [])
   const setSafeCategories = (cat) => setCategories(Array.isArray(cat) ? cat : [])
 
-  // --- Load branches, categories, dan transaksi awal ---
+  // --- fetch ulang transaksi dari API ---
   const reloadTransactions = async () => {
     try {
       setLoading(true)
@@ -84,6 +83,7 @@ function TransactionsPage({
     }
   }
 
+  // --- initial load (branches, categories, transactions) ---
   useEffect(() => {
     const loadMeta = async () => {
       try {
@@ -109,7 +109,7 @@ function TransactionsPage({
 
   const safeTransactions = Array.isArray(transactions) ? transactions : []
 
-  // --- Generate opsi Unit & Cabang dari transactions ---
+  // --- opsi Unit & Cabang ---
   const unitOptions = useMemo(() => {
     const units = Array.from(
       new Set(safeTransactions.map((t) => t.unitBusiness).filter(Boolean)),
@@ -128,14 +128,13 @@ function TransactionsPage({
     return ['Semua Cabang', ...names]
   }, [safeTransactions, filterUnit])
 
-  // Pastikan filterBranch tetap valid kalau unit berubah
   useEffect(() => {
     if (!branchOptions.includes(filterBranch)) {
       setFilterBranch('Semua Cabang')
     }
   }, [branchOptions, filterBranch])
 
-  // --- Filter transaksi berdasarkan search + Unit + Cabang ---
+  // --- filter transaksi ---
   const filteredTransactions = safeTransactions.filter((t) => {
     if (searchTerm) {
       const q = searchTerm.toLowerCase()
@@ -160,7 +159,6 @@ function TransactionsPage({
     return true
   })
 
-  // Reset pagination ke page 1 kalau filter/search berubah
   useEffect(() => {
     setCurrentPage(1)
   }, [searchTerm, filterUnit, filterBranch])
@@ -237,7 +235,6 @@ function TransactionsPage({
     }
   }
 
-  // --- Pagination logic ---
   const totalItems = sortedTransactions.length
   const totalPages = Math.max(1, Math.ceil(totalItems / pageSize))
   const startIndex = (currentPage - 1) * pageSize
@@ -315,7 +312,7 @@ function TransactionsPage({
               </p>
             </div>
 
-            {/* Search & Action Buttons */}
+            {/* search + refresh + add */}
             <div
               style={{
                 display: 'flex',
@@ -373,7 +370,7 @@ function TransactionsPage({
               </button>
             </div>
 
-            {/* Filter Unit + Cabang */}
+            {/* filter unit + cabang */}
             <div
               style={{
                 display: 'grid',
@@ -383,7 +380,6 @@ function TransactionsPage({
                 alignItems: 'flex-end',
               }}
             >
-              {/* Filter Unit Bisnis */}
               <div>
                 <label
                   style={{
@@ -419,7 +415,6 @@ function TransactionsPage({
                 </select>
               </div>
 
-              {/* Filter Cabang */}
               <div>
                 <label
                   style={{
@@ -455,6 +450,7 @@ function TransactionsPage({
           </div>
         </div>
 
+        {/* table */}
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
@@ -525,7 +521,7 @@ function TransactionsPage({
           </table>
         </div>
 
-        {/* Pagination bar */}
+        {/* pagination */}
         <div
           style={{
             display: 'flex',
@@ -892,8 +888,8 @@ function AddTransactionModal({
                 style={{
                   ...inputStyle,
                   width: '100%',
-                  borderColor: 'rgba(148,163,184,0.8)',
-                  colorScheme: 'dark',
+                  borderColor: 'rgba(148,163,184,0.7)',
+                  backgroundColor: 'rgba(15,23,42,0.06)',
                   cursor: 'pointer',
                 }}
               />
@@ -1054,14 +1050,14 @@ function TransactionRow({ transaction, onAskDelete }) {
       ? '#2563eb'
       : source === 'Whatsapp'
       ? '#059669'
-      : '#111827'
+      : 'var(--text)'
 
   const sourceBg =
     source === 'Email'
-      ? 'rgba(37, 99, 235, 0.1)'
+      ? 'rgba(37, 99, 235, 0.12)'
       : source === 'Whatsapp'
-      ? 'rgba(5, 150, 105, 0.1)'
-      : 'rgba(17, 24, 39, 0.06)'
+      ? 'rgba(5, 150, 105, 0.12)'
+      : 'rgba(148, 163, 184, 0.25)'
 
   return (
     <tr style={{ borderBottom: '1px solid var(--border)' }}>
