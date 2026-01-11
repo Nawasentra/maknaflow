@@ -54,12 +54,11 @@ function TransactionsPage({
     direction: 'desc',
   })
 
-  // Load from backend once
+  // Load initial data
   useEffect(() => {
     const load = async () => {
       try {
         const data = await fetchTransactions()
-        console.log('fetchTransactions result:', data)
         setTransactions(data)
       } catch (e) {
         console.error(e)
@@ -492,32 +491,28 @@ function AddTransactionModal({
 
   const handleSubmit = () => {
     console.log('SUBMIT CLICKED')
+
     const digits = amountInput.replace(/[^\d]/g, '')
+    console.log('FIELD VALUES:', {
+      date,
+      unitBusiness,
+      branch,
+      category,
+      type,
+      payment,
+      digits,
+    })
+
     if (!date || !unitBusiness || !branch || !category || !type || !payment || !digits) {
-      console.log('MISSING FIELD', {
-        date,
-        unitBusiness,
-        branch,
-        category,
-        type,
-        payment,
-        digits,
-      })
+      console.log('MISSING FIELD STOP')
       return
     }
 
-    const selectedBranchConfig =
-      configForUnit?.branches.find((b) => b.name === branch) || null
-    const branchId = selectedBranchConfig?.id || null
+    // For now, IDs null – adjust later once you have them from backend configs
+    const branchId = null
+    const categoryId = null
 
-    const allCats = [
-      ...(selectedBranchConfig?.incomeCategories || []),
-      ...(selectedBranchConfig?.expenseCategories || []),
-    ]
-    const selectedCategoryObj = allCats.find((c) => c.name === category) || null
-    const categoryId = selectedCategoryObj?.id || null
-
-    console.log('CALLING onSave with:', {
+    const payload = {
       date,
       unitBusiness,
       branch,
@@ -527,19 +522,10 @@ function AddTransactionModal({
       payment,
       branchId,
       categoryId,
-    })
+    }
 
-    onSave({
-      date,
-      unitBusiness,
-      branch,
-      category,
-      type,
-      amount: Number(digits),
-      payment,
-      branchId,
-      categoryId,
-    })
+    console.log('CALLING onSave with:', payload)
+    onSave(payload)
   }
 
   return (

@@ -1,7 +1,7 @@
 // src/lib/api/transactions.js
 import api from '../axios'
 
-// MOCK only for fallback / testing
+// Fallback sample data only for initial load error
 const mockTransactions = [
   {
     id: 1,
@@ -48,12 +48,12 @@ function mapTransaction(t) {
   }
 }
 
-// Frontend -> backend mapper
+// Frontend -> backend mapper (branch/category optional for now)
 function mapToBackendPayload(frontendTx) {
   return {
     date: frontendTx.date,
-    branch: frontendTx.branchId, // FK id
-    category: frontendTx.categoryId, // FK id
+    branch: frontendTx.branchId || null,
+    category: frontendTx.categoryId || null,
     amount: frontendTx.amount,
     description: frontendTx.description || '',
     payment_method: frontendTx.payment,
@@ -66,7 +66,9 @@ export async function fetchTransactions(params = {}) {
   try {
     const res = await api.get('/transactions/', { params })
     const data = Array.isArray(res.data) ? res.data : res.data.results || []
-    return data.map(mapTransaction)
+    const mapped = data.map(mapTransaction)
+    console.log('fetchTransactions ->', mapped)
+    return mapped
   } catch (err) {
     console.error('fetchTransactions failed, using mock:', err)
     return mockTransactions
@@ -75,9 +77,9 @@ export async function fetchTransactions(params = {}) {
 
 export async function createTransaction(frontendTx) {
   try {
-    console.log('createTransaction payload frontend:', frontendTx)
+    console.log('createTransaction frontendTx:', frontendTx)
     const payload = mapToBackendPayload(frontendTx)
-    console.log('createTransaction payload backend:', payload)
+    console.log('createTransaction backend payload:', payload)
     const res = await api.post('/transactions/', payload)
     console.log('createTransaction response:', res.data)
     return mapTransaction(res.data)
@@ -87,7 +89,6 @@ export async function createTransaction(frontendTx) {
       err.response?.status,
       err.response?.data || err.message,
     )
-    // IMPORTANT: throw so you see the error; do NOT silently mock
     throw err
   }
 }
