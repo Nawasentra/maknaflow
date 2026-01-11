@@ -1,17 +1,40 @@
-import React, { useState } from 'react'
+// src/features/settings/SettingsPage.jsx
+import React, { useState, useEffect } from 'react'
+import { updateBranch } from '../../lib/api/branchesCategories'
 
-function SettingsPage({ businessConfigs, setBusinessConfigs, appSettings, setAppSettings, showToast }) {
-  const [selectedUnitId, setSelectedUnitId] = useState(
+const BRANCH_TYPES = [
+  { value: 'LAUNDRY', label: 'Laundry' },
+  { value: 'CARWASH', label: 'Car Wash' },
+  { value: 'KOS', label: 'Kos' },
+  { value: 'OTHER', label: 'Other Business' },
+]
+
+const branchTypeLabel = (value) =>
+  BRANCH_TYPES.find((t) => t.value === value)?.label || value
+
+function SettingsPage({
+  businessConfigs,
+  setBusinessConfigs,
+  appSettings,
+  setAppSettings,
+  showToast,
+}) {
+  // selected unit = group by branch_type (id is the enum)
+  const [selectedTypeId, setSelectedTypeId] = useState(
     businessConfigs.length ? businessConfigs[0].id : '',
   )
-  const selectedUnit = businessConfigs.find((b) => b.id === selectedUnitId) || null
+  const selectedUnit =
+    businessConfigs.find((b) => b.id === selectedTypeId) || null
 
   const [selectedBranchId, setSelectedBranchId] = useState(
     selectedUnit && selectedUnit.branches.length ? selectedUnit.branches[0].id : '',
   )
 
-  React.useEffect(() => {
-    if (!selectedUnit) return
+  useEffect(() => {
+    if (!selectedUnit) {
+      setSelectedBranchId('')
+      return
+    }
     if (!selectedUnit.branches.length) {
       setSelectedBranchId('')
       return
@@ -19,65 +42,41 @@ function SettingsPage({ businessConfigs, setBusinessConfigs, appSettings, setApp
     if (!selectedUnit.branches.find((b) => b.id === selectedBranchId)) {
       setSelectedBranchId(selectedUnit.branches[0].id)
     }
-  }, [selectedUnitId, businessConfigs]) // eslint-disable-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedTypeId, businessConfigs])
 
   const selectedBranch =
     selectedUnit && selectedUnit.branches.find((b) => b.id === selectedBranchId)
 
-  const handleRenameUnit = (newName) => {
-    setBusinessConfigs((prev) =>
-      prev.map((b) =>
-        b.id === selectedUnitId
-          ? {
-              ...b,
-              unitBusiness: newName,
-              id: newName,
-            }
-          : b,
-      ),
-    )
-    setSelectedUnitId(newName)
+  // Rename branch -> PATCH /branches/{id}/
+  const handleRenameBranch = async (newName) => {
+    if (!selectedBranch) return
+    const trimmed = newName.trim()
+    if (!trimmed) return
+    try {
+      await updateBranch(selectedBranch.id, { name: trimmed })
+      setBusinessConfigs((prev) =>
+        prev.map((u) =>
+          u.id === selectedUnit.id
+            ? {
+                ...u,
+                branches: u.branches.map((br) =>
+                  br.id === selectedBranch.id ? { ...br, name: trimmed } : br,
+                ),
+              }
+            : u,
+        ),
+      )
+      showToast?.('Nama cabang berhasil diubah.')
+    } catch (e) {
+      console.error(e)
+      showToast?.('Gagal mengubah nama cabang.', 'error')
+    }
   }
 
-  const handleToggleUnitActive = () => {
-    if (!selectedUnit) return
-    const nowActive = !selectedUnit.active
-    setBusinessConfigs((prev) =>
-      prev.map((b) =>
-        b.id === selectedUnitId
-          ? {
-              ...b,
-              active: nowActive,
-            }
-          : b,
-      ),
-    )
-    showToast?.(
-      nowActive
-        ? `Berhasil mengaktifkan tipe ${selectedUnit.unitBusiness}.`
-        : `Berhasil menonaktifkan tipe ${selectedUnit.unitBusiness}.`,
-    )
-  }
-
-  const handleRenameBranch = (newName) => {
-    if (!selectedUnit || !selectedBranch) return
-    setBusinessConfigs((prev) =>
-      prev.map((u) =>
-        u.id === selectedUnit.id
-          ? {
-              ...u,
-              branches: u.branches.map((br) =>
-                br.id === selectedBranch.id ? { ...br, name: newName, id: newName } : br,
-              ),
-            }
-          : u,
-      ),
-    )
-    setSelectedBranchId(newName)
-  }
-
+  // Simple UI-only toggle (backend has no active flag)
   const handleToggleBranchActive = () => {
-    if (!selectedUnit || !selectedBranch) return
+    if (!selectedBranch) return
     const nowActive = selectedBranch.active === false ? true : false
     setBusinessConfigs((prev) =>
       prev.map((u) =>
@@ -100,6 +99,7 @@ function SettingsPage({ businessConfigs, setBusinessConfigs, appSettings, setApp
     )
   }
 
+  // Default categories (kept only in UI for now)
   const [editSelectedId, setEditSelectedId] = useState(
     businessConfigs.length ? businessConfigs[0].id : '',
   )
@@ -201,7 +201,7 @@ function SettingsPage({ businessConfigs, setBusinessConfigs, appSettings, setApp
           gap: '1.5rem',
         }}
       >
-        {/* Struktur Bisnis */}
+        {/* Struktur Bisnis (per branch_type) */}
         <div
           style={{
             backgroundColor: 'var(--bg-elevated)',
@@ -216,11 +216,11 @@ function SettingsPage({ businessConfigs, setBusinessConfigs, appSettings, setApp
 
           <div style={{ marginBottom: '1rem' }}>
             <p style={{ fontSize: 12, color: 'var(--subtext)', marginBottom: 6 }}>
-              Tipe Unit Bisnis
+              Tipe Unit Bisnis (branch_type)
             </p>
             <select
-              value={selectedUnitId}
-              onChange={(e) => setSelectedUnitId(e.target.value)}
+              value={selectedTypeId}
+              onChange={(e) => setSelectedTypeId(e.target.value)}
               style={{
                 width: '100%',
                 backgroundColor: 'var(--bg)',
@@ -234,50 +234,17 @@ function SettingsPage({ businessConfigs, setBusinessConfigs, appSettings, setApp
             >
               {businessConfigs.map((b) => (
                 <option key={b.id} value={b.id}>
-                  {b.unitBusiness}
+                  {branchTypeLabel(b.id)}
                 </option>
               ))}
             </select>
           </div>
 
           {selectedUnit && (
-            <>
-              <div style={{ marginBottom: '1rem' }}>
-                <p style={{ fontSize: 12, color: 'var(--subtext)', marginBottom: 6 }}>
-                  Ganti nama tipe unit
-                </p>
-                <input
-                  value={selectedUnit.unitBusiness}
-                  onChange={(e) => handleRenameUnit(e.target.value)}
-                  style={{
-                    width: '100%',
-                    backgroundColor: 'var(--bg)',
-                    borderRadius: 12,
-                    border: '1px solid var(--border)',
-                    padding: '0.7rem 1rem',
-                    fontSize: 13,
-                    color: 'var(--text)',
-                    outline: 'none',
-                  }}
-                />
-              </div>
-              <button
-                type="button"
-                onClick={handleToggleUnitActive}
-                style={{
-                  backgroundColor: selectedUnit.active ? '#22c55e' : '#6b7280',
-                  borderRadius: 9999,
-                  border: 'none',
-                  color: 'var(--bg)',
-                  fontSize: 13,
-                  fontWeight: 600,
-                  padding: '0.45rem 1.1rem',
-                  cursor: 'pointer',
-                }}
-              >
-                {selectedUnit.active ? 'Nonaktifkan Tipe' : 'Aktifkan Tipe'}
-              </button>
-            </>
+            <p style={{ fontSize: 12, color: 'var(--subtext)' }}>
+              Tipe ini mewakili semua cabang dengan branch_type{' '}
+              <strong>{selectedUnit.id}</strong>.
+            </p>
           )}
         </div>
 
@@ -301,7 +268,7 @@ function SettingsPage({ businessConfigs, setBusinessConfigs, appSettings, setApp
                 </p>
                 <select
                   value={selectedBranchId}
-                  onChange={(e) => setSelectedBranchId(e.target.value)}
+                  onChange={(e) => setSelectedBranchId(Number(e.target.value))}
                   style={{
                     width: '100%',
                     backgroundColor: 'var(--bg)',
@@ -358,8 +325,8 @@ function SettingsPage({ businessConfigs, setBusinessConfigs, appSettings, setApp
                     }}
                   >
                     {selectedBranch.active === false
-                      ? 'Aktifkan Cabang'
-                      : 'Nonaktifkan Cabang'}
+                      ? 'Aktifkan Cabang (hanya di UI)'
+                      : 'Nonaktifkan Cabang (hanya di UI)'}
                   </button>
                 </>
               )}
@@ -371,7 +338,7 @@ function SettingsPage({ businessConfigs, setBusinessConfigs, appSettings, setApp
           )}
         </div>
 
-        {/* Default kategori per tipe */}
+        {/* Default kategori per tipe (UI only) */}
         <div
           style={{
             backgroundColor: 'var(--bg-elevated)',
@@ -381,7 +348,7 @@ function SettingsPage({ businessConfigs, setBusinessConfigs, appSettings, setApp
           }}
         >
           <h2 style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '1rem' }}>
-            Default Kategori per Tipe
+            Default Kategori per Tipe (hanya di UI)
           </h2>
 
           <div style={{ marginBottom: '1.25rem' }}>
@@ -412,7 +379,7 @@ function SettingsPage({ businessConfigs, setBusinessConfigs, appSettings, setApp
             >
               {businessConfigs.map((b) => (
                 <option key={b.id} value={b.id}>
-                  {b.unitBusiness}
+                  {branchTypeLabel(b.id)}
                 </option>
               ))}
             </select>
@@ -427,7 +394,7 @@ function SettingsPage({ businessConfigs, setBusinessConfigs, appSettings, setApp
                 marginTop: '1rem',
               }}
             >
-              {/* Income side */}
+              {/* Income defaults */}
               <div>
                 <h3
                   style={{
@@ -534,7 +501,7 @@ function SettingsPage({ businessConfigs, setBusinessConfigs, appSettings, setApp
                 </div>
               </div>
 
-              {/* Expense side */}
+              {/* Expense defaults */}
               <div>
                 <h3
                   style={{
