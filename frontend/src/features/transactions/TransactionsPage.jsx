@@ -46,8 +46,6 @@ function TransactionsPage({
   setLastUsedType,
   showToast,
 }) {
-  console.log('TransactionsPage (features) RENDERED')
-
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
   const [confirmOpen, setConfirmOpen] = useState(false)
@@ -62,30 +60,45 @@ function TransactionsPage({
     direction: 'desc',
   })
 
-  // Load data once
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const [tx, br, cat] = await Promise.all([
-          fetchTransactions(),
-          fetchBranches(),
-          fetchCategories(),
-        ])
-        setTransactions(tx)
-        setBranches(br)
-        setCategories(cat)
-      } catch (e) {
-        console.error(e)
-        showToast?.('Gagal memuat transaksi.', 'error')
-      } finally {
-        setLoading(false)
-      }
+  // helper: always return arrays
+  const setSafeTransactions = (tx) =>
+    setTransactions(Array.isArray(tx) ? tx : [])
+
+  const setSafeBranches = (br) =>
+    setBranches(Array.isArray(br) ? br : [])
+
+  const setSafeCategories = (cat) =>
+    setCategories(Array.isArray(cat) ? cat : [])
+
+  // common loader (can be reused by Refresh button)
+  const loadAll = async () => {
+    try {
+      setLoading(true)
+      const [tx, br, cat] = await Promise.all([
+        fetchTransactions(),
+        fetchBranches(),
+        fetchCategories(),
+      ])
+      setSafeTransactions(tx)
+      setSafeBranches(br)
+      setSafeCategories(cat)
+    } catch (e) {
+      console.error(e)
+      showToast?.('Gagal memuat transaksi.', 'error')
+    } finally {
+      setLoading(false)
     }
-    load()
+  }
+
+  // initial load
+  useEffect(() => {
+    loadAll()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const filteredTransactions = transactions.filter((t) => {
+  const safeTransactions = Array.isArray(transactions) ? transactions : []
+
+  const filteredTransactions = safeTransactions.filter((t) => {
     if (!searchTerm) return true
     const q = searchTerm.toLowerCase()
     return (
@@ -134,7 +147,11 @@ function TransactionsPage({
     if (transactionToDelete) {
       try {
         await deleteTransaction(transactionToDelete.id)
-        setTransactions((prev) => prev.filter((t) => t.id !== transactionToDelete.id))
+        setTransactions((prev) =>
+          (Array.isArray(prev) ? prev : []).filter(
+            (t) => t.id !== transactionToDelete.id,
+          ),
+        )
         showToast?.('Berhasil menghapus transaksi.')
       } catch (e) {
         console.error(e)
@@ -151,10 +168,12 @@ function TransactionsPage({
   }
 
   const handleAddTransaction = async (newTx) => {
-    console.log('handleAddTransaction RECEIVED:', newTx)
     try {
       const saved = await createTransaction(newTx)
-      setTransactions((prev) => [...prev, saved])
+      setTransactions((prev) => [
+        ...(Array.isArray(prev) ? prev : []),
+        saved,
+      ])
       setLastUsedType?.(newTx.type)
       setAddOpen(false)
       showToast?.('Berhasil menambahkan transaksi.')
@@ -212,7 +231,9 @@ function TransactionsPage({
                   margin: '0.25rem 0 0 0',
                 }}
               >
-                {loading ? 'Memuat...' : `${sortedTransactions.length} transaksi ditemukan`}
+                {loading
+                  ? 'Memuat...'
+                  : `${sortedTransactions.length} transaksi ditemukan`}
               </p>
             </div>
             <div
@@ -237,6 +258,21 @@ function TransactionsPage({
                   fontSize: '0.875rem',
                 }}
               />
+              <button
+                onClick={loadAll}
+                style={{
+                  backgroundColor: 'transparent',
+                  color: 'var(--subtext)',
+                  padding: '0.75rem 0.9rem',
+                  borderRadius: '8px',
+                  border: '1px solid var(--border)',
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                  fontSize: '0.8rem',
+                }}
+              >
+                ⟳ Refresh
+              </button>
               <button
                 onClick={() => setAddOpen(true)}
                 style={{
@@ -307,7 +343,11 @@ function TransactionsPage({
                 </tr>
               ) : (
                 sortedTransactions.map((t) => (
-                  <TransactionRow key={t.id} transaction={t} onAskDelete={handleAskDelete} />
+                  <TransactionRow
+                    key={t.id}
+                    transaction={t}
+                    onAskDelete={handleAskDelete}
+                  />
                 ))
               )}
             </tbody>
@@ -430,14 +470,12 @@ function AddTransactionModal({
   appSettings,
   lastUsedType,
 }) {
-  console.log('AddTransactionModal RENDERED')
-
   const [branchId, setBranchId] = useState('')
   const [categoryId, setCategoryId] = useState('')
   const [date, setDate] = useState('')
   const [type, setType] = useState(
     appSettings.defaultTransactionType === 'Income' ||
-      appSettings.defaultTransactionType === 'Expense'
+    appSettings.defaultTransactionType === 'Expense'
       ? appSettings.defaultTransactionType
       : lastUsedType || 'Income',
   )
@@ -471,20 +509,9 @@ function AddTransactionModal({
   }
 
   const handleSubmit = () => {
-    console.log('SUBMIT CLICKED')
-
     const digits = amountInput.replace(/[^\d]/g, '')
-    console.log('FIELD VALUES:', {
-      date,
-      branchId,
-      categoryId,
-      type,
-      payment,
-      digits,
-    })
 
     if (!date || !branchId || !categoryId || !type || !payment || !digits) {
-      console.log('MISSING FIELD STOP')
       return
     }
 
@@ -498,7 +525,6 @@ function AddTransactionModal({
       description,
     }
 
-    console.log('CALLING onSave with:', payload)
     onSave(payload)
   }
 
@@ -580,7 +606,11 @@ function AddTransactionModal({
           </Field>
 
           <Field label="Tipe">
-            <select value={type} onChange={(e) => setType(e.target.value)} style={inputStyle}>
+            <select
+              value={type}
+              onChange={(e) => setType(e.target.value)}
+              style={inputStyle}
+            >
               <option value="Income">Income</option>
               <option value="Expense">Expense</option>
             </select>
