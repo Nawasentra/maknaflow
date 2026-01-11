@@ -39,21 +39,26 @@ function DashboardPage({ transactions, isLoading, error }) {
   sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6)
   const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1)
 
+  const safeTransactions = Array.isArray(transactions) ? transactions : []
+
   // ---------- OPTIONS: UNIT & CABANG ----------
 
   const unitOptions = useMemo(() => {
-    const units = Array.from(
+    const baseUnits = ['Laundry', 'Carwash', 'Kos', 'Other']
+    const dynamicUnits = Array.from(
       new Set(
-        (transactions || [])
+        safeTransactions
           .map((t) => t.unitBusiness)
           .filter(Boolean),
       ),
     )
-    return ['Semua Unit', ...units]
-  }, [transactions])
+
+    const allUnits = Array.from(new Set([...baseUnits, ...dynamicUnits]))
+    return ['Semua Unit', ...allUnits]
+  }, [safeTransactions])
 
   const branchOptions = useMemo(() => {
-    let source = transactions || []
+    let source = safeTransactions
     if (filterUnit !== 'Semua Unit') {
       source = source.filter((t) => t.unitBusiness === filterUnit)
     }
@@ -65,12 +70,12 @@ function DashboardPage({ transactions, isLoading, error }) {
       ),
     )
     return ['Semua Cabang', ...names]
-  }, [transactions, filterUnit])
+  }, [safeTransactions, filterUnit])
 
   // ---------- FILTER TRANSAKSI ----------
 
   const filteredTransactions = useMemo(() => {
-    return (transactions || []).filter((t) => {
+    return safeTransactions.filter((t) => {
       if (!t.date) return false
       const txDate = parseLocalDate(t.date)
       if (!txDate || isNaN(txDate.getTime())) return false
@@ -97,7 +102,7 @@ function DashboardPage({ transactions, isLoading, error }) {
       return inRange && unitMatch && branchMatch
     })
   }, [
-    transactions,
+    safeTransactions,
     filterDate,
     customStart,
     customEnd,
@@ -140,11 +145,9 @@ function DashboardPage({ transactions, isLoading, error }) {
     (a, b) => new Date(a.date) - new Date(b.date),
   )
 
-  // menggunakan metode pembayaran, bukan email/source
   const incomeSourcesMap = filteredTransactions
     .filter((t) => t.type === 'Income')
     .reduce((acc, t) => {
-      // Frontend menggunakan field 'payment' (hasil mapping dari payment_method)
       const method = t.payment || 'Unknown'
       acc[method] = (acc[method] || 0) + (t.amount || 0)
       return acc
@@ -221,20 +224,7 @@ function DashboardPage({ transactions, isLoading, error }) {
     )
   }
 
-  if (!transactions || transactions.length === 0) {
-    return (
-      <main
-        style={{
-          maxWidth: '1280px',
-          margin: '0 auto',
-          padding: '2rem 1.5rem',
-          color: 'var(--subtext)',
-        }}
-      >
-        <p>Belum ada data transaksi. Tambahkan transaksi terlebih dahulu.</p>
-      </main>
-    )
-  }
+  // Tidak ada early-return untuk "tidak ada transaksi" → dashboard tetap tampil
 
   return (
     <main
@@ -321,8 +311,8 @@ function DashboardPage({ transactions, isLoading, error }) {
                 disabled={filterDate !== 'Custom'}
                 style={{
                   width: '110px',
-                  backgroundColor: 'var(--bg)',
-                  border: '1px solid var(--border)',
+                  backgroundColor: 'rgba(15,23,42,0.06)',
+                  border: '1px solid rgba(148,163,184,0.7)',
                   borderRadius: '8px',
                   padding: '0.45rem 0.5rem',
                   color: 'var(--text)',
@@ -338,8 +328,8 @@ function DashboardPage({ transactions, isLoading, error }) {
                 disabled={filterDate !== 'Custom'}
                 style={{
                   width: '110px',
-                  backgroundColor: 'var(--bg)',
-                  border: '1px solid var(--border)',
+                  backgroundColor: 'rgba(15,23,42,0.06)',
+                  border: '1px solid rgba(148,163,184,0.7)',
                   borderRadius: '8px',
                   padding: '0.45rem 0.5rem',
                   color: 'var(--text)',
@@ -548,11 +538,10 @@ function DashboardPage({ transactions, isLoading, error }) {
                     paddingAngle={3}
                   >
                     {incomeSources.map((entry) => {
-                      let color = '#6b7280' // Unknown
+                      let color = '#6b7280'
                       if (entry.name === 'Tunai') color = '#22c55e'
                       if (entry.name === 'QRIS') color = '#3b82f6'
                       if (entry.name === 'Transfer') color = '#f59e0b'
-
                       return <Cell key={entry.name} fill={color} />
                     })}
                   </Pie>
