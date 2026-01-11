@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Branch, User, Category, Transaction, IngestionLog
+from .models import Branch, User, Category, Transaction, IngestionLog, DailySummary
 
 # ==============================================
 # 1. REFERENCE SERIALIZERS
@@ -32,6 +32,7 @@ class TransactionSerializer(serializers.ModelSerializer):
     # When React reads this, they get 'branch_name': 'Laundry Dago' instead of just 'branch': 1
     # This saves an extra API call
     branch_name = serializers.CharField(source='branch.name', read_only=True)
+    branch_type = serializers.CharField(source='branch.branch_type', read_only=True)
     category_name = serializers.CharField(source='category.name', read_only=True)
     reported_by_email = serializers.EmailField(source='reported_by.email', read_only=True)
     reported_by_username = serializers.CharField(source='reported_by.username', read_only=True)
@@ -55,9 +56,11 @@ class TransactionSerializer(serializers.ModelSerializer):
             'source_identifier',
             'evidence_image',
             'is_verified',
+            'payment_method',
 
             # Expanded Fields (for OUTPUT/GET)
             'branch_name',
+            'branch_type',
             'category_name',
             'reported_by_email',
             'reported_by_username',
@@ -70,6 +73,7 @@ class TransactionSerializer(serializers.ModelSerializer):
             'created_at',
             'updated_at',
             'branch_name',
+            'branch_type',
             'category_name',
             'reported_by_email',
             'reported_by_username',
@@ -151,3 +155,45 @@ class WhatsAppWebhookPayloadSerializer(serializers.Serializer):
     branch_id = serializers.IntegerField()
     phone_number = serializers.CharField(max_length=20)
     message = serializers.CharField(max_length=1000)
+
+# ==============================================
+# 5. DAILY SUMMARY SERIALIZER
+# ==============================================
+
+class DailySummarySerializer(serializers.ModelSerializer):
+    branch_name = serializers.CharField(source='branch.name', read_only=True)
+    branch_type = serializers.CharField(source='branch.branch_type', read_only=True)
+    
+    class Meta:
+        model = DailySummary
+        fields = [
+            'id',
+            'branch',
+            'branch_name',
+            'branch_type',
+            'date',
+            'source',
+            
+            # Summary totals
+            'gross_sales',
+            'total_discount',
+            'net_sales',
+            'total_tax',
+            'total_collected',
+            
+            # Payment breakdown
+            'cash_amount',
+            'qris_amount',
+            'transfer_amount',
+            
+            # Metadata
+            'created_at',
+            'updated_at',
+        ]
+        read_only_fields = [
+            'id',
+            'branch_name',
+            'branch_type',
+            'created_at',
+            'updated_at',
+        ]

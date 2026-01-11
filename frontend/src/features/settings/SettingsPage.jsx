@@ -1,98 +1,415 @@
-import React, { useState } from 'react'
+// src/features/settings/SettingsPage.jsx
+import React, { useState, useEffect, useMemo } from 'react'
+import {
+  updateBranch,
+  deleteBranch,
+  fetchCategories as fetchCategoriesApi,
+  createCategory,
+  updateCategory,
+  deleteCategory,
+} from '../../lib/api/branchesCategories'
 
-function SettingsPage({ businessConfigs, setBusinessConfigs, appSettings, setAppSettings }) {
-  const [selectedUnitId, setSelectedUnitId] = useState(
+// Sumber enum sama seperti di backend:
+// LAUNDRY = 'LAUNDRY', 'Laundry Service'
+// CARWASH = 'CARWASH', 'Car Wash'
+// KOS     = 'KOS', 'Kos'
+// OTHER   = 'OTHER', 'Other Business'
+const BRANCH_TYPES = [
+  { value: 'LAUNDRY', label: 'Laundry' },
+  { value: 'CARWASH', label: 'Carwash' },
+  { value: 'KOS', label: 'Kos' },
+  { value: 'OTHER', label: 'Other' },
+]
+
+const branchTypeLabelByType = (type) => {
+  const found = BRANCH_TYPES.find((t) => t.value === type)
+  return found?.label || type || ''
+}
+
+const branchTypeLabelById = (id, businessConfigs) => {
+  const unit = businessConfigs.find((u) => u.id === id)
+  if (!unit) return ''
+  return branchTypeLabelByType(unit.type)
+}
+
+// Chip kategori biru gelap
+const chipStyle = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 4,
+  padding: '0.35rem 0.8rem',
+  borderRadius: 9999,
+  backgroundColor: '#2563eb',
+  color: '#f9fafb',
+  border: '1px solid #1d4ed8',
+  fontSize: 11,
+}
+
+function SettingsPage({
+  businessConfigs,
+  setBusinessConfigs,
+  appSettings,
+  setAppSettings,
+  showToast,
+}) {
+  // ---------- KATEGORI GLOBAL (backend, TANPA UI) ----------
+  // Tetap fetch supaya kategori per cabang bisa pakai sumber ini
+  const [categories, setCategories] = useState([])
+  const [categoriesLoading, setCategoriesLoading] = useState(false)
+
+  useEffect(() => {
+    const loadCategories = async () => {
+      try {
+        setCategoriesLoading(true)
+        const data = await fetchCategoriesApi()
+        setCategories(Array.isArray(data) ? data : [])
+      } catch (e) {
+        console.error(e)
+        showToast?.('Gagal memuat kategori.', 'error')
+      } finally {
+        setCategoriesLoading(false)
+      }
+    }
+    loadCategories()
+  }, [showToast])
+
+  // ---------- FLATTEN CABANG + TYPE ----------
+  const allBranchesFlat = useMemo(() => {
+    const result = []
+    ;(businessConfigs || []).forEach((unit) => {
+      ;(unit.branches || []).forEach((br) => {
+        result.push({
+          unitId: unit.id,
+          unitType: unit.type, // LAUNDRY | CARWASH | KOS | OTHER
+          unitLabel: branchTypeLabelByType(unit.type),
+          id: br.id,
+          name: br.name,
+          active: br.active,
+          incomeCategories: br.incomeCategories || [],
+          expenseCategories: br.expenseCategories || [],
+        })
+      })
+    })
+    return result
+  }, [businessConfigs])
+
+  const unitTypeOptions = useMemo(
+    () =>
+      Array.from(
+        new Set((businessConfigs || []).map((u) => u.type).filter(Boolean)),
+      ),
+    [businessConfigs],
+  )
+
+  // ---------- KATEGORI PER CABANG ----------
+  const [branchUnitFilterForCategory, setBranchUnitFilterForCategory] =
+    useState('ALL') // ALL atau enum
+  const [selectedBranchForCategory, setSelectedBranchForCategory] =
+    useState('')
+  const [branchCategoryTab, setBranchCategoryTab] = useState('INCOME') // INCOME | EXPENSE
+  const [branchCategorySearch, setBranchCategorySearch] = useState('')
+  const [branchNewCategoryName, setBranchNewCategoryName] = useState('')
+
+  // Filter cabang berdasarkan tipe unit
+  const branchesForCategoryCard = useMemo(() => {
+    if (branchUnitFilterForCategory === 'ALL') return allBranchesFlat
+    return allBranchesFlat.filter(
+      (b) => b.unitType === branchUnitFilterForCategory,
+    )
+  }, [allBranchesFlat, branchUnitFilterForCategory])
+
+  // Auto pilih cabang pertama kalau filter berubah
+  useEffect(() => {
+    if (!branchesForCategoryCard.length) {
+      setSelectedBranchForCategory('')
+      return
+    }
+    if (
+      !selectedBranchForCategory ||
+      !branchesForCategoryCard.find(
+        (b) => String(b.id) === String(selectedBranchForCategory),
+      )
+    ) {
+      setSelectedBranchForCategory(String(branchesForCategoryCard[0].id))
+    }
+  }, [branchesForCategoryCard, selectedBranchForCategory])
+
+  const selectedBranchForCategoryObj = useMemo(
+    () =>
+      branchesForCategoryCard.find(
+        (b) => String(b.id) === String(selectedBranchForCategory),
+      ) || null,
+    [branchesForCategoryCard, selectedBranchForCategory],
+  )
+
+  const assignedCategoryIdsForBranch = useMemo(() => {
+    if (!selectedBranchForCategoryObj) return []
+    const key =
+      branchCategoryTab === 'INCOME'
+        ? 'incomeCategories'
+        : 'expenseCategories'
+    const ids = selectedBranchForCategoryObj[key]
+    return Array.isArray(ids) ? ids : []
+  }, [selectedBranchForCategoryObj, branchCategoryTab])
+
+  // Filter kategori global sesuai:
+  // - tipe transaksi (INCOME/EXPENSE)
+  // - cari
+  const filteredGlobalByTxType = useMemo(() => {
+    const list = categories.filter(
+      (c) => c.transaction_type === branchCategoryTab,
+    )
+    if (!branchCategorySearch) return list
+    const q = branchCategorySearch.toLowerCase()
+    return list.filter((c) => c.name.toLowerCase().includes(q))
+  }, [categories, branchCategoryTab, branchCategorySearch])
+
+  // Kategori yang sudah aktif di cabang
+  const branchAssignedCategories = useMemo(
+    () =>
+      filteredGlobalByTxType.filter((c) =>
+        assignedCategoryIdsForBranch.includes(c.id),
+      ),
+    [filteredGlobalByTxType, assignedCategoryIdsForBranch],
+  )
+
+  // Kategori global lain (belum aktif di cabang) – sumber pilihan
+  const branchAvailableCategories = useMemo(
+    () =>
+      filteredGlobalByTxType.filter(
+        (c) => !assignedCategoryIdsForBranch.includes(c.id),
+      ),
+    [filteredGlobalByTxType, assignedCategoryIdsForBranch],
+  )
+
+  const updateBranchCategoryIds = (branchId, txType, updater) => {
+    setBusinessConfigs((prev) => {
+      const prevArray = Array.isArray(prev) ? prev : []
+      return prevArray.map((unit) => {
+        const branches = Array.isArray(unit.branches) ? unit.branches : []
+        const updatedBranches = branches.map((br) => {
+          if (String(br.id) !== String(branchId)) return br
+          const key =
+            txType === 'INCOME' ? 'incomeCategories' : 'expenseCategories'
+          const currentIds = Array.isArray(br[key]) ? br[key] : []
+          const newIds = updater(currentIds)
+          return { ...br, [key]: newIds }
+        })
+        return { ...unit, branches: updatedBranches }
+      })
+    })
+  }
+
+  const handleBranchAttachCategory = (categoryId) => {
+    if (!selectedBranchForCategoryObj) return
+    const txType = branchCategoryTab
+    updateBranchCategoryIds(selectedBranchForCategoryObj.id, txType, (prev) => {
+      const set = new Set(prev)
+      set.add(categoryId)
+      return Array.from(set)
+    })
+    showToast?.('Kategori diaktifkan untuk cabang ini.', 'success')
+  }
+
+  const handleBranchDetachCategory = (categoryId) => {
+    if (!selectedBranchForCategoryObj) return
+    const txType = branchCategoryTab
+    updateBranchCategoryIds(selectedBranchForCategoryObj.id, txType, (prev) =>
+      prev.filter((id) => id !== categoryId),
+    )
+    showToast?.(
+      'Kategori dihapus dari cabang, kategori global tetap ada.',
+      'success',
+    )
+  }
+
+  const handleBranchAddNewCategory = async () => {
+    if (!selectedBranchForCategoryObj) {
+      showToast?.('Pilih cabang dulu.', 'error')
+      return
+    }
+    const trimmed = branchNewCategoryName.trim()
+    if (!trimmed) return
+    const txType = branchCategoryTab
+
+    // cek duplikat nama di kategori global
+    const existing = categories.find(
+      (c) =>
+        c.transaction_type === txType &&
+        c.name.trim().toLowerCase() === trimmed.toLowerCase(),
+    )
+
+    try {
+      let target = existing
+      if (!target) {
+        const created = await createCategory({
+          name: trimmed,
+          transaction_type: txType,
+        })
+        setCategories((prev) => [...prev, created])
+        target = created
+      }
+
+      updateBranchCategoryIds(selectedBranchForCategoryObj.id, txType, (prev) => {
+        const set = new Set(prev)
+        set.add(target.id)
+        return Array.from(set)
+      })
+      setBranchNewCategoryName('')
+      showToast?.(
+        'Kategori ditambahkan dan diaktifkan untuk cabang ini.',
+        'success',
+      )
+    } catch (e) {
+      console.error(e)
+      showToast?.('Gagal menambah kategori untuk cabang.', 'error')
+    }
+  }
+
+  // ---------- CABANG (card "Cabang") ----------
+  const [branchUnitFilterForCabang, setBranchUnitFilterForCabang] =
+    useState('ALL')
+  const [selectedTypeId, setSelectedTypeId] = useState(
     businessConfigs.length ? businessConfigs[0].id : '',
   )
-  const selectedUnit = businessConfigs.find((b) => b.id === selectedUnitId) || null
+
+  const unitsForCabangCard = useMemo(() => {
+    if (branchUnitFilterForCabang === 'ALL') return businessConfigs
+    return (businessConfigs || []).filter(
+      (u) => u.type === branchUnitFilterForCabang,
+    )
+  }, [businessConfigs, branchUnitFilterForCabang])
+
+  useEffect(() => {
+    if (!unitsForCabangCard.length) {
+      setSelectedTypeId('')
+      return
+    }
+    if (!unitsForCabangCard.find((u) => u.id === selectedTypeId)) {
+      setSelectedTypeId(unitsForCabangCard[0].id)
+    }
+  }, [unitsForCabangCard, selectedTypeId])
+
+  const selectedUnit =
+    unitsForCabangCard.find((b) => b.id === selectedTypeId) || null
 
   const [selectedBranchId, setSelectedBranchId] = useState(
-    selectedUnit && selectedUnit.branches.length ? selectedUnit.branches[0].id : '',
+    selectedUnit && selectedUnit.branches.length ? selectedUnit.branches[0].id : null,
   )
 
-  React.useEffect(() => {
-    if (!selectedUnit) return
+  useEffect(() => {
+    if (!selectedUnit) {
+      setSelectedBranchId(null)
+      return
+    }
     if (!selectedUnit.branches.length) {
-      setSelectedBranchId('')
+      setSelectedBranchId(null)
       return
     }
     if (!selectedUnit.branches.find((b) => b.id === selectedBranchId)) {
       setSelectedBranchId(selectedUnit.branches[0].id)
     }
-  }, [selectedUnitId, businessConfigs]) // eslint-disable-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedUnit?.id])
 
   const selectedBranch =
-    selectedUnit && selectedUnit.branches.find((b) => b.id === selectedBranchId)
+    selectedUnit?.branches.find((b) => b.id === selectedBranchId) || null
 
-  const handleRenameUnit = (newName) => {
-    setBusinessConfigs((prev) =>
-      prev.map((b) =>
-        b.id === selectedUnitId
-          ? {
-              ...b,
-              unitBusiness: newName,
-              id: newName,
-            }
-          : b,
-      ),
-    )
-    setSelectedUnitId(newName)
+  const [confirmModal, setConfirmModal] = useState(null) // {type, branch}
+
+  const handleRenameBranch = async (newName) => {
+    if (!selectedBranch) return
+    const trimmed = newName.trim()
+    if (!trimmed) return
+    try {
+      await updateBranch(selectedBranch.id, { name: trimmed })
+      setBusinessConfigs((prev) =>
+        prev.map((u) =>
+          u.id === selectedUnit.id
+            ? {
+                ...u,
+                branches: u.branches.map((br) =>
+                  br.id === selectedBranch.id ? { ...br, name: trimmed } : br,
+                ),
+              }
+            : u,
+        ),
+      )
+      showToast?.('Nama cabang berhasil diubah.')
+    } catch (e) {
+      console.error(e)
+      showToast?.('Gagal mengubah nama cabang.', 'error')
+    }
   }
 
-  const handleToggleUnitActive = () => {
-    setBusinessConfigs((prev) =>
-      prev.map((b) =>
-        b.id === selectedUnitId
-          ? {
-              ...b,
-              active: !b.active,
-            }
-          : b,
-      ),
-    )
+  const requestToggleBranchActive = () => {
+    if (!selectedBranch) return
+    setConfirmModal({ type: 'toggle', branch: selectedBranch })
   }
 
-  const handleRenameBranch = (newName) => {
-    if (!selectedUnit || !selectedBranch) return
-    setBusinessConfigs((prev) =>
-      prev.map((u) =>
-        u.id === selectedUnit.id
-          ? {
-              ...u,
-              branches: u.branches.map((br) =>
-                br.id === selectedBranch.id
-                  ? { ...br, name: newName, id: newName }
-                  : br,
-              ),
-            }
-          : u,
-      ),
-    )
-    setSelectedBranchId(newName)
-  }
-
-  const handleToggleBranchActive = () => {
-    if (!selectedUnit || !selectedBranch) return
+  const performToggleBranchActive = () => {
+    if (!selectedBranch) return
+    const nowActive = !selectedBranch.active
     setBusinessConfigs((prev) =>
       prev.map((u) =>
         u.id === selectedUnit.id
           ? {
               ...u,
               branches: u.branches.map((br) =>
-                br.id === selectedBranch.id
-                  ? { ...br, active: br.active === false ? true : false }
-                  : br,
+                br.id === selectedBranch.id ? { ...br, active: nowActive } : br,
               ),
             }
           : u,
       ),
     )
+    showToast?.(
+      nowActive
+        ? `Berhasil mengaktifkan cabang ${selectedBranch.name}.`
+        : `Berhasil menonaktifkan cabang ${selectedBranch.name}.`,
+    )
   }
 
+  const requestDeleteBranch = () => {
+    if (!selectedBranch) return
+    setConfirmModal({ type: 'delete', branch: selectedBranch })
+  }
+
+  const performDeleteBranch = async () => {
+    if (!selectedBranch) return
+    try {
+      await deleteBranch(selectedBranch.id)
+      setBusinessConfigs((prev) =>
+        prev.map((u) =>
+          u.id === selectedUnit.id
+            ? {
+                ...u,
+                branches: u.branches.filter((br) => br.id !== selectedBranch.id),
+              }
+            : u,
+        ),
+      )
+      showToast?.(`Cabang ${selectedBranch.name} berhasil dihapus.`)
+      if (selectedUnit.branches.length) {
+        setSelectedBranchId(selectedUnit.branches[0].id)
+      } else {
+        setSelectedBranchId(null)
+      }
+    } catch (e) {
+      console.error(e)
+      showToast?.(
+        'Gagal menghapus cabang. Pastikan tidak ada transaksi terkait atau cek server.',
+        'error',
+      )
+    }
+  }
+
+  // ---------- DEFAULT KATEGORI PER TIPE (pakai satu dropdown sumber unit) ----------
   const [editSelectedId, setEditSelectedId] = useState(
     businessConfigs.length ? businessConfigs[0].id : '',
   )
-  const editSelected = businessConfigs.find((b) => b.id === editSelectedId)
+  const editSelected =
+    businessConfigs.find((b) => b.id === editSelectedId) || null
+
   const [incomeInput, setIncomeInput] = useState('')
   const [expenseInput, setExpenseInput] = useState('')
 
@@ -100,7 +417,7 @@ function SettingsPage({ businessConfigs, setBusinessConfigs, appSettings, setApp
     if (!editSelected) return
     const trimmed = incomeInput.trim()
     if (!trimmed) return
-    if (!(editSelected.defaultIncomeCategories || []).includes(trimmed)) {
+    if (!editSelected.defaultIncomeCategories?.includes(trimmed)) {
       const updated = businessConfigs.map((b) =>
         b.id === editSelected.id
           ? {
@@ -113,6 +430,7 @@ function SettingsPage({ businessConfigs, setBusinessConfigs, appSettings, setApp
           : b,
       )
       setBusinessConfigs(updated)
+      showToast?.('Berhasil menambah kategori pendapatan default.')
     }
     setIncomeInput('')
   }
@@ -121,7 +439,7 @@ function SettingsPage({ businessConfigs, setBusinessConfigs, appSettings, setApp
     if (!editSelected) return
     const trimmed = expenseInput.trim()
     if (!trimmed) return
-    if (!(editSelected.defaultExpenseCategories || []).includes(trimmed)) {
+    if (!editSelected.defaultExpenseCategories?.includes(trimmed)) {
       const updated = businessConfigs.map((b) =>
         b.id === editSelected.id
           ? {
@@ -134,6 +452,7 @@ function SettingsPage({ businessConfigs, setBusinessConfigs, appSettings, setApp
           : b,
       )
       setBusinessConfigs(updated)
+      showToast?.('Berhasil menambah kategori pengeluaran default.')
     }
     setExpenseInput('')
   }
@@ -168,14 +487,130 @@ function SettingsPage({ businessConfigs, setBusinessConfigs, appSettings, setApp
     setBusinessConfigs(updated)
   }
 
-  const handleExport = () => {
-    alert('Export CSV coming soon (dummy).')
+  // ---------- CONFIRM MODAL CABANG ----------
+  const renderConfirmModal = () => {
+    if (!confirmModal || !confirmModal.branch) return null
+    const { type, branch } = confirmModal
+    const isDelete = type === 'delete'
+    const title = isDelete
+      ? 'Hapus Cabang'
+      : branch.active === false
+      ? 'Aktifkan Cabang'
+      : 'Nonaktifkan Cabang'
+    const desc = isDelete
+      ? `Yakin ingin menghapus cabang ${branch.name}? Tindakan ini tidak bisa dibatalkan.`
+      : branch.active === false
+      ? `Aktifkan kembali cabang ${branch.name}?`
+      : `Nonaktifkan cabang ${branch.name}?`
+
+    const onConfirm = async () => {
+      if (isDelete) await performDeleteBranch()
+      else performToggleBranchActive()
+      setConfirmModal(null)
+    }
+
+    return (
+      <div
+        style={{
+          position: 'fixed',
+          inset: 0,
+          backgroundColor: 'rgba(0,0,0,0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 50,
+        }}
+      >
+        <div
+          style={{
+            backgroundColor: 'var(--bg-elevated)',
+            borderRadius: 12,
+            padding: '1.5rem',
+            width: '90%',
+            maxWidth: 400,
+            border: '1px solid var(--border)',
+          }}
+        >
+          <h3
+            style={{
+              fontSize: 16,
+              fontWeight: 700,
+              marginBottom: 8,
+            }}
+          >
+            {title}
+          </h3>
+          <p
+            style={{
+              fontSize: 13,
+              color: 'var(--subtext)',
+              marginBottom: 16,
+            }}
+          >
+            {desc}
+          </p>
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'flex-end',
+              gap: 8,
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => setConfirmModal(null)}
+              style={{
+                backgroundColor: 'transparent',
+                borderRadius: 9999,
+                border: '1px solid var(--border)',
+                color: 'var(--text)',
+                fontSize: 13,
+                padding: '0.4rem 0.9rem',
+                cursor: 'pointer',
+              }}
+            >
+              Batal
+            </button>
+            <button
+              type="button"
+              onClick={onConfirm}
+              style={{
+                backgroundColor: '#ef4444',
+                borderRadius: 9999,
+                border: 'none',
+                color: 'white',
+                fontSize: 13,
+                fontWeight: 600,
+                padding: '0.45rem 1rem',
+                cursor: 'pointer',
+              }}
+            >
+              {isDelete ? 'Hapus' : branch.active === false ? 'Aktifkan' : 'Nonaktifkan'}
+            </button>
+          </div>
+        </div>
+      </div>
+    )
   }
 
+  // ---------- RENDER ----------
   return (
-    <main style={{ maxWidth: '1280px', margin: '0 auto', padding: '2rem 1.5rem' }}>
-      <h1 style={{ fontSize: '1.875rem', fontWeight: '700', marginBottom: '2rem' }}>
-        ⚙️ Settings
+    <main
+      style={{
+        maxWidth: '1280px',
+        margin: '0 auto',
+        padding: '2rem 1.5rem',
+        color: 'var(--text)',
+      }}
+    >
+      <h1
+        style={{
+          fontSize: '1.875rem',
+          fontWeight: 700,
+          marginBottom: '2rem',
+        }}
+      >
+        Settings
       </h1>
 
       <div
@@ -185,113 +620,395 @@ function SettingsPage({ businessConfigs, setBusinessConfigs, appSettings, setApp
           gap: '1.5rem',
         }}
       >
-        {/* Struktur Bisnis */}
+        {/* Kategori per Cabang */}
         <div
           style={{
-            backgroundColor: '#1c1c1c',
-            border: '1px solid #27272a',
+            backgroundColor: 'var(--bg-elevated)',
+            border: '1px solid var(--border)',
             borderRadius: '12px',
             padding: '1.5rem',
           }}
         >
-          <h2 style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '1rem' }}>
-            Struktur Bisnis
+          <h2
+            style={{
+              fontSize: '1.1rem',
+              fontWeight: 600,
+              marginBottom: '1rem',
+            }}
+          >
+            Kategori per Cabang
           </h2>
 
-          <div style={{ marginBottom: '1rem' }}>
-            <p style={{ fontSize: 12, color: '#9ca3af', marginBottom: 6 }}>Tipe Unit Bisnis</p>
-            <select
-              value={selectedUnitId}
-              onChange={(e) => setSelectedUnitId(e.target.value)}
-              style={{
-                width: '100%',
-                backgroundColor: '#020617',
-                borderRadius: 12,
-                border: '1px solid #27272a',
-                padding: '0.7rem 1rem',
-                fontSize: 13,
-                color: 'white',
-                outline: 'none',
-              }}
-            >
-              {businessConfigs.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.unitBusiness}
-                </option>
-              ))}
-            </select>
+          <div
+            style={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: 12,
+              marginBottom: '1rem',
+              alignItems: 'flex-end',
+            }}
+          >
+            <div style={{ minWidth: 220 }}>
+              <p
+                style={{
+                  fontSize: 12,
+                  color: 'var(--subtext)',
+                  marginBottom: 6,
+                }}
+              >
+                Tipe Unit Bisnis
+              </p>
+              <select
+                value={branchUnitFilterForCategory}
+                onChange={(e) => setBranchUnitFilterForCategory(e.target.value)}
+                style={{
+                  width: '100%',
+                  backgroundColor: 'var(--bg)',
+                  borderRadius: 12,
+                  border: '1px solid var(--border)',
+                  padding: '0.7rem 1rem',
+                  fontSize: 13,
+                  color: 'var(--text)',
+                  outline: 'none',
+                }}
+              >
+                <option value="ALL">Semua Unit</option>
+                {unitTypeOptions.map((t) => (
+                  <option key={t} value={t}>
+                    {branchTypeLabelByType(t)}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div style={{ minWidth: 220 }}>
+              <p
+                style={{
+                  fontSize: 12,
+                  color: 'var(--subtext)',
+                  marginBottom: 6,
+                }}
+              >
+                Pilih cabang
+              </p>
+              <select
+                value={selectedBranchForCategory}
+                onChange={(e) => setSelectedBranchForCategory(e.target.value)}
+                style={{
+                  width: '100%',
+                  backgroundColor: 'var(--bg)',
+                  borderRadius: 12,
+                  border: '1px solid var(--border)',
+                  padding: '0.7rem 1rem',
+                  fontSize: 13,
+                  color: 'var(--text)',
+                  outline: 'none',
+                }}
+              >
+                {branchesForCategoryCard.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <p
+                style={{
+                  fontSize: 12,
+                  color: 'var(--subtext)',
+                  marginBottom: 4,
+                }}
+              >
+                Tipe transaksi
+              </p>
+              <div style={{ display: 'flex', gap: 8 }}>
+                {[
+                  { value: 'INCOME', label: 'Income' },
+                  { value: 'EXPENSE', label: 'Expense' },
+                ].map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => setBranchCategoryTab(opt.value)}
+                    style={{
+                      padding: '0.4rem 0.9rem',
+                      borderRadius: 9999,
+                      border:
+                        branchCategoryTab === opt.value
+                          ? '1px solid var(--accent)'
+                          : '1px solid var(--border)',
+                      backgroundColor:
+                        branchCategoryTab === opt.value
+                          ? 'var(--accent)'
+                          : 'transparent',
+                      color:
+                        branchCategoryTab === opt.value
+                          ? 'var(--bg)'
+                          : 'var(--text)',
+                      fontSize: 12,
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ flex: 1, minWidth: 220 }}>
+              <p
+                style={{
+                  fontSize: 12,
+                  color: 'var(--subtext)',
+                  marginBottom: 4,
+                }}
+              >
+                Cari kategori di cabang ini
+              </p>
+              <input
+                value={branchCategorySearch}
+                onChange={(e) => setBranchCategorySearch(e.target.value)}
+                placeholder="Cari nama kategori..."
+                style={{
+                  width: '100%',
+                  backgroundColor: 'var(--bg)',
+                  borderRadius: 12,
+                  border: '1px solid var(--border)',
+                  padding: '0.6rem 0.9rem',
+                  fontSize: 12,
+                  color: 'var(--text)',
+                  outline: 'none',
+                }}
+              />
+            </div>
           </div>
 
-          {selectedUnit && (
-            <>
-              <div style={{ marginBottom: '1rem' }}>
-                <p style={{ fontSize: 12, color: '#9ca3af', marginBottom: 6 }}>
-                  Ganti nama tipe unit
-                </p>
-                <input
-                  value={selectedUnit.unitBusiness}
-                  onChange={(e) => handleRenameUnit(e.target.value)}
-                  style={{
-                    width: '100%',
-                    backgroundColor: '#020617',
-                    borderRadius: 12,
-                    border: '1px solid #27272a',
-                    padding: '0.7rem 1rem',
-                    fontSize: 13,
-                    color: 'white',
-                    outline: 'none',
-                  }}
-                />
-              </div>
+          <div style={{ marginBottom: '0.75rem' }}>
+            <p
+              style={{
+                fontSize: 12,
+                color: 'var(--subtext)',
+                marginBottom: 4,
+              }}
+            >
+              Tambah kategori baru untuk cabang ini (
+              {branchCategoryTab === 'INCOME' ? 'Income' : 'Expense'})
+            </p>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input
+                placeholder="Nama kategori..."
+                value={branchNewCategoryName}
+                onChange={(e) => setBranchNewCategoryName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    handleBranchAddNewCategory()
+                  }
+                }}
+                style={{
+                  flex: 1,
+                  backgroundColor: 'var(--bg)',
+                  borderRadius: 9999,
+                  border: '1px solid var(--border)',
+                  padding: '0.5rem 0.9rem',
+                  fontSize: 12,
+                  color: 'var(--text)',
+                  outline: 'none',
+                }}
+              />
               <button
                 type="button"
-                onClick={handleToggleUnitActive}
+                onClick={handleBranchAddNewCategory}
                 style={{
-                  backgroundColor: selectedUnit.active ? '#22c55e' : '#6b7280',
+                  backgroundColor: 'var(--accent)',
                   borderRadius: 9999,
                   border: 'none',
-                  color: 'black',
-                  fontSize: 13,
+                  color: 'var(--bg)',
+                  fontSize: 12,
                   fontWeight: 600,
-                  padding: '0.45rem 1.1rem',
+                  padding: '0.45rem 0.9rem',
                   cursor: 'pointer',
                 }}
               >
-                {selectedUnit.active ? 'Nonaktifkan Tipe' : 'Aktifkan Tipe'}
+                Tambah ke Cabang
               </button>
-            </>
-          )}
+            </div>
+          </div>
+
+          <div
+            style={{
+              borderTop: '1px solid var(--border)',
+              paddingTop: '0.75rem',
+              marginTop: '0.5rem',
+            }}
+          >
+            <p
+              style={{
+                fontSize: 12,
+                color: 'var(--subtext)',
+                marginBottom: 4,
+              }}
+            >
+              Kategori aktif di cabang ini
+            </p>
+            {categoriesLoading ? (
+              <span style={{ fontSize: 11, color: 'var(--subtext)' }}>
+                Memuat kategori...
+              </span>
+            ) : branchAssignedCategories.length === 0 ? (
+              <span style={{ fontSize: 11, color: 'var(--subtext)' }}>
+                Belum ada kategori untuk tipe ini di cabang ini.
+              </span>
+            ) : (
+              <div
+                style={{
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  gap: 6,
+                  marginBottom: 6,
+                }}
+              >
+                {branchAssignedCategories.map((cat) => (
+                  <span key={cat.id} style={chipStyle}>
+                    {cat.name}
+                    <button
+                      type="button"
+                      onClick={() => handleBranchDetachCategory(cat.id)}
+                      style={{
+                        border: 'none',
+                        background: 'none',
+                        color: '#fee2e2',
+                        cursor: 'pointer',
+                        fontSize: 12,
+                      }}
+                    >
+                      ✕
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+
+            <p
+              style={{
+                fontSize: 12,
+                color: 'var(--subtext)',
+                marginTop: 6,
+                marginBottom: 4,
+              }}
+            >
+              Kategori global lain belum aktif di cabang ini
+            </p>
+            <div
+              style={{
+                display: 'flex',
+                flexWrap: 'wrap',
+                gap: 6,
+              }}
+            >
+              {branchAvailableCategories.slice(0, 20).map((cat) => (
+                <button
+                  key={cat.id}
+                  type="button"
+                  onClick={() => handleBranchAttachCategory(cat.id)}
+                  style={{
+                    ...chipStyle,
+                    backgroundColor: 'transparent',
+                    color: '#2563eb',
+                    border: '1px dashed #93c5fd',
+                  }}
+                >
+                  {cat.name}
+                </button>
+              ))}
+              {branchAvailableCategories.length > 20 && (
+                <span style={{ fontSize: 11, color: 'var(--subtext)' }}>
+                  dan {branchAvailableCategories.length - 20} lainnya...
+                </span>
+              )}
+            </div>
+          </div>
         </div>
 
         {/* Cabang */}
         <div
           style={{
-            backgroundColor: '#1c1c1c',
-            border: '1px solid #27272a',
+            backgroundColor: 'var(--bg-elevated)',
+            border: '1px solid var(--border)',
             borderRadius: '12px',
             padding: '1.5rem',
           }}
         >
-          <h2 style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '1rem' }}>
+          <h2
+            style={{
+              fontSize: '1.1rem',
+              fontWeight: 600,
+              marginBottom: '1rem',
+            }}
+          >
             Cabang
           </h2>
+
+          <div style={{ marginBottom: '1rem' }}>
+            <p
+              style={{
+                fontSize: 12,
+                color: 'var(--subtext)',
+                marginBottom: 6,
+              }}
+            >
+              Tipe Unit Bisnis
+            </p>
+            <select
+              value={branchUnitFilterForCabang}
+              onChange={(e) => setBranchUnitFilterForCabang(e.target.value)}
+              style={{
+                width: '100%',
+                backgroundColor: 'var(--bg)',
+                borderRadius: 12,
+                border: '1px solid var(--border)',
+                padding: '0.7rem 1rem',
+                fontSize: 13,
+                color: 'var(--text)',
+                outline: 'none',
+                marginBottom: 8,
+              }}
+            >
+              <option value="ALL">Semua Unit</option>
+              {unitTypeOptions.map((t) => (
+                <option key={t} value={t}>
+                  {branchTypeLabelByType(t)}
+                </option>
+              ))}
+            </select>
+          </div>
+
           {selectedUnit ? (
             <>
               <div style={{ marginBottom: '1rem' }}>
-                <p style={{ fontSize: 12, color: '#9ca3af', marginBottom: 6 }}>
+                <p
+                  style={{
+                    fontSize: 12,
+                    color: 'var(--subtext)',
+                    marginBottom: 6,
+                  }}
+                >
                   Pilih cabang dari tipe ini
                 </p>
                 <select
-                  value={selectedBranchId}
-                  onChange={(e) => setSelectedBranchId(e.target.value)}
+                  value={selectedBranchId ?? ''}
+                  onChange={(e) => setSelectedBranchId(Number(e.target.value))}
                   style={{
                     width: '100%',
-                    backgroundColor: '#020617',
+                    backgroundColor: 'var(--bg)',
                     borderRadius: 12,
-                    border: '1px solid #27272a',
+                    border: '1px solid var(--border)',
                     padding: '0.7rem 1rem',
                     fontSize: 13,
-                    color: 'white',
+                    color: 'var(--text)',
                     outline: 'none',
                   }}
                 >
@@ -306,7 +1023,13 @@ function SettingsPage({ businessConfigs, setBusinessConfigs, appSettings, setApp
               {selectedBranch && (
                 <>
                   <div style={{ marginBottom: '1rem' }}>
-                    <p style={{ fontSize: 12, color: '#9ca3af', marginBottom: 6 }}>
+                    <p
+                      style={{
+                        fontSize: 12,
+                        color: 'var(--subtext)',
+                        marginBottom: 6,
+                      }}
+                    >
                       Ganti nama cabang
                     </p>
                     <input
@@ -314,55 +1037,91 @@ function SettingsPage({ businessConfigs, setBusinessConfigs, appSettings, setApp
                       onChange={(e) => handleRenameBranch(e.target.value)}
                       style={{
                         width: '100%',
-                        backgroundColor: '#020617',
+                        backgroundColor: 'var(--bg)',
                         borderRadius: 12,
-                        border: '1px solid #27272a',
+                        border: '1px solid var(--border)',
                         padding: '0.7rem 1rem',
                         fontSize: 13,
-                        color: 'white',
+                        color: 'var(--text)',
                         outline: 'none',
                       }}
                     />
                   </div>
-                  <button
-                    type="button"
-                    onClick={handleToggleBranchActive}
+
+                  <div
                     style={{
-                      backgroundColor:
-                        selectedBranch.active === false ? '#6b7280' : '#22c55e',
-                      borderRadius: 9999,
-                      border: 'none',
-                      color: 'black',
-                      fontSize: 13,
-                      fontWeight: 600,
-                      padding: '0.45rem 1.1rem',
-                      cursor: 'pointer',
+                      display: 'flex',
+                      gap: 8,
+                      flexWrap: 'wrap',
                     }}
                   >
-                    {selectedBranch.active === false
-                      ? 'Aktifkan Cabang'
-                      : 'Nonaktifkan Cabang'}
-                  </button>
+                    <button
+                      type="button"
+                      onClick={requestToggleBranchActive}
+                      style={{
+                        backgroundColor:
+                          selectedBranch.active === false ? '#6b7280' : '#22c55e',
+                        borderRadius: 9999,
+                        border: 'none',
+                        color: 'var(--bg)',
+                        fontSize: 13,
+                        fontWeight: 600,
+                        padding: '0.45rem 1.1rem',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {selectedBranch.active === false
+                        ? 'Aktifkan Cabang'
+                        : 'Nonaktifkan Cabang'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={requestDeleteBranch}
+                      style={{
+                        backgroundColor: '#ef4444',
+                        borderRadius: 9999,
+                        border: 'none',
+                        color: 'white',
+                        fontSize: 13,
+                        fontWeight: 600,
+                        padding: '0.45rem 1.1rem',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Hapus Cabang
+                    </button>
+                  </div>
                 </>
               )}
             </>
           ) : (
-            <p style={{ fontSize: 12, color: '#9ca3af' }}>
+            <p
+              style={{
+                fontSize: 12,
+                color: 'var(--subtext)',
+              }}
+            >
               Belum ada tipe unit bisnis yang dikonfigurasi.
             </p>
           )}
         </div>
 
-        {/* Default kategori per tipe */}
+        {/* Default Kategori per Tipe (pakai sumber bisnisConfigs langsung) */}
         <div
           style={{
-            backgroundColor: '#1c1c1c',
-            border: '1px solid #27272a',
+            backgroundColor: 'var(--bg-elevated)',
+            border: '1px solid var(--border)',
             borderRadius: '12px',
             padding: '1.5rem',
           }}
         >
-          <h2 style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '1rem' }}>
+          <h2
+            style={{
+              fontSize: '1.1rem',
+              fontWeight: 600,
+              marginBottom: '1rem',
+            }}
+          >
             Default Kategori per Tipe
           </h2>
 
@@ -373,7 +1132,7 @@ function SettingsPage({ businessConfigs, setBusinessConfigs, appSettings, setApp
                 fontSize: 12,
                 fontWeight: 500,
                 marginBottom: 6,
-                color: '#e5e5e5',
+                color: 'var(--text)',
               }}
             >
               Pilih Tipe Unit Bisnis
@@ -383,18 +1142,18 @@ function SettingsPage({ businessConfigs, setBusinessConfigs, appSettings, setApp
               onChange={(e) => setEditSelectedId(e.target.value)}
               style={{
                 width: '100%',
-                backgroundColor: '#020617',
+                backgroundColor: 'var(--bg)',
                 borderRadius: 12,
-                border: '1px solid #27272a',
+                border: '1px solid var(--border)',
                 padding: '0.7rem 1rem',
                 fontSize: 13,
-                color: 'white',
+                color: 'var(--text)',
                 outline: 'none',
               }}
             >
               {businessConfigs.map((b) => (
                 <option key={b.id} value={b.id}>
-                  {b.unitBusiness}
+                  {branchTypeLabelById(b.id, businessConfigs)}
                 </option>
               ))}
             </select>
@@ -415,7 +1174,7 @@ function SettingsPage({ businessConfigs, setBusinessConfigs, appSettings, setApp
                     fontSize: 13,
                     fontWeight: 600,
                     marginBottom: 8,
-                    color: '#bbf7d0',
+                    color: '#16a34a',
                   }}
                 >
                   Default Kategori Pendapatan
@@ -428,7 +1187,7 @@ function SettingsPage({ businessConfigs, setBusinessConfigs, appSettings, setApp
                   }}
                 >
                   <input
-                    placeholder="Tambah kategori pendapatan…"
+                    placeholder="Tambah kategori pendapatan"
                     value={incomeInput}
                     onChange={(e) => setIncomeInput(e.target.value)}
                     onKeyDown={(e) => {
@@ -439,12 +1198,12 @@ function SettingsPage({ businessConfigs, setBusinessConfigs, appSettings, setApp
                     }}
                     style={{
                       flex: 1,
-                      backgroundColor: '#020617',
+                      backgroundColor: 'var(--bg)',
                       borderRadius: 9999,
-                      border: '1px solid #27272a',
+                      border: '1px solid var(--border)',
                       padding: '0.5rem 0.9rem',
                       fontSize: 12,
-                      color: 'white',
+                      color: 'var(--text)',
                       outline: 'none',
                     }}
                   />
@@ -452,10 +1211,10 @@ function SettingsPage({ businessConfigs, setBusinessConfigs, appSettings, setApp
                     type="button"
                     onClick={handleAddIncome}
                     style={{
-                      backgroundColor: 'white',
+                      backgroundColor: 'var(--accent)',
                       borderRadius: 9999,
                       border: 'none',
-                      color: 'black',
+                      color: 'var(--bg)',
                       fontSize: 12,
                       fontWeight: 600,
                       padding: '0.45rem 0.9rem',
@@ -498,17 +1257,12 @@ function SettingsPage({ businessConfigs, setBusinessConfigs, appSettings, setApp
                           fontSize: 12,
                         }}
                       >
-                        ×
+                        ✕
                       </button>
                     </span>
                   ))}
                   {!editSelected.defaultIncomeCategories?.length && (
-                    <span
-                      style={{
-                        fontSize: 11,
-                        color: '#6b7280',
-                      }}
-                    >
+                    <span style={{ fontSize: 11, color: 'var(--subtext)' }}>
                       Belum ada kategori pendapatan default.
                     </span>
                   )}
@@ -521,7 +1275,7 @@ function SettingsPage({ businessConfigs, setBusinessConfigs, appSettings, setApp
                     fontSize: 13,
                     fontWeight: 600,
                     marginBottom: 8,
-                    color: '#fecaca',
+                    color: '#dc2626',
                   }}
                 >
                   Default Kategori Pengeluaran
@@ -534,7 +1288,7 @@ function SettingsPage({ businessConfigs, setBusinessConfigs, appSettings, setApp
                   }}
                 >
                   <input
-                    placeholder="Tambah kategori pengeluaran…"
+                    placeholder="Tambah kategori pengeluaran"
                     value={expenseInput}
                     onChange={(e) => setExpenseInput(e.target.value)}
                     onKeyDown={(e) => {
@@ -545,12 +1299,12 @@ function SettingsPage({ businessConfigs, setBusinessConfigs, appSettings, setApp
                     }}
                     style={{
                       flex: 1,
-                      backgroundColor: '#020617',
+                      backgroundColor: 'var(--bg)',
                       borderRadius: 9999,
-                      border: '1px solid #27272a',
+                      border: '1px solid var(--border)',
                       padding: '0.5rem 0.9rem',
                       fontSize: 12,
-                      color: 'white',
+                      color: 'var(--text)',
                       outline: 'none',
                     }}
                   />
@@ -558,10 +1312,10 @@ function SettingsPage({ businessConfigs, setBusinessConfigs, appSettings, setApp
                     type="button"
                     onClick={handleAddExpense}
                     style={{
-                      backgroundColor: 'white',
+                      backgroundColor: 'var(--accent)',
                       borderRadius: 9999,
                       border: 'none',
-                      color: 'black',
+                      color: 'var(--bg)',
                       fontSize: 12,
                       fontWeight: 600,
                       padding: '0.45rem 0.9rem',
@@ -604,17 +1358,12 @@ function SettingsPage({ businessConfigs, setBusinessConfigs, appSettings, setApp
                           fontSize: 12,
                         }}
                       >
-                        ×
+                        ✕
                       </button>
                     </span>
                   ))}
                   {!editSelected.defaultExpenseCategories?.length && (
-                    <span
-                      style={{
-                        fontSize: 11,
-                        color: '#6b7280',
-                      }}
-                    >
+                    <span style={{ fontSize: 11, color: 'var(--subtext)' }}>
                       Belum ada kategori pengeluaran default.
                     </span>
                   )}
@@ -623,116 +1372,9 @@ function SettingsPage({ businessConfigs, setBusinessConfigs, appSettings, setApp
             </div>
           )}
         </div>
-
-        {/* Preferensi Transaksi */}
-        <div
-          style={{
-            backgroundColor: '#1c1c1c',
-            border: '1px solid #27272a',
-            borderRadius: '12px',
-            padding: '1.5rem',
-          }}
-        >
-          <h2 style={{ fontSize: '1.05rem', fontWeight: 600, marginBottom: '0.75rem' }}>
-            Preferensi Transaksi
-          </h2>
-          <div style={{ marginBottom: '0.75rem' }}>
-            <p style={{ fontSize: 12, color: '#9ca3af', marginBottom: 4 }}>
-              Default tipe transaksi
-            </p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              {['Income', 'Expense', 'LastUsed'].map((opt) => (
-                <label
-                  key={opt}
-                  style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}
-                >
-                  <input
-                    type="radio"
-                    checked={appSettings.defaultTransactionType === opt}
-                    onChange={() =>
-                      setAppSettings((prev) => ({
-                        ...prev,
-                        defaultTransactionType: opt,
-                      }))
-                    }
-                  />
-                  <span>
-                    {opt === 'Income'
-                      ? 'Income'
-                      : opt === 'Expense'
-                      ? 'Expense'
-                      : 'Gunakan tipe terakhir'}
-                  </span>
-                </label>
-              ))}
-            </div>
-          </div>
-
-          <div>
-            <p style={{ fontSize: 12, color: '#9ca3af', marginBottom: 4 }}>
-              Default tanggal transaksi
-            </p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              {['today', 'empty'].map((mode) => (
-                <label
-                  key={mode}
-                  style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}
-                >
-                  <input
-                    type="radio"
-                    checked={appSettings.defaultDateMode === mode}
-                    onChange={() =>
-                      setAppSettings((prev) => ({
-                        ...prev,
-                        defaultDateMode: mode,
-                      }))
-                    }
-                  />
-                  <span>
-                    {mode === 'today'
-                      ? 'Otomatis isi hari ini'
-                      : 'Biarkan kosong (isi manual)'}
-                  </span>
-                </label>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* Export */}
-        <div
-          style={{
-            backgroundColor: '#1c1c1c',
-            border: '1px solid #27272a',
-            borderRadius: '12px',
-            padding: '1.5rem',
-            textAlign: 'center',
-          }}
-        >
-          <h2 style={{ fontSize: '1.05rem', fontWeight: 600, marginBottom: '0.75rem' }}>
-            Export Data
-          </h2>
-          <p style={{ fontSize: 12, color: '#9ca3af', marginBottom: '0.75rem' }}>
-            Simpan transaksi dan konfigurasi dalam format CSV.
-          </p>
-          <button
-            type="button"
-            onClick={handleExport}
-            style={{
-              backgroundColor: 'white',
-              borderRadius: 9999,
-              border: 'none',
-              color: 'black',
-              fontSize: 13,
-              fontWeight: 600,
-              padding: '0.55rem 1.4rem',
-              cursor: 'pointer',
-            }}
-          >
-            Export CSV (Dummy)
-          </button>
-        </div>
       </div>
+
+      {renderConfirmModal()}
     </main>
   )
 }

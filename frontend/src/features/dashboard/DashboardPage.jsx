@@ -1,3 +1,4 @@
+// src/features/dashboard/DashboardPage.jsx
 import React, { useState, useMemo } from 'react'
 import {
   LineChart,
@@ -15,62 +16,121 @@ import {
   ResponsiveContainer,
 } from 'recharts'
 
+function parseLocalDate(isoDateStr) {
+  if (!isoDateStr) return null
+  const [year, month, day] = isoDateStr.split('-').map(Number)
+  return new Date(year, month - 1, day)
+}
+
+const UNIT_LABELS = ['Laundry', 'Carwash', 'Kos', 'Other']
+
+function normalizeUnit(unit) {
+  if (!unit) return ''
+  const u = String(unit).toUpperCase()
+  if (u === 'LAUNDRY') return 'Laundry'
+  if (u === 'CARWASH') return 'Carwash'
+  if (u === 'KOS') return 'Kos'
+  if (u === 'OTHER') return 'Other'
+  return unit
+}
+
 function DashboardPage({ transactions, isLoading, error }) {
-  const [filterDate, setFilterDate] = useState('Hari Ini')
+  const [filterDate, setFilterDate] = useState('7 Hari Terakhir')
   const [filterUnit, setFilterUnit] = useState('Semua Unit')
   const [filterBranch, setFilterBranch] = useState('Semua Cabang')
   const [customStart, setCustomStart] = useState('')
   const [customEnd, setCustomEnd] = useState('')
 
   const today = new Date()
-  const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate())
+  const startOfToday = new Date(
+    today.getFullYear(),
+    today.getMonth(),
+    today.getDate(),
+  )
   const sevenDaysAgo = new Date(startOfToday)
   sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6)
   const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1)
 
-  const unitOptions = useMemo(
-    () => ['Semua Unit', ...Array.from(new Set(transactions.map((t) => t.unitBusiness)))],
-    [transactions],
-  )
+  const safeTransactions = Array.isArray(transactions) ? transactions : []
+
+  // ---------- OPTIONS: UNIT & CABANG ----------
+
+  const unitOptions = ['Semua Unit', ...UNIT_LABELS]
 
   const branchOptions = useMemo(() => {
-    const filteredByUnit =
-      filterUnit === 'Semua Unit'
-        ? transactions
-        : transactions.filter((t) => t.unitBusiness === filterUnit)
-    return ['Semua Cabang', ...Array.from(new Set(filteredByUnit.map((t) => t.branch)))]
-  }, [transactions, filterUnit])
-
-  const filteredTransactions = transactions.filter((t) => {
-    const txDate = new Date(t.date)
-
-    let inRange = true
-    if (filterDate === 'Hari Ini') {
-      inRange = txDate.toDateString() === startOfToday.toDateString()
-    } else if (filterDate === '7 Hari Terakhir') {
-      inRange = txDate >= sevenDaysAgo && txDate <= today
-    } else if (filterDate === 'Bulan Ini') {
-      inRange = txDate >= startOfMonth && txDate <= today
-    } else if (filterDate === 'Custom' && customStart && customEnd) {
-      const start = new Date(customStart)
-      const end = new Date(customEnd)
-      inRange = txDate >= start && txDate <= end
+    let source = safeTransactions
+    if (filterUnit !== 'Semua Unit') {
+      source = source.filter(
+        (t) => normalizeUnit(t.unitBusiness) === filterUnit,
+      )
     }
+    const names = Array.from(
+      new Set(
+        source
+          .map((t) => t.branch)
+          .filter(Boolean),
+      ),
+    )
+    return ['Semua Cabang', ...names]
+  }, [safeTransactions, filterUnit])
 
-    const unitMatch = filterUnit === 'Semua Unit' || t.unitBusiness === filterUnit
-    const branchMatch = filterBranch === 'Semua Cabang' || t.branch === filterBranch
+  // ---------- FILTER TRANSAKSI ----------
 
-    return inRange && unitMatch && branchMatch
-  })
+  const filteredTransactions = useMemo(() => {
+    return safeTransactions.filter((t) => {
+      if (!t.date) return false
+      const txDate = parseLocalDate(t.date)
+      if (!txDate || isNaN(txDate.getTime())) return false
+
+      let inRange = true
+      if (filterDate === 'Hari Ini') {
+        inRange = txDate.toDateString() === startOfToday.toDateString()
+      } else if (filterDate === '7 Hari Terakhir') {
+        inRange = txDate >= sevenDaysAgo && txDate <= startOfToday
+      } else if (filterDate === 'Bulan Ini') {
+        inRange = txDate >= startOfMonth && txDate <= startOfToday
+      } else if (filterDate === 'Custom' && customStart && customEnd) {
+        const start = parseLocalDate(customStart)
+        const end = parseLocalDate(customEnd)
+        if (!start || !end) return false
+        inRange = txDate >= start && txDate <= end
+      }
+
+      const normalizedUnit = normalizeUnit(t.unitBusiness)
+      const unitMatch =
+        filterUnit === 'Semua Unit' || normalizedUnit === filterUnit
+
+      const branchMatch =
+        filterBranch === 'Semua Cabang' || t.branch === filterBranch
+
+      return inRange && unitMatch && branchMatch
+    })
+  }, [
+    safeTransactions,
+    filterDate,
+    customStart,
+    customEnd,
+    filterUnit,
+    filterBranch,
+    startOfToday,
+    sevenDaysAgo,
+    startOfMonth,
+  ])
+
+  // ---------- KPI ----------
 
   const incomeTotal = filteredTransactions
     .filter((t) => t.type === 'Income')
-    .reduce((sum, t) => sum + t.amount, 0)
+    .reduce((sum, t) => sum + (t.amount || 0), 0)
+
   const expenseTotal = filteredTransactions
     .filter((t) => t.type === 'Expense')
-    .reduce((sum, t) => sum + t.amount, 0)
+    .reduce((sum, t) => sum + (t.amount || 0), 0)
+
   const netProfit = incomeTotal - expenseTotal
   const totalTransactions = filteredTransactions.length
+
+  // ---------- CHART DATA ----------
 
   const dailyMap = filteredTransactions.reduce((acc, t) => {
     const key = t.date
@@ -78,9 +138,9 @@ function DashboardPage({ transactions, isLoading, error }) {
       acc[key] = { date: key, income: 0, expense: 0 }
     }
     if (t.type === 'Income') {
-      acc[key].income += t.amount
+      acc[key].income += t.amount || 0
     } else if (t.type === 'Expense') {
-      acc[key].expense += t.amount
+      acc[key].expense += t.amount || 0
     }
     return acc
   }, {})
@@ -92,26 +152,39 @@ function DashboardPage({ transactions, isLoading, error }) {
   const incomeSourcesMap = filteredTransactions
     .filter((t) => t.type === 'Income')
     .reduce((acc, t) => {
-      acc[t.payment] = (acc[t.payment] || 0) + t.amount
+      const method = t.payment || 'Unknown'
+      acc[method] = (acc[method] || 0) + (t.amount || 0)
       return acc
     }, {})
 
-  const incomeSources = Object.entries(incomeSourcesMap).map(([name, value]) => ({
-    name,
-    value,
-  }))
+  const incomeSources = Object.entries(incomeSourcesMap).map(
+    ([name, value]) => ({
+      name:
+        name === 'CASH'
+          ? 'Tunai'
+          : name === 'QRIS'
+          ? 'QRIS'
+          : name === 'TRANSFER'
+          ? 'Transfer'
+          : 'Tidak Diketahui',
+      value,
+    }),
+  )
 
   const expenseCatMap = filteredTransactions
     .filter((t) => t.type === 'Expense')
     .reduce((acc, t) => {
-      acc[t.category] = (acc[t.category] || 0) + t.amount
+      const key = t.category || 'Lainnya'
+      acc[key] = (acc[key] || 0) + (t.amount || 0)
       return acc
     }, {})
 
-  const expenseByCategory = Object.entries(expenseCatMap).map(([name, value]) => ({
-    name,
-    value,
-  }))
+  const expenseByCategory = Object.entries(expenseCatMap).map(
+    ([name, value]) => ({
+      name,
+      value,
+    }),
+  )
 
   const formatCurrency = (amount) =>
     new Intl.NumberFormat('id-ID', {
@@ -123,28 +196,52 @@ function DashboardPage({ transactions, isLoading, error }) {
       .replace('Rp', '')
       .trim()
 
+  // ---------- RENDER STATES ----------
+
   if (isLoading) {
     return (
-      <main style={{ maxWidth: '1280px', margin: '0 auto', padding: '2rem 1.5rem' }}>
-        <p style={{ color: '#a1a1aa' }}>Memuat data transaksi...</p>
+      <main
+        style={{
+          maxWidth: '1280px',
+          margin: '0 auto',
+          padding: '2rem 1.5rem',
+          color: 'var(--subtext)',
+        }}
+      >
+        <p>Memuat data transaksi...</p>
       </main>
     )
   }
 
   if (error) {
     return (
-      <main style={{ maxWidth: '1280px', margin: '0 auto', padding: '2rem 1.5rem' }}>
-        <p style={{ color: '#f97316' }}>{error}</p>
+      <main
+        style={{
+          maxWidth: '1280px',
+          margin: '0 auto',
+          padding: '2rem 1.5rem',
+          color: '#f97316',
+        }}
+      >
+        <p>{error}</p>
       </main>
     )
   }
 
   return (
-    <main style={{ maxWidth: '1280px', margin: '0 auto', padding: '2rem 1.5rem' }}>
+    <main
+      style={{
+        maxWidth: '1280px',
+        margin: '0 auto',
+        padding: '2rem 1.5rem',
+        color: 'var(--text)',
+      }}
+    >
+      {/* Filter Global */}
       <div
         style={{
-          backgroundColor: '#1c1c1c',
-          border: '1px solid #27272a',
+          backgroundColor: 'var(--bg-elevated)',
+          border: '1px solid var(--border)',
           borderRadius: '12px',
           padding: '1.5rem',
           marginBottom: '2rem',
@@ -170,18 +267,18 @@ function DashboardPage({ transactions, isLoading, error }) {
             alignItems: 'flex-end',
           }}
         >
+          {/* Rentang tanggal */}
           <div>
             <label
               style={{
                 display: 'block',
-                color: '#a1a1aa',
+                color: 'var(--subtext)',
                 fontSize: '0.875rem',
                 marginBottom: '0.5rem',
               }}
             >
               Rentang Tanggal
             </label>
-
             <div
               style={{
                 display: 'grid',
@@ -195,12 +292,11 @@ function DashboardPage({ transactions, isLoading, error }) {
                 onChange={(e) => setFilterDate(e.target.value)}
                 style={{
                   width: '140px',
-                  maxWidth: '210px',
-                  backgroundColor: '#1c1c1c',
-                  border: '1px solid #27272a',
+                  backgroundColor: 'var(--bg)',
+                  border: '1px solid var(--border)',
                   borderRadius: '8px',
                   padding: '0.7rem 0.9rem',
-                  color: 'white',
+                  color: 'var(--text)',
                   fontSize: '0.95rem',
                 }}
               >
@@ -217,17 +313,16 @@ function DashboardPage({ transactions, isLoading, error }) {
                 disabled={filterDate !== 'Custom'}
                 style={{
                   width: '110px',
-                  backgroundColor: filterDate === 'Custom' ? '#111827' : '#020617',
-                  border: '1px solid #27272a',
+                  backgroundColor: 'rgba(15,23,42,0.06)',
+                  border: '1px solid rgba(148,163,184,0.7)',
                   borderRadius: '8px',
                   padding: '0.45rem 0.5rem',
-                  color: filterDate === 'Custom' ? 'white' : '#6b7280',
+                  color: 'var(--text)',
                   fontSize: '0.8rem',
                   cursor: filterDate === 'Custom' ? 'pointer' : 'not-allowed',
                   opacity: filterDate === 'Custom' ? 1 : 0.5,
                 }}
               />
-
               <input
                 type="date"
                 value={customEnd}
@@ -235,11 +330,11 @@ function DashboardPage({ transactions, isLoading, error }) {
                 disabled={filterDate !== 'Custom'}
                 style={{
                   width: '110px',
-                  backgroundColor: filterDate === 'Custom' ? '#111827' : '#020617',
-                  border: '1px solid #27272a',
+                  backgroundColor: 'rgba(15,23,42,0.06)',
+                  border: '1px solid rgba(148,163,184,0.7)',
                   borderRadius: '8px',
                   padding: '0.45rem 0.5rem',
-                  color: filterDate === 'Custom' ? 'white' : '#6b7280',
+                  color: 'var(--text)',
                   fontSize: '0.8rem',
                   cursor: filterDate === 'Custom' ? 'pointer' : 'not-allowed',
                   opacity: filterDate === 'Custom' ? 1 : 0.5,
@@ -248,11 +343,12 @@ function DashboardPage({ transactions, isLoading, error }) {
             </div>
           </div>
 
+          {/* Unit Bisnis */}
           <div>
             <label
               style={{
                 display: 'block',
-                color: '#a1a1aa',
+                color: 'var(--subtext)',
                 fontSize: '0.875rem',
                 marginBottom: '0.5rem',
               }}
@@ -267,11 +363,11 @@ function DashboardPage({ transactions, isLoading, error }) {
               }}
               style={{
                 width: '100%',
-                backgroundColor: '#1c1c1c',
-                border: '1px solid #27272a',
+                backgroundColor: 'var(--bg)',
+                border: '1px solid var(--border)',
                 borderRadius: '8px',
                 padding: '0.75rem',
-                color: 'white',
+                color: 'var(--text)',
                 fontSize: '1rem',
               }}
             >
@@ -281,11 +377,12 @@ function DashboardPage({ transactions, isLoading, error }) {
             </select>
           </div>
 
+          {/* Cabang */}
           <div>
             <label
               style={{
                 display: 'block',
-                color: '#a1a1aa',
+                color: 'var(--subtext)',
                 fontSize: '0.875rem',
                 marginBottom: '0.5rem',
               }}
@@ -297,11 +394,11 @@ function DashboardPage({ transactions, isLoading, error }) {
               onChange={(e) => setFilterBranch(e.target.value)}
               style={{
                 width: '100%',
-                backgroundColor: '#1c1c1c',
-                border: '1px solid #27272a',
+                backgroundColor: 'var(--bg)',
+                border: '1px solid var(--border)',
                 borderRadius: '8px',
                 padding: '0.75rem',
-                color: 'white',
+                color: 'var(--text)',
                 fontSize: '1rem',
               }}
             >
@@ -313,6 +410,7 @@ function DashboardPage({ transactions, isLoading, error }) {
         </div>
       </div>
 
+      {/* KPI cards */}
       <div
         style={{
           display: 'grid',
@@ -321,12 +419,33 @@ function DashboardPage({ transactions, isLoading, error }) {
           marginBottom: '2rem',
         }}
       >
-        <KpiCard title="Total Pendapatan" value={`Rp ${formatCurrency(incomeTotal)}`} icon="💰" color="#10b981" />
-        <KpiCard title="Total Pengeluaran" value={`Rp ${formatCurrency(expenseTotal)}`} icon="💸" color="#ef4444" />
-        <KpiCard title="Pendapatan Bersih" value={`Rp ${formatCurrency(netProfit)}`} icon="✅" color="#10b981" />
-        <KpiCard title="Jumlah Transaksi" value={totalTransactions} icon="📊" color="#8b5cf6" />
+        <KpiCard
+          title="Total Pendapatan"
+          value={`Rp ${formatCurrency(incomeTotal)}`}
+          icon="💰"
+          color="#10b981"
+        />
+        <KpiCard
+          title="Total Pengeluaran"
+          value={`Rp ${formatCurrency(expenseTotal)}`}
+          icon="💸"
+          color="#ef4444"
+        />
+        <KpiCard
+          title="Pendapatan Bersih"
+          value={`Rp ${formatCurrency(netProfit)}`}
+          icon="✅"
+          color="#10b981"
+        />
+        <KpiCard
+          title="Jumlah Transaksi"
+          value={totalTransactions}
+          icon="📊"
+          color="#8b5cf6"
+        />
       </div>
 
+      {/* Charts */}
       <div
         style={{
           display: 'grid',
@@ -335,21 +454,31 @@ function DashboardPage({ transactions, isLoading, error }) {
           marginBottom: '2rem',
         }}
       >
+        {/* Line chart */}
         <div
           style={{
-            backgroundColor: '#1c1c1c',
-            border: '1px solid #27272a',
+            backgroundColor: 'var(--bg-elevated)',
+            border: '1px solid var(--border)',
             borderRadius: '12px',
             padding: '1.5rem',
           }}
         >
-          <h3 style={{ fontSize: '1.25rem', fontWeight: '600', marginBottom: '1.5rem' }}>
+          <h3
+            style={{
+              fontSize: '1.25rem',
+              fontWeight: '600',
+              marginBottom: '1.5rem',
+            }}
+          >
             📈 Tren Pendapatan vs Pengeluaran
           </h3>
           <div style={{ height: 400 }}>
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={trendData} margin={{ top: 20, right: 20, left: 0, bottom: 0 }}>
-                <CartesianGrid stroke="#27272a" strokeDasharray="3 3" />
+              <LineChart
+                data={trendData}
+                margin={{ top: 20, right: 20, left: 0, bottom: 0 }}
+              >
+                <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" />
                 <XAxis dataKey="date" stroke="#9ca3af" />
                 <YAxis stroke="#9ca3af" />
                 <Tooltip />
@@ -375,10 +504,11 @@ function DashboardPage({ transactions, isLoading, error }) {
           </div>
         </div>
 
+        {/* Pie + bar */}
         <div
           style={{
-            backgroundColor: '#1c1c1c',
-            border: '1px solid #27272a',
+            backgroundColor: 'var(--bg-elevated)',
+            border: '1px solid var(--border)',
             borderRadius: '12px',
             padding: '1.5rem',
             display: 'flex',
@@ -387,7 +517,13 @@ function DashboardPage({ transactions, isLoading, error }) {
           }}
         >
           <div>
-            <h4 style={{ fontSize: '1.125rem', fontWeight: '600', marginBottom: '1rem' }}>
+            <h4
+              style={{
+                fontSize: '1.125rem',
+                fontWeight: '600',
+                marginBottom: '1rem',
+              }}
+            >
               🥧 Sumber Pendapatan
             </h4>
             <div style={{ height: 200 }}>
@@ -403,9 +539,13 @@ function DashboardPage({ transactions, isLoading, error }) {
                     outerRadius={80}
                     paddingAngle={3}
                   >
-                    {incomeSources.map((entry, index) => (
-                      <Cell key={entry.name} fill={index === 0 ? '#22c55e' : '#3b82f6'} />
-                    ))}
+                    {incomeSources.map((entry) => {
+                      let color = '#6b7280'
+                      if (entry.name === 'Tunai') color = '#22c55e'
+                      if (entry.name === 'QRIS') color = '#3b82f6'
+                      if (entry.name === 'Transfer') color = '#f59e0b'
+                      return <Cell key={entry.name} fill={color} />
+                    })}
                   </Pie>
                   <Tooltip />
                   <Legend />
@@ -415,7 +555,13 @@ function DashboardPage({ transactions, isLoading, error }) {
           </div>
 
           <div>
-            <h4 style={{ fontSize: '1.125rem', fontWeight: '600', marginBottom: '1rem' }}>
+            <h4
+              style={{
+                fontSize: '1.125rem',
+                fontWeight: '600',
+                marginBottom: '1rem',
+              }}
+            >
               📊 Top Pengeluaran
             </h4>
             <div style={{ height: 200 }}>
@@ -425,7 +571,7 @@ function DashboardPage({ transactions, isLoading, error }) {
                   layout="vertical"
                   margin={{ top: 10, right: 20, left: 40, bottom: 10 }}
                 >
-                  <CartesianGrid stroke="#27272a" />
+                  <CartesianGrid stroke="var(--border)" />
                   <XAxis type="number" stroke="#9ca3af" />
                   <YAxis type="category" dataKey="name" stroke="#9ca3af" />
                   <Tooltip />
@@ -444,12 +590,11 @@ function KpiCard({ title, value, icon, color }) {
   return (
     <div
       style={{
-        backgroundColor: '#1c1c1c',
-        border: '1px solid #27272a',
+        backgroundColor: 'var(--bg-elevated)',
+        border: '1px solid var(--border)',
         borderRadius: '12px',
         padding: '1.5rem',
         transition: 'all 0.2s',
-        cursor: 'pointer',
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
@@ -469,7 +614,7 @@ function KpiCard({ title, value, icon, color }) {
         <div>
           <p
             style={{
-              color: '#a1a1aa',
+              color: 'var(--subtext)',
               fontSize: '0.875rem',
               margin: 0,
               marginBottom: '0.25rem',
@@ -482,7 +627,7 @@ function KpiCard({ title, value, icon, color }) {
               fontSize: '1.875rem',
               fontWeight: '700',
               margin: 0,
-              color: 'white',
+              color: 'var(--text)',
             }}
           >
             {value}

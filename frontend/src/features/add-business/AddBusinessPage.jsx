@@ -1,30 +1,61 @@
-import React, { useState } from 'react'
+// src/features/add-business/AddBusinessPage.jsx
+import React, { useState, useEffect, useMemo } from 'react'
+import {
+  createBranch,
+  createCategory,
+  fetchBranches,
+  fetchCategories,
+} from '../../lib/api/branchesCategories'
 
-function AddBusinessPage({ businessConfigs, setBusinessConfigs }) {
+// Fixed backend branch types (harus sama dengan BranchType di Django)
+const BRANCH_TYPES = [
+  { value: 'LAUNDRY', label: 'Laundry' },
+  { value: 'CARWASH', label: 'Car Wash' },
+  { value: 'KOS', label: 'Kos' },
+  { value: 'OTHER', label: 'Other Business' },
+]
+
+function AddBusinessPage({ businessConfigs, setBusinessConfigs, showToast }) {
   const [step, setStep] = useState(1)
   const [branchName, setBranchName] = useState('')
-  const [unitType, setUnitType] = useState('')
-  const [newUnitType, setNewUnitType] = useState('')
+  const [branchType, setBranchType] = useState('') // enum value
   const [incomeCategories, setIncomeCategories] = useState([])
   const [expenseCategories, setExpenseCategories] = useState([])
   const [incomeInput, setIncomeInput] = useState('')
   const [expenseInput, setExpenseInput] = useState('')
+  const [loading, setLoading] = useState(false)
 
-  const effectiveUnitType =
-    unitType === 'Custom' && newUnitType.trim() ? newUnitType.trim() : unitType
+  // data referensi dari backend
+  const [existingBranches, setExistingBranches] = useState([])
+  const [existingCategories, setExistingCategories] = useState([])
 
-  const steps = [
-    { id: 1, label: 'Informasi Dasar' },
-    { id: 2, label: 'Konfirmasi & Aktivasi' },
-  ]
+  // sekali load: cabang + kategori yang sudah ada
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const [branches, categories] = await Promise.all([
+          fetchBranches(),
+          fetchCategories(),
+        ])
+        setExistingBranches(Array.isArray(branches) ? branches : [])
+        setExistingCategories(Array.isArray(categories) ? categories : [])
+      } catch (e) {
+        console.error(e)
+      }
+    }
+    load()
+  }, [])
 
-  React.useEffect(() => {
-    if (!unitType || unitType === 'Custom') {
+  // preload default kategori ketika pilih tipe unit bisnis yg sudah ada di config
+  useEffect(() => {
+    if (!branchType) {
       setIncomeCategories([])
       setExpenseCategories([])
       return
     }
-    const cfg = businessConfigs.find((b) => b.unitBusiness === unitType)
+    const cfg = (Array.isArray(businessConfigs) ? businessConfigs : []).find(
+      (b) => b.branch_type === branchType || b.id === branchType,
+    )
     if (!cfg) {
       setIncomeCategories([])
       setExpenseCategories([])
@@ -32,23 +63,87 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs }) {
     }
     setIncomeCategories(cfg.defaultIncomeCategories || [])
     setExpenseCategories(cfg.defaultExpenseCategories || [])
-  }, [unitType, businessConfigs]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [branchType, businessConfigs])
+
+  // ---------- AUTOCOMPLETE KATEGORI ----------
+
+  // semua nama kategori unik dari backend (sumber list autocomplete)
+  const allCategoryNames = useMemo(() => {
+    const names = (existingCategories || []).map((c) => c.name || '')
+    return Array.from(new Set(names.filter(Boolean)))
+  }, [existingCategories])
+
+  const incomeSuggestions = useMemo(() => {
+    const q = incomeInput.trim().toLowerCase()
+    if (!q) return []
+    return allCategoryNames
+      .filter((name) => name.toLowerCase().includes(q))
+      .filter(
+        (name) =>
+          !incomeCategories.some(
+            (c) => c.toLowerCase() === name.toLowerCase(),
+          ),
+      )
+      .slice(0, 6)
+  }, [incomeInput, allCategoryNames, incomeCategories])
+
+  const expenseSuggestions = useMemo(() => {
+    const q = expenseInput.trim().toLowerCase()
+    if (!q) return []
+    return allCategoryNames
+      .filter((name) => name.toLowerCase().includes(q))
+      .filter(
+        (name) =>
+          !expenseCategories.some(
+            (c) => c.toLowerCase() === name.toLowerCase(),
+          ),
+      )
+      .slice(0, 6)
+  }, [expenseInput, allCategoryNames, expenseCategories])
+
+  const addIncomeCategory = (value) => {
+    const trimmed = value.trim()
+    if (!trimmed) return
+    if (
+      incomeCategories.some(
+        (c) => c.toLowerCase() === trimmed.toLowerCase(),
+      )
+    ) {
+      return
+    }
+    setIncomeCategories((prev) => [...prev, trimmed])
+  }
+
+  const addExpenseCategory = (value) => {
+    const trimmed = value.trim()
+    if (!trimmed) return
+    if (
+      expenseCategories.some(
+        (c) => c.toLowerCase() === trimmed.toLowerCase(),
+      )
+    ) {
+      return
+    }
+    setExpenseCategories((prev) => [...prev, trimmed])
+  }
 
   const handleAddIncomeCategory = () => {
-    const trimmed = incomeInput.trim()
-    if (!trimmed) return
-    if (!incomeCategories.includes(trimmed)) {
-      setIncomeCategories([...incomeCategories, trimmed])
-    }
+    addIncomeCategory(incomeInput)
     setIncomeInput('')
   }
 
   const handleAddExpenseCategory = () => {
-    const trimmed = expenseInput.trim()
-    if (!trimmed) return
-    if (!expenseCategories.includes(trimmed)) {
-      setExpenseCategories([...expenseCategories, trimmed])
-    }
+    addExpenseCategory(expenseInput)
+    setExpenseInput('')
+  }
+
+  const handleIncomeSuggestionClick = (name) => {
+    addIncomeCategory(name)
+    setIncomeInput('')
+  }
+
+  const handleExpenseSuggestionClick = (name) => {
+    addExpenseCategory(name)
     setExpenseInput('')
   }
 
@@ -62,66 +157,160 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs }) {
 
   const canGoNext =
     branchName.trim() &&
-    effectiveUnitType &&
+    branchType &&
     (incomeCategories.length > 0 || expenseCategories.length > 0)
 
-  const handleActivate = () => {
-    if (!canGoNext) return
+  const branchTypeLabel = (value) =>
+    BRANCH_TYPES.find((t) => t.value === value)?.label || value
 
-    const existingIndex = businessConfigs.findIndex(
-      (b) => b.unitBusiness === effectiveUnitType,
-    )
-
-    if (existingIndex >= 0) {
-      const existing = businessConfigs[existingIndex]
-      const newBranch = {
-        id: branchName.trim(),
-        name: branchName.trim(),
-        incomeCategories: incomeCategories.length ? incomeCategories : null,
-        expenseCategories: expenseCategories.length ? expenseCategories : null,
-        active: true,
-      }
-      const updated = [...businessConfigs]
-      updated[existingIndex] = {
-        ...existing,
-        branches: [...existing.branches, newBranch],
-      }
-      setBusinessConfigs(updated)
-    } else {
-      const newConfig = {
-        id: effectiveUnitType,
-        unitBusiness: effectiveUnitType,
-        defaultIncomeCategories: incomeCategories,
-        defaultExpenseCategories: expenseCategories,
-        branches: [
-          {
-            id: branchName.trim(),
-            name: branchName.trim(),
-            incomeCategories: null,
-            expenseCategories: null,
-            active: true,
-          },
-        ],
-        active: true,
-      }
-      setBusinessConfigs([...businessConfigs, newConfig])
-    }
-
+  const resetForm = () => {
     setStep(1)
     setBranchName('')
-    setUnitType('')
-    setNewUnitType('')
+    setBranchType('')
     setIncomeCategories([])
     setExpenseCategories([])
+    setIncomeInput('')
+    setExpenseInput('')
   }
 
+  // rebuild businessConfigs setelah aktivasi
+  const rebuildBusinessConfigsFromApi = async () => {
+    const [branches, categories] = await Promise.all([
+      fetchBranches(),
+      fetchCategories(),
+    ])
+
+    setExistingBranches(Array.isArray(branches) ? branches : [])
+    setExistingCategories(Array.isArray(categories) ? categories : [])
+
+    const byType = {}
+
+    const branchArray = Array.isArray(branches) ? branches : []
+    branchArray.forEach((br) => {
+      if (!byType[br.branch_type]) {
+        byType[br.branch_type] = {
+          id: br.branch_type,
+          branch_type: br.branch_type,
+          unitBusiness: br.branch_type,
+          defaultIncomeCategories: [],
+          defaultExpenseCategories: [],
+          branches: [],
+          active: true,
+        }
+      }
+      byType[br.branch_type].branches.push({
+        id: br.id,
+        name: br.name,
+        active: true,
+      })
+    })
+
+    const catArray = Array.isArray(categories) ? categories : []
+    catArray.forEach((cat) => {
+      Object.values(byType).forEach((cfg) => {
+        if (cat.transaction_type === 'INCOME') {
+          if (!cfg.defaultIncomeCategories.includes(cat.name)) {
+            cfg.defaultIncomeCategories.push(cat.name)
+          }
+        } else if (cat.transaction_type === 'EXPENSE') {
+          if (!cfg.defaultExpenseCategories.includes(cat.name)) {
+            cfg.defaultExpenseCategories.push(cat.name)
+          }
+        }
+      })
+    })
+
+    setBusinessConfigs(Object.values(byType))
+  }
+
+  const handleActivate = async () => {
+    if (!canGoNext || loading) return
+    setLoading(true)
+
+    try {
+      // Cek duplikat nama cabang (case-insensitive)
+      const existsBranch = (existingBranches || []).some(
+        (b) =>
+          (b.name || '').toLowerCase() === branchName.trim().toLowerCase(),
+      )
+      if (existsBranch) {
+        showToast?.(
+          'Nama cabang/bisnis sudah ada. Gunakan nama lain.',
+          'error',
+        )
+        setLoading(false)
+        return
+      }
+
+      const branchPayload = {
+        name: branchName.trim(),
+        branch_type: branchType,
+      }
+      await createBranch(branchPayload)
+
+      // Dedup kategori sebelum dikirim ke backend
+      const uniqueIncome = Array.from(
+        new Set(
+          incomeCategories.map((c) => c.trim()).filter((c) => c.length > 0),
+        ),
+      )
+      const uniqueExpense = Array.from(
+        new Set(
+          expenseCategories.map((c) => c.trim()).filter((c) => c.length > 0),
+        ),
+      )
+
+      const promises = []
+      uniqueIncome.forEach((name) => {
+        promises.push(
+          createCategory({ name, transaction_type: 'INCOME' }),
+        )
+      })
+      uniqueExpense.forEach((name) => {
+        promises.push(
+          createCategory({ name, transaction_type: 'EXPENSE' }),
+        )
+      })
+      await Promise.all(promises)
+
+      await rebuildBusinessConfigsFromApi()
+
+      resetForm()
+      showToast?.('Berhasil mengaktivasi unit bisnis baru.')
+    } catch (e) {
+      console.error(e)
+      showToast?.('Gagal menyimpan unit bisnis.', 'error')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const steps = [
+    { id: 1, label: 'Informasi Dasar' },
+    { id: 2, label: 'Konfirmasi & Aktivasi' },
+  ]
+
   return (
-    <main style={{ maxWidth: '1280px', margin: '0 auto', padding: '2.5rem 1.5rem' }}>
+    <main
+      style={{
+        maxWidth: '1280px',
+        margin: '0 auto',
+        padding: '2.5rem 1.5rem',
+        color: 'var(--text)',
+      }}
+    >
       <h1 style={{ fontSize: '1.75rem', fontWeight: 700, marginBottom: '0.5rem' }}>
         Tambah Unit Bisnis Baru
       </h1>
-      <p style={{ color: '#a1a1aa', fontSize: '0.9rem', marginBottom: '2rem' }}>
-        Ikuti langkah-langkah di bawah ini untuk mendefinisikan tipe unit bisnis dan cabang.
+      <p
+        style={{
+          color: 'var(--subtext)',
+          fontSize: '0.9rem',
+          marginBottom: '2rem',
+        }}
+      >
+        Ikuti langkah-langkah di bawah ini untuk mendefinisikan tipe unit bisnis dan
+        cabang.
       </p>
 
       <div
@@ -132,14 +321,16 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs }) {
           alignItems: 'flex-start',
         }}
       >
+        {/* Step indicator */}
         <div
           style={{
-            backgroundColor: '#050505',
+            backgroundColor: 'var(--bg-elevated)',
             borderRadius: '9999px',
             padding: '1.25rem 1rem',
             display: 'flex',
             flexDirection: 'column',
             gap: '1rem',
+            border: '1px solid var(--border)',
           }}
         >
           {steps.map((s) => {
@@ -160,14 +351,14 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs }) {
                     width: 28,
                     height: 28,
                     borderRadius: '9999px',
-                    border: isActive ? 'none' : '1px solid #27272a',
-                    backgroundColor: isActive ? 'white' : '#111827',
+                    border: isActive ? 'none' : '1px solid var(--border)',
+                    backgroundColor: isActive ? 'var(--accent)' : 'var(--bg)',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
                     fontSize: 13,
                     fontWeight: 600,
-                    color: isActive ? 'black' : isDone ? '#22c55e' : '#a1a1aa',
+                    color: isActive ? 'var(--bg)' : isDone ? '#22c55e' : 'var(--subtext)',
                   }}
                 >
                   {isDone ? '✓' : s.id}
@@ -176,7 +367,7 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs }) {
                   style={{
                     fontSize: 13,
                     fontWeight: isActive ? 600 : 500,
-                    color: 'white',
+                    color: 'var(--text)',
                   }}
                 >
                   {s.label}
@@ -186,12 +377,13 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs }) {
           })}
         </div>
 
+        {/* Step 1 */}
         {step === 1 && (
           <div
             style={{
-              backgroundColor: '#050505',
+              backgroundColor: 'var(--bg-elevated)',
               borderRadius: 18,
-              border: '1px solid #27272a',
+              border: '1px solid var(--border)',
               padding: '1.75rem 1.75rem 1.5rem',
               maxWidth: 720,
             }}
@@ -200,8 +392,9 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs }) {
               <h2 style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: 4 }}>
                 Informasi Dasar
               </h2>
-              <p style={{ color: '#a1a1aa', fontSize: 12 }}>
-                Masukkan nama cabang/bisnis, tipe unit bisnis, dan kategori service untuk unit ini.
+              <p style={{ color: 'var(--subtext)', fontSize: 12 }}>
+                Masukkan nama cabang/bisnis, tipe unit bisnis, dan kategori service untuk
+                unit ini.
               </p>
             </div>
 
@@ -219,7 +412,7 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs }) {
                     fontSize: 12,
                     fontWeight: 500,
                     marginBottom: 6,
-                    color: '#e5e5e5',
+                    color: 'var(--text)',
                   }}
                 >
                   Nama Cabang / Bisnis
@@ -230,15 +423,31 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs }) {
                   onChange={(e) => setBranchName(e.target.value)}
                   style={{
                     width: '100%',
-                    backgroundColor: '#020617',
+                    backgroundColor: 'var(--bg)',
                     borderRadius: 9999,
-                    border: '1px solid #27272a',
+                    border: '1px solid var(--border)',
                     padding: '0.7rem 1rem',
                     fontSize: 13,
-                    color: 'white',
+                    color: 'var(--text)',
                     outline: 'none',
                   }}
                 />
+                {branchName.trim() &&
+                  existingBranches.some(
+                    (b) =>
+                      (b.name || '').toLowerCase() ===
+                      branchName.trim().toLowerCase(),
+                  ) && (
+                    <p
+                      style={{
+                        marginTop: 4,
+                        fontSize: 11,
+                        color: '#f97373',
+                      }}
+                    >
+                      Nama ini sudah dipakai cabang lain.
+                    </p>
+                  )}
               </div>
 
               <div>
@@ -248,52 +457,33 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs }) {
                     fontSize: 12,
                     fontWeight: 500,
                     marginBottom: 6,
-                    color: '#e5e5e5',
+                    color: 'var(--text)',
                   }}
                 >
                   Tipe Unit Bisnis
                 </label>
                 <select
-                  value={unitType}
-                  onChange={(e) => setUnitType(e.target.value)}
+                  value={branchType}
+                  onChange={(e) => setBranchType(e.target.value)}
                   style={{
                     width: '100%',
-                    backgroundColor: '#020617',
+                    backgroundColor: 'var(--bg)',
                     borderRadius: 9999,
-                    border: '1px solid #27272a',
+                    border: '1px solid var(--border)',
                     padding: '0.7rem 1rem',
                     fontSize: 13,
-                    color: 'white',
+                    color: 'var(--text)',
                     outline: 'none',
                     appearance: 'none',
                   }}
                 >
                   <option value="">Pilih tipe…</option>
-                  {businessConfigs.map((b) => (
-                    <option key={b.id} value={b.unitBusiness}>
-                      {b.unitBusiness}
+                  {BRANCH_TYPES.map((t) => (
+                    <option key={t.value} value={t.value}>
+                      {t.label}
                     </option>
                   ))}
-                  <option value="Custom">Tambah tipe baru…</option>
                 </select>
-                {unitType === 'Custom' && (
-                  <input
-                    placeholder="Contoh: Barbershop"
-                    value={newUnitType}
-                    onChange={(e) => setNewUnitType(e.target.value)}
-                    style={{
-                      marginTop: 8,
-                      width: '100%',
-                      backgroundColor: '#020617',
-                      borderRadius: 9999,
-                      border: '1px solid #27272a',
-                      padding: '0.7rem 1rem',
-                      fontSize: 13,
-                      color: 'white',
-                      outline: 'none',
-                    }}
-                  />
-                )}
               </div>
 
               <div
@@ -303,6 +493,7 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs }) {
                   gap: '1.25rem',
                 }}
               >
+                {/* Kategori Pendapatan */}
                 <div>
                   <label
                     style={{
@@ -310,7 +501,7 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs }) {
                       fontSize: 12,
                       fontWeight: 500,
                       marginBottom: 6,
-                      color: '#e5e5e5',
+                      color: 'var(--text)',
                     }}
                   >
                     Kategori Pendapatan
@@ -319,7 +510,7 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs }) {
                     style={{
                       display: 'flex',
                       gap: 8,
-                      marginBottom: 8,
+                      marginBottom: 4,
                     }}
                   >
                     <input
@@ -334,12 +525,12 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs }) {
                       }}
                       style={{
                         flex: 1,
-                        backgroundColor: '#020617',
+                        backgroundColor: 'var(--bg)',
                         borderRadius: 9999,
-                        border: '1px solid #27272a',
+                        border: '1px solid var(--border)',
                         padding: '0.5rem 0.9rem',
                         fontSize: 12,
-                        color: 'white',
+                        color: 'var(--text)',
                         outline: 'none',
                       }}
                     />
@@ -347,10 +538,10 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs }) {
                       type="button"
                       onClick={handleAddIncomeCategory}
                       style={{
-                        backgroundColor: 'white',
+                        backgroundColor: 'var(--accent)',
                         borderRadius: 9999,
                         border: 'none',
-                        color: 'black',
+                        color: 'var(--bg)',
                         fontSize: 12,
                         fontWeight: 600,
                         padding: '0.45rem 0.9rem',
@@ -360,6 +551,39 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs }) {
                       Tambah
                     </button>
                   </div>
+                  {incomeSuggestions.length > 0 && (
+                    <div
+                      style={{
+                        backgroundColor: 'var(--bg)',
+                        borderRadius: 10,
+                        border: '1px solid var(--border)',
+                        marginBottom: 6,
+                        maxHeight: 140,
+                        overflowY: 'auto',
+                      }}
+                    >
+                      {incomeSuggestions.map((name) => (
+                        <button
+                          key={name}
+                          type="button"
+                          onClick={() => handleIncomeSuggestionClick(name)}
+                          style={{
+                            display: 'block',
+                            width: '100%',
+                            textAlign: 'left',
+                            padding: '0.4rem 0.7rem',
+                            border: 'none',
+                            background: 'transparent',
+                            color: 'var(--text)',
+                            fontSize: 12,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          {name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                   <div
                     style={{
                       display: 'flex',
@@ -401,7 +625,7 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs }) {
                       <span
                         style={{
                           fontSize: 11,
-                          color: '#6b7280',
+                          color: 'var(--subtext)',
                         }}
                       >
                         Belum ada kategori pendapatan.
@@ -410,6 +634,7 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs }) {
                   </div>
                 </div>
 
+                {/* Kategori Pengeluaran */}
                 <div>
                   <label
                     style={{
@@ -417,7 +642,7 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs }) {
                       fontSize: 12,
                       fontWeight: 500,
                       marginBottom: 6,
-                      color: '#e5e5e5',
+                      color: 'var(--text)',
                     }}
                   >
                     Kategori Pengeluaran
@@ -426,7 +651,7 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs }) {
                     style={{
                       display: 'flex',
                       gap: 8,
-                      marginBottom: 8,
+                      marginBottom: 4,
                     }}
                   >
                     <input
@@ -441,12 +666,12 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs }) {
                       }}
                       style={{
                         flex: 1,
-                        backgroundColor: '#020617',
+                        backgroundColor: 'var(--bg)',
                         borderRadius: 9999,
-                        border: '1px solid #27272a',
+                        border: '1px solid var(--border)',
                         padding: '0.5rem 0.9rem',
                         fontSize: 12,
-                        color: 'white',
+                        color: 'var(--text)',
                         outline: 'none',
                       }}
                     />
@@ -454,10 +679,10 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs }) {
                       type="button"
                       onClick={handleAddExpenseCategory}
                       style={{
-                        backgroundColor: 'white',
+                        backgroundColor: 'var(--accent)',
                         borderRadius: 9999,
                         border: 'none',
-                        color: 'black',
+                        color: 'var(--bg)',
                         fontSize: 12,
                         fontWeight: 600,
                         padding: '0.45rem 0.9rem',
@@ -467,6 +692,39 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs }) {
                       Tambah
                     </button>
                   </div>
+                  {expenseSuggestions.length > 0 && (
+                    <div
+                      style={{
+                        backgroundColor: 'var(--bg)',
+                        borderRadius: 10,
+                        border: '1px solid var(--border)',
+                        marginBottom: 6,
+                        maxHeight: 140,
+                        overflowY: 'auto',
+                      }}
+                    >
+                      {expenseSuggestions.map((name) => (
+                        <button
+                          key={name}
+                          type="button"
+                          onClick={() => handleExpenseSuggestionClick(name)}
+                          style={{
+                            display: 'block',
+                            width: '100%',
+                            textAlign: 'left',
+                            padding: '0.4rem 0.7rem',
+                            border: 'none',
+                            background: 'transparent',
+                            color: 'var(--text)',
+                            fontSize: 12,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          {name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                   <div
                     style={{
                       display: 'flex',
@@ -508,7 +766,7 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs }) {
                       <span
                         style={{
                           fontSize: 11,
-                          color: '#6b7280',
+                          color: 'var(--subtext)',
                         }}
                       >
                         Belum ada kategori pengeluaran.
@@ -533,8 +791,8 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs }) {
                 style={{
                   backgroundColor: 'transparent',
                   borderRadius: 9999,
-                  border: '1px solid #27272a',
-                  color: '#e5e5e5',
+                  border: '1px solid var(--border)',
+                  color: 'var(--text)',
                   fontSize: 13,
                   padding: '0.55rem 1.3rem',
                   cursor: 'pointer',
@@ -548,10 +806,10 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs }) {
                 disabled={!canGoNext}
                 onClick={() => setStep(2)}
                 style={{
-                  backgroundColor: canGoNext ? 'white' : '#4b5563',
+                  backgroundColor: canGoNext ? 'var(--accent)' : '#4b5563',
                   borderRadius: 9999,
                   border: 'none',
-                  color: canGoNext ? 'black' : '#9ca3af',
+                  color: canGoNext ? 'var(--bg)' : '#e5e7eb',
                   fontSize: 13,
                   fontWeight: 600,
                   padding: '0.6rem 1.6rem',
@@ -568,12 +826,13 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs }) {
           </div>
         )}
 
+        {/* Step 2 */}
         {step === 2 && (
           <div
             style={{
-              backgroundColor: '#050505',
+              backgroundColor: 'var(--bg-elevated)',
               borderRadius: 18,
-              border: '1px solid #27272a',
+              border: '1px solid var(--border)',
               padding: '1.75rem 1.75rem 1.5rem',
               maxWidth: 640,
             }}
@@ -582,7 +841,7 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs }) {
               <h2 style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: 4 }}>
                 Konfirmasi & Aktivasi
               </h2>
-              <p style={{ color: '#a1a1aa', fontSize: 12 }}>
+              <p style={{ color: 'var(--subtext)', fontSize: 12 }}>
                 Tinjau kembali detail unit bisnis sebelum diaktivasi.
               </p>
             </div>
@@ -597,9 +856,9 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs }) {
             >
               <div
                 style={{
-                  backgroundColor: '#020617',
+                  backgroundColor: 'var(--bg)',
                   borderRadius: 12,
-                  border: '1px solid #27272a',
+                  border: '1px solid var(--border)',
                   padding: '1rem 1.25rem',
                 }}
               >
@@ -608,21 +867,21 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs }) {
                     fontSize: 13,
                     fontWeight: 600,
                     marginBottom: 8,
-                    color: 'white',
+                    color: 'var(--text)',
                   }}
                 >
                   Ringkasan Unit Bisnis
                 </h3>
-                <p style={{ fontSize: 12, color: '#9ca3af', marginBottom: 4 }}>
+                <p style={{ fontSize: 12, color: 'var(--subtext)', marginBottom: 4 }}>
                   Nama cabang / bisnis:
-                  <span style={{ color: 'white', marginLeft: 4 }}>
+                  <span style={{ color: 'var(--text)', marginLeft: 4 }}>
                     {branchName || '-'}
                   </span>
                 </p>
-                <p style={{ fontSize: 12, color: '#9ca3af', marginBottom: 4 }}>
+                <p style={{ fontSize: 12, color: 'var(--subtext)', marginBottom: 4 }}>
                   Tipe unit bisnis:
-                  <span style={{ color: 'white', marginLeft: 4 }}>
-                    {effectiveUnitType || '-'}
+                  <span style={{ color: 'var(--text)', marginLeft: 4 }}>
+                    {branchTypeLabel(branchType) || '-'}
                   </span>
                 </p>
               </div>
@@ -636,9 +895,9 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs }) {
               >
                 <div
                   style={{
-                    backgroundColor: '#020617',
+                    backgroundColor: 'var(--bg)',
                     borderRadius: 12,
-                    border: '1px solid #27272a',
+                    border: '1px solid var(--border)',
                     padding: '1rem 1.25rem',
                   }}
                 >
@@ -647,13 +906,13 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs }) {
                       fontSize: 12,
                       fontWeight: 600,
                       marginBottom: 8,
-                      color: '#bbf7d0',
+                      color: '#16a34a',
                     }}
                   >
                     Kategori Pendapatan
                   </h4>
                   {incomeCategories.length === 0 ? (
-                    <p style={{ fontSize: 11, color: '#6b7280' }}>
+                    <p style={{ fontSize: 11, color: 'var(--subtext)' }}>
                       Belum ada kategori pendapatan.
                     </p>
                   ) : (
@@ -672,7 +931,7 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs }) {
                           key={cat}
                           style={{
                             fontSize: 11,
-                            color: '#e5e5e5',
+                            color: 'var(--text)',
                           }}
                         >
                           • {cat}
@@ -681,11 +940,12 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs }) {
                     </ul>
                   )}
                 </div>
+
                 <div
                   style={{
-                    backgroundColor: '#020617',
+                    backgroundColor: 'var(--bg)',
                     borderRadius: 12,
-                    border: '1px solid #27272a',
+                    border: '1px solid var(--border)',
                     padding: '1rem 1.25rem',
                   }}
                 >
@@ -694,13 +954,13 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs }) {
                       fontSize: 12,
                       fontWeight: 600,
                       marginBottom: 8,
-                      color: '#fecaca',
+                      color: '#dc2626',
                     }}
                   >
                     Kategori Pengeluaran
                   </h4>
                   {expenseCategories.length === 0 ? (
-                    <p style={{ fontSize: 11, color: '#6b7280' }}>
+                    <p style={{ fontSize: 11, color: 'var(--subtext)' }}>
                       Belum ada kategori pengeluaran.
                     </p>
                   ) : (
@@ -719,7 +979,7 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs }) {
                           key={cat}
                           style={{
                             fontSize: 11,
-                            color: '#e5e5e5',
+                            color: 'var(--text)',
                           }}
                         >
                           • {cat}
@@ -745,8 +1005,8 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs }) {
                 style={{
                   backgroundColor: 'transparent',
                   borderRadius: 9999,
-                  border: '1px solid #27272a',
-                  color: '#e5e5e5',
+                  border: '1px solid var(--border)',
+                  color: 'var(--text)',
                   fontSize: 13,
                   padding: '0.55rem 1.3rem',
                   cursor: 'pointer',
@@ -758,23 +1018,24 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs }) {
               <button
                 type="button"
                 onClick={handleActivate}
-                disabled={!canGoNext}
+                disabled={!canGoNext || loading}
                 style={{
-                  backgroundColor: canGoNext ? 'white' : '#4b5563',
+                  backgroundColor:
+                    !canGoNext || loading ? '#4b5563' : 'var(--accent)',
                   borderRadius: 9999,
                   border: 'none',
-                  color: canGoNext ? 'black' : '#9ca3af',
+                  color: !canGoNext || loading ? '#e5e7eb' : 'var(--bg)',
                   fontSize: 13,
                   fontWeight: 600,
                   padding: '0.6rem 1.8rem',
-                  cursor: canGoNext ? 'pointer' : 'not-allowed',
+                  cursor: !canGoNext || loading ? 'not-allowed' : 'pointer',
                   display: 'inline-flex',
                   alignItems: 'center',
                   gap: 8,
                 }}
               >
-                Aktivasi Unit Bisnis
-                <span>✓</span>
+                {loading ? 'Menyimpan...' : 'Aktivasi Unit Bisnis'}
+                {!loading && <span>✓</span>}
               </button>
             </div>
           </div>

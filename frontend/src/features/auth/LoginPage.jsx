@@ -1,77 +1,79 @@
 import React, { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { useGoogleLogin } from '@react-oauth/google'
 
-function LoginPage() {
-  const [isLoading, setIsLoading] = useState(false)
+function LoginPage({ onLogin }) {
+  const navigate = useNavigate()
+  const [isLoggingIn, setIsLoggingIn] = useState(false)
 
-  const handleGoogleLogin = () => {
-    setIsLoading(true)
-    setTimeout(() => {
-      window.location.href = '/dashboard'
-    }, 1500)
-  }
+  const login = useGoogleLogin({
+    flow: 'implicit',
+    scope: 'openid profile email',
+    onSuccess: async (tokenResponse) => {
+      const accessToken = tokenResponse?.access_token
+      if (!accessToken || isLoggingIn) return
+
+      setIsLoggingIn(true)
+      await onLogin?.(accessToken)
+      navigate('/dashboard')
+      setIsLoggingIn(false)
+    },
+    onError: (error) => {
+      console.error('Google login error:', error)
+      setIsLoggingIn(false)
+    },
+  })
 
   return (
     <div
       style={{
         minHeight: '100vh',
-        backgroundColor: '#09090b',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        padding: '2rem',
+        backgroundColor: 'var(--bg)',
+        color: 'var(--text)',
       }}
     >
       <div
         style={{
+          backgroundColor: 'var(--bg-elevated)',
+          padding: '2rem',
+          borderRadius: '1rem',
+          border: '1px solid var(--border)',
           width: '100%',
-          maxWidth: '400px',
-          backgroundColor: '#1c1c1c',
-          border: '1px solid #27272a',
-          borderRadius: '16px',
-          padding: '3rem',
+          maxWidth: '420px',
           textAlign: 'center',
         }}
       >
-        <h1
+        <h1 style={{ fontSize: '1.5rem', marginBottom: '1rem' }}>Masuk ke MaknaFlow</h1>
+        <p
           style={{
-            fontSize: '2.5rem',
-            fontWeight: 'bold',
-            background: 'linear-gradient(to right, white, #d1d5db)',
-            WebkitBackgroundClip: 'text',
-            WebkitTextFillColor: 'transparent',
-            marginBottom: '1rem',
+            fontSize: '0.9rem',
+            color: 'var(--subtext)',
+            marginBottom: '1.5rem',
           }}
         >
-          MaknaFlow
-        </h1>
-        <p style={{ color: '#a1a1aa', fontSize: '1.1rem', marginBottom: '2rem' }}>
-          Dashboard Keuangan Bisnis
+          Gunakan akun Google untuk mengakses dashboard.
         </p>
+
         <button
-          onClick={handleGoogleLogin}
-          disabled={isLoading}
+          onClick={() => login()}
+          disabled={isLoggingIn}
           style={{
-            width: '100%',
-            backgroundColor: 'white',
-            color: 'black',
-            padding: '1rem 2rem',
-            borderRadius: '12px',
-            fontSize: '1.1rem',
-            fontWeight: '600',
-            border: 'none',
-            cursor: isLoading ? 'not-allowed' : 'pointer',
-            display: 'flex',
+            padding: '0.75rem 1.5rem',
+            borderRadius: '999px',
+            border: '1px solid #e5e7eb',
+            backgroundColor: '#fff',
+            display: 'inline-flex',
             alignItems: 'center',
-            justifyContent: 'center',
-            gap: '0.75rem',
-            transition: 'all 0.2s',
+            gap: '0.5rem',
+            cursor: 'pointer',
           }}
         >
-          {isLoading ? '🔄 Sedang Masuk...' : '👤 Masuk dengan Akun Google'}
+          <span>🔐</span>
+          <span>{isLoggingIn ? 'Sedang masuk...' : 'Lanjut dengan Google'}</span>
         </button>
-        <p style={{ color: '#a1a1aa', fontSize: '0.875rem', marginTop: '1.5rem' }}>
-          Hanya pemilik bisnis yang dapat mengakses
-        </p>
       </div>
     </div>
   )

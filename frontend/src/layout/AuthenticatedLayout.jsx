@@ -1,3 +1,4 @@
+// src/layout/AuthenticatedLayout.jsx
 import React from 'react'
 import { Routes, Route } from 'react-router-dom'
 import NavBar from '../components/layout/NavBar'
@@ -17,10 +18,27 @@ function AuthenticatedLayout({
   setLastUsedType,
   isLoading,
   error,
+  notifications,
+  unreadCount,
+  onAllNotificationsRead,
+  user,
+  onLogout,
+  theme,
+  onToggleTheme,
+  showToast,
+  onReloadTransactions, // <- DITERIMA dari App.jsx
 }) {
   return (
     <>
-      <NavBar />
+      <NavBar
+        user={user}
+        onLogout={onLogout}
+        notifications={notifications}
+        unreadCount={unreadCount}
+        onAllNotificationsRead={onAllNotificationsRead}
+        theme={theme}
+        onToggleTheme={onToggleTheme}
+      />
       <Routes>
         <Route
           path="/"
@@ -42,6 +60,8 @@ function AuthenticatedLayout({
               appSettings={appSettings}
               lastUsedType={lastUsedType}
               setLastUsedType={setLastUsedType}
+              showToast={showToast}
+              onRefresh={onReloadTransactions} // <- DIPASS ke TransactionsPage
             />
           }
         />
@@ -53,6 +73,7 @@ function AuthenticatedLayout({
               setBusinessConfigs={setBusinessConfigs}
               appSettings={appSettings}
               setAppSettings={setAppSettings}
+              showToast={showToast}
             />
           }
         />
@@ -62,6 +83,7 @@ function AuthenticatedLayout({
             <AddBusinessPage
               businessConfigs={businessConfigs}
               setBusinessConfigs={setBusinessConfigs}
+              showToast={showToast}
             />
           }
         />
