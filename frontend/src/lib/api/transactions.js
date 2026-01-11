@@ -89,9 +89,17 @@ export async function createTransaction(frontendTx) {
   console.log('createTransaction frontendTx:', frontendTx)
   const payload = mapToBackendPayload(frontendTx)
   console.log('createTransaction backend payload:', payload)
-  const res = await api.post('/transactions/', payload)
-  console.log('createTransaction response:', res.data)
-  return mapTransaction(res.data)
+  try {
+    const res = await api.post('/transactions/', payload)
+    console.log('createTransaction response:', res.data)
+    return mapTransaction(res.data)
+  } catch (e) {
+    console.error(
+      'createTransaction error:',
+      e.response?.data || e.message || e,
+    )
+    throw e
+  }
 }
 
 export async function deleteTransaction(id) {

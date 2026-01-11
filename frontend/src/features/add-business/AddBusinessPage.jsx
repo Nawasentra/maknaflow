@@ -309,7 +309,8 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs, showToast }) {
           marginBottom: '2rem',
         }}
       >
-        Ikuti langkah-langkah di bawah ini untuk mendefinisikan tipe unit bisnis dan cabang.
+        Ikuti langkah-langkah di bawah ini untuk mendefinisikan tipe unit bisnis dan
+        cabang.
       </p>
 
       <div
@@ -392,7 +393,8 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs, showToast }) {
                 Informasi Dasar
               </h2>
               <p style={{ color: 'var(--subtext)', fontSize: 12 }}>
-                Masukkan nama cabang/bisnis, tipe unit bisnis, dan kategori service untuk unit ini.
+                Masukkan nama cabang/bisnis, tipe unit bisnis, dan kategori service untuk
+                unit ini.
               </p>
             </div>
 

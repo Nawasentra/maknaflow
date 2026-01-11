@@ -257,6 +257,7 @@ function SettingsPage({
   const [newCategoryName, setNewCategoryName] = useState('')
   const [editingCategoryId, setEditingCategoryId] = useState(null)
   const [editingCategoryName, setEditingCategoryName] = useState('')
+  const [globalCategorySearch, setGlobalCategorySearch] = useState('') // NEW
 
   useEffect(() => {
     const loadCategories = async () => {
@@ -274,9 +275,13 @@ function SettingsPage({
     loadCategories()
   }, [showToast])
 
-  const filteredCategories = categories.filter(
-    (c) => c.transaction_type === categoryTypeFilter,
-  )
+  const filteredCategories = categories
+    .filter((c) => c.transaction_type === categoryTypeFilter)
+    .filter((c) => {
+      if (!globalCategorySearch) return true
+      const q = globalCategorySearch.toLowerCase()
+      return (c.name || '').toLowerCase().includes(q)
+    })
 
   const handleAddCategoryBackend = async () => {
     const trimmed = newCategoryName.trim()
@@ -494,7 +499,7 @@ function SettingsPage({
       ? 'Aktifkan Cabang'
       : 'Nonaktifkan Cabang'
     const desc = isDelete
-      ? `Yakin ingin menghapus cabang "${branch.name}"? Tindakan ini tidak bisa dibatalkan.`
+      ? `Yakin ingin menghapus cabang "${branch.name}"? Semua transaksi yang terkait cabang ini akan ikut terhapus (aturan server).`
       : branch.active === false
       ? `Aktifkan kembali cabang "${branch.name}"?`
       : `Nonaktifkan cabang "${branch.name}"?`
@@ -703,6 +708,28 @@ function SettingsPage({
                 </button>
               ))}
             </div>
+          </div>
+
+          {/* NEW: search kategori global */}
+          <div style={{ marginBottom: '0.75rem' }}>
+            <p style={{ fontSize: 12, color: 'var(--subtext)', marginBottom: 4 }}>
+              Cari kategori global
+            </p>
+            <input
+              value={globalCategorySearch}
+              onChange={(e) => setGlobalCategorySearch(e.target.value)}
+              placeholder="Cari nama kategori..."
+              style={{
+                width: '100%',
+                backgroundColor: 'var(--bg)',
+                borderRadius: 12,
+                border: '1px solid var(--border)',
+                padding: '0.6rem 0.9rem',
+                fontSize: 12,
+                color: 'var(--text)',
+                outline: 'none',
+              }}
+            />
           </div>
 
           <div style={{ marginBottom: '0.75rem' }}>
