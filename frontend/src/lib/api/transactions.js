@@ -1,21 +1,23 @@
 // src/lib/api/transactions.js
 import api from '../axios'
 
-// fallback only if GET fails
-const mockTransactions = [
-  {
-    id: 1,
-    date: '2026-01-07',
-    unitBusiness: 'Laundry',
-    branch: 'Laundry Antapani',
-    category: 'Cuci Kering',
-    type: 'Income',
-    amount: 250000,
-    payment: 'Cash',
-  },
-]
+// ---------- FETCH HELPERS ----------
 
-// backend → frontend
+export async function fetchBranches() {
+  const res = await api.get('/branches/')
+  // expected: [{id, name, branch_type, address}, ...]
+  return res.data
+}
+
+export async function fetchCategories() {
+  const res = await api.get('/categories/')
+  // expected: [{id, name, transaction_type}, ...]
+  return res.data
+}
+
+// ---------- TRANSACTIONS ----------
+
+// backend → frontend mapper
 function mapTransaction(t) {
   const type =
     t.transaction_type === 'INCOME'
@@ -48,55 +50,37 @@ function mapTransaction(t) {
   }
 }
 
-// frontend → backend (branch/category optional for now)
+// frontend → backend mapper
 function mapToBackendPayload(frontendTx) {
   return {
     date: frontendTx.date,
-    branch: frontendTx.branchId || null,
-    category: frontendTx.categoryId || null,
+    branch: frontendTx.branchId,          // integer, required
+    category: frontendTx.categoryId,      // integer, required
     amount: frontendTx.amount,
     description: frontendTx.description || '',
-    payment_method: frontendTx.payment,
+    payment_method: frontendTx.payment,   // "CASH" | "QRIS" | "TRANSFER"
     transaction_type: frontendTx.type === 'Income' ? 'INCOME' : 'EXPENSE',
     source: 'MANUAL',
   }
 }
 
 export async function fetchTransactions(params = {}) {
-  try {
-    const res = await api.get('/transactions/', { params })
-    const data = Array.isArray(res.data) ? res.data : res.data.results || []
-    const mapped = data.map(mapTransaction)
-    console.log('fetchTransactions ->', mapped)
-    return mapped
-  } catch (err) {
-    console.error('fetchTransactions failed, using mock:', err)
-    return mockTransactions
-  }
+  const res = await api.get('/transactions/', { params })
+  const data = Array.isArray(res.data) ? res.data : res.data.results || []
+  const mapped = data.map(mapTransaction)
+  console.log('fetchTransactions ->', mapped)
+  return mapped
 }
 
 export async function createTransaction(frontendTx) {
-  try {
-    console.log('createTransaction frontendTx:', frontendTx)
-    const payload = mapToBackendPayload(frontendTx)
-    console.log('createTransaction backend payload:', payload)
-    const res = await api.post('/transactions/', payload)
-    console.log('createTransaction response:', res.data)
-    return mapTransaction(res.data)
-  } catch (err) {
-    console.error(
-      'createTransaction error:',
-      err.response?.status,
-      err.response?.data || err.message,
-    )
-    throw err
-  }
+  console.log('createTransaction frontendTx:', frontendTx)
+  const payload = mapToBackendPayload(frontendTx)
+  console.log('createTransaction backend payload:', payload)
+  const res = await api.post('/transactions/', payload)
+  console.log('createTransaction response:', res.data)
+  return mapTransaction(res.data)
 }
 
 export async function deleteTransaction(id) {
-  try {
-    await api.delete(`/transactions/${id}/`)
-  } catch (err) {
-    console.error('deleteTransaction error:', err.response?.status, err.response?.data)
-  }
+  await api.delete(`/transactions/${id}/`)
 }

@@ -4,6 +4,8 @@ import {
   fetchTransactions,
   createTransaction,
   deleteTransaction,
+  fetchBranches,
+  fetchCategories,
 } from '../../lib/api/transactions'
 
 const inputStyle = {
@@ -52,16 +54,26 @@ function TransactionsPage({
   const [transactionToDelete, setTransactionToDelete] = useState(null)
   const [addOpen, setAddOpen] = useState(false)
 
+  const [branches, setBranches] = useState([])
+  const [categories, setCategories] = useState([])
+
   const [sortConfig, setSortConfig] = useState({
     key: 'date',
     direction: 'desc',
   })
 
+  // Load initial data
   useEffect(() => {
     const load = async () => {
       try {
-        const data = await fetchTransactions()
-        setTransactions(data)
+        const [tx, br, cat] = await Promise.all([
+          fetchTransactions(),
+          fetchBranches(),
+          fetchCategories(),
+        ])
+        setTransactions(tx)
+        setBranches(br)
+        setCategories(cat)
       } catch (e) {
         console.error(e)
         showToast?.('Gagal memuat transaksi.', 'error')
@@ -315,8 +327,8 @@ function TransactionsPage({
         <AddTransactionModal
           onClose={() => setAddOpen(false)}
           onSave={handleAddTransaction}
-          existingData={transactions}
-          businessConfigs={businessConfigs}
+          branches={branches}
+          categories={categories}
           appSettings={appSettings}
           lastUsedType={lastUsedType}
         />
@@ -412,75 +424,40 @@ function ConfirmDialog({ title, description, onCancel, onConfirm }) {
 function AddTransactionModal({
   onClose,
   onSave,
-  existingData,
-  businessConfigs,
+  branches,
+  categories,
   appSettings,
   lastUsedType,
 }) {
   console.log('AddTransactionModal RENDERED')
 
-  const unique = (arr) => Array.from(new Set(arr))
-
-  const unitOptions = useMemo(
-    () =>
-      unique([
-        ...businessConfigs.filter((b) => b.active).map((b) => b.unitBusiness),
-        ...existingData.map((t) => t.unitBusiness),
-      ]),
-    [businessConfigs, existingData],
-  )
-
-  const [unitBusiness, setUnitBusiness] = useState('')
-  const [branch, setBranch] = useState('')
+  const [branchId, setBranchId] = useState('')
+  const [categoryId, setCategoryId] = useState('')
   const [date, setDate] = useState('')
-
-  const configForUnit = useMemo(
-    () => businessConfigs.find((b) => b.unitBusiness === unitBusiness && b.active),
-    [businessConfigs, unitBusiness],
-  )
-
-  const initialType =
+  const [type, setType] = useState(
     appSettings.defaultTransactionType === 'Income' ||
-    appSettings.defaultTransactionType === 'Expense'
+      appSettings.defaultTransactionType === 'Expense'
       ? appSettings.defaultTransactionType
-      : lastUsedType || 'Income'
-
-  const [type, setType] = useState(initialType)
-  const [category, setCategory] = useState('')
+      : lastUsedType || 'Income',
+  )
   const [payment, setPayment] = useState('')
   const [amountInput, setAmountInput] = useState('')
+  const [description, setDescription] = useState('')
 
-  const branchOptions = useMemo(() => {
-    if (configForUnit && configForUnit.branches?.length) {
-      return configForUnit.branches.filter((b) => b.active !== false).map((b) => b.name)
-    }
-    if (!unitBusiness) return []
-    return unique(
-      existingData.filter((t) => t.unitBusiness === unitBusiness).map((t) => t.branch),
-    )
-  }, [configForUnit, existingData, unitBusiness])
+  const filteredCategories = useMemo(
+    () =>
+      categories.filter(
+        (c) =>
+          c.transaction_type === (type === 'Income' ? 'INCOME' : 'EXPENSE'),
+      ),
+    [categories, type],
+  )
 
-  const kategoriOptions = useMemo(() => {
-    if (!unitBusiness) return []
-    if (configForUnit) {
-      const branchConfig =
-        configForUnit.branches?.find((b) => b.name === branch && b.active !== false) ||
-        null
-      const defaultIncome = configForUnit.defaultIncomeCategories || []
-      const defaultExpense = configForUnit.defaultExpenseCategories || []
-
-      if (type === 'Income') {
-        const list = branchConfig?.incomeCategories ?? defaultIncome
-        if (list && list.length) return list
-      } else {
-        const list = branchConfig?.expenseCategories ?? defaultExpense
-        if (list && list.length) return list
-      }
-    }
-    return unique(existingData.map((t) => t.category))
-  }, [configForUnit, branch, type, existingData, unitBusiness])
-
-  const pembayaranOptions = ['QRIS', 'Cash', 'Transfer']
+  const pembayaranOptions = [
+    { label: 'QRIS', value: 'QRIS' },
+    { label: 'Cash', value: 'CASH' },
+    { label: 'Transfer', value: 'TRANSFER' },
+  ]
 
   const formatAmountDisplay = (raw) => {
     const digits = raw.replace(/[^\d]/g, '')
@@ -499,29 +476,26 @@ function AddTransactionModal({
     const digits = amountInput.replace(/[^\d]/g, '')
     console.log('FIELD VALUES:', {
       date,
-      unitBusiness,
-      branch,
-      category,
+      branchId,
+      categoryId,
       type,
       payment,
       digits,
     })
 
-    if (!date || !unitBusiness || !branch || !category || !type || !payment || !digits) {
+    if (!date || !branchId || !categoryId || !type || !payment || !digits) {
       console.log('MISSING FIELD STOP')
       return
     }
 
     const payload = {
       date,
-      unitBusiness,
-      branch,
-      category,
+      branchId: Number(branchId),
+      categoryId: Number(categoryId),
       type,
       amount: Number(digits),
       payment,
-      branchId: null,
-      categoryId: null,
+      description,
     }
 
     console.log('CALLING onSave with:', payload)
@@ -582,44 +556,24 @@ function AddTransactionModal({
           }}
         >
           <Field label="Tanggal">
-            <div style={{ display: 'flex' }}>
-              <input
-                type="date"
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
-                style={{ ...inputStyle, width: '100%' }}
-              />
-            </div>
-          </Field>
-
-          <Field label="Unit Bisnis">
-            <select
-              value={unitBusiness}
-              onChange={(e) => {
-                setUnitBusiness(e.target.value)
-                setBranch('')
-              }}
-              style={inputStyle}
-            >
-              <option value="">Pilih unit bisnis</option>
-              {unitOptions.map((u) => (
-                <option key={u} value={u}>
-                  {u}
-                </option>
-              ))}
-            </select>
+            <input
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              style={{ ...inputStyle, width: '100%' }}
+            />
           </Field>
 
           <Field label="Cabang">
             <select
-              value={branch}
-              onChange={(e) => setBranch(e.target.value)}
+              value={branchId}
+              onChange={(e) => setBranchId(e.target.value)}
               style={inputStyle}
             >
               <option value="">Pilih cabang</option>
-              {branchOptions.map((b) => (
-                <option key={b} value={b}>
-                  {b}
+              {branches.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.name}
                 </option>
               ))}
             </select>
@@ -634,14 +588,14 @@ function AddTransactionModal({
 
           <Field label="Kategori">
             <select
-              value={category}
-              onChange={(e) => setCategory(e.target.value)}
+              value={categoryId}
+              onChange={(e) => setCategoryId(e.target.value)}
               style={inputStyle}
             >
               <option value="">Pilih kategori</option>
-              {kategoriOptions.map((c) => (
-                <option key={c} value={c}>
-                  {c}
+              {filteredCategories.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
                 </option>
               ))}
             </select>
@@ -668,11 +622,20 @@ function AddTransactionModal({
             >
               <option value="">Pilih pembayaran</option>
               {pembayaranOptions.map((p) => (
-                <option key={p} value={p}>
-                  {p}
+                <option key={p.value} value={p.value}>
+                  {p.label}
                 </option>
               ))}
             </select>
+          </Field>
+
+          <Field label="Deskripsi (opsional)">
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              rows={3}
+              style={{ ...inputStyle, resize: 'vertical' }}
+            />
           </Field>
         </div>
 
