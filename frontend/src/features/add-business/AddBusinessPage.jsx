@@ -7,7 +7,7 @@ import {
   fetchCategories,
 } from '../../lib/api/branchesCategories'
 
-// Fixed backend branch types
+// Fixed backend branch types (harus sama dengan BranchType di Django)
 const BRANCH_TYPES = [
   { value: 'LAUNDRY', label: 'Laundry' },
   { value: 'CARWASH', label: 'Car Wash' },
@@ -18,7 +18,7 @@ const BRANCH_TYPES = [
 function AddBusinessPage({ businessConfigs, setBusinessConfigs, showToast }) {
   const [step, setStep] = useState(1)
   const [branchName, setBranchName] = useState('')
-  const [branchType, setBranchType] = useState('')
+  const [branchType, setBranchType] = useState('') // enum value
   const [incomeCategories, setIncomeCategories] = useState([])
   const [expenseCategories, setExpenseCategories] = useState([])
   const [incomeInput, setIncomeInput] = useState('')
@@ -67,7 +67,7 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs, showToast }) {
 
   // ---------- AUTOCOMPLETE KATEGORI ----------
 
-  // semua nama kategori unik dari backend
+  // semua nama kategori unik dari backend (sumber list autocomplete)
   const allCategoryNames = useMemo(() => {
     const names = (existingCategories || []).map((c) => c.name || '')
     return Array.from(new Set(names.filter(Boolean)))
@@ -228,7 +228,7 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs, showToast }) {
     setLoading(true)
 
     try {
-      // Cek duplikat nama cabang (case-insensitive) → mencegah 2x "Laundry Batu"
+      // Cek duplikat nama cabang (case-insensitive)
       const existsBranch = (existingBranches || []).some(
         (b) =>
           (b.name || '').toLowerCase() === branchName.trim().toLowerCase(),
