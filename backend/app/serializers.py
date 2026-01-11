@@ -32,6 +32,7 @@ class TransactionSerializer(serializers.ModelSerializer):
     # When React reads this, they get 'branch_name': 'Laundry Dago' instead of just 'branch': 1
     # This saves an extra API call
     branch_name = serializers.CharField(source='branch.name', read_only=True)
+    branch_type = serializers.CharField(source='branch.branch_type', read_only=True)
     category_name = serializers.CharField(source='category.name', read_only=True)
     reported_by_email = serializers.EmailField(source='reported_by.email', read_only=True)
     reported_by_username = serializers.CharField(source='reported_by.username', read_only=True)
@@ -58,6 +59,7 @@ class TransactionSerializer(serializers.ModelSerializer):
 
             # Expanded Fields (for OUTPUT/GET)
             'branch_name',
+            'branch_type',
             'category_name',
             'reported_by_email',
             'reported_by_username',
@@ -70,6 +72,7 @@ class TransactionSerializer(serializers.ModelSerializer):
             'created_at',
             'updated_at',
             'branch_name',
+            'branch_type',
             'category_name',
             'reported_by_email',
             'reported_by_username',
