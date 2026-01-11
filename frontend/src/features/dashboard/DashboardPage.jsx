@@ -133,19 +133,22 @@ function DashboardPage({ transactions, isLoading, error }) {
     (a, b) => new Date(a.date) - new Date(b.date),
   )
 
-  // PENTING: gunakan metode pembayaran, bukan email/source
+  // menggunakan metode pembayaran, bukan email/source
   const incomeSourcesMap = filteredTransactions
     .filter((t) => t.type === 'Income')
     .reduce((acc, t) => {
-      // di mapping fetchTransactions pastikan field `payment` berisi payment_method (CASH/QRIS/TRANSFER)
-      const key = t.payment || t.payment_method || 'Unknown'
-      acc[key] = (acc[key] || 0) + (t.amount || 0)
+      // Frontend menggunakan field 'payment' (hasil mapping dari payment_method)
+      const method = t.payment || 'Unknown'
+      acc[method] = (acc[method] || 0) + (t.amount || 0)
       return acc
     }, {})
 
   const incomeSources = Object.entries(incomeSourcesMap).map(
     ([name, value]) => ({
-      name,
+      name: name === 'CASH' ? 'Tunai' : 
+            name === 'QRIS' ? 'QRIS' : 
+            name === 'TRANSFER' ? 'Transfer' : 
+            'Tidak Diketahui',
       value,
     }),
   )
@@ -533,12 +536,15 @@ function DashboardPage({ transactions, isLoading, error }) {
                     outerRadius={80}
                     paddingAngle={3}
                   >
-                    {incomeSources.map((entry, index) => (
-                      <Cell
-                        key={entry.name}
-                        fill={index === 0 ? '#22c55e' : '#3b82f6'}
-                      />
-                    ))}
+                    {incomeSources.map((entry, index) => {
+                      // Warna berdasarkan nama metode
+                      let color = '#6b7280' // Unknown
+                      if (entry.name === 'Tunai') color = '#22c55e'
+                      if (entry.name === 'QRIS') color = '#3b82f6'
+                      if (entry.name === 'Transfer') color = '#f59e0b'
+                      
+                      return <Cell key={entry.name} fill={color} />
+                    })}
                   </Pie>
                   <Tooltip />
                   <Legend />
