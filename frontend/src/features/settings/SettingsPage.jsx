@@ -1,15 +1,13 @@
-// src/features/settings/SettingsPage.jsx
+// frontend/src/features/settings/SettingsPage.jsx
 import React, { useState, useEffect, useMemo } from 'react'
 import {
   updateBranch,
   deleteBranch,
-} from '../../lib/api/branchesCategories'
-import {
   fetchCategories as fetchCategoriesApi,
   createCategory,
   updateCategory,
   deleteCategory,
-} from '../../lib/api/categories'
+} from '../../lib/api/branchesCategories'
 
 const BRANCH_TYPES = [
   { value: 'LAUNDRY', label: 'Laundry' },
@@ -29,7 +27,7 @@ const branchTypeLabelById = (id, businessConfigs) => {
   return branchTypeLabelByType(unit.type)
 }
 
-// chip kategori (dipakai di banyak tempat) – kontras dan mudah dibaca
+// chip kategori – kontras di dark & light
 const chipStyle = {
   display: 'inline-flex',
   alignItems: 'center',
@@ -49,11 +47,10 @@ function SettingsPage({
   setAppSettings,
   showToast,
 }) {
-  // ---------- STATE KATEGORI GLOBAL (backend) ----------
-
+  // ---------- KATEGORI GLOBAL (backend) ----------
   const [categories, setCategories] = useState([])
   const [categoriesLoading, setCategoriesLoading] = useState(false)
-  const [categoryTypeFilter, setCategoryTypeFilter] = useState('INCOME') // INCOME | EXPENSE
+  const [categoryTypeFilter, setCategoryTypeFilter] = useState('INCOME')
   const [newCategoryName, setNewCategoryName] = useState('')
   const [editingCategoryId, setEditingCategoryId] = useState(null)
   const [editingCategoryName, setEditingCategoryName] = useState('')
@@ -104,9 +101,7 @@ function SettingsPage({
     const trimmed = editingCategoryName.trim()
     if (!trimmed || !editingCategoryId) return
     try {
-      const updated = await updateCategory(editingCategoryId, {
-        name: trimmed,
-      })
+      const updated = await updateCategory(editingCategoryId, { name: trimmed })
       setCategories((prev) =>
         prev.map((c) => (c.id === updated.id ? updated : c)),
       )
@@ -134,7 +129,6 @@ function SettingsPage({
   }
 
   // ---------- FLATTEN CABANG ----------
-
   const allBranchesFlat = useMemo(() => {
     const result = []
     ;(businessConfigs || []).forEach((unit) => {
@@ -161,8 +155,7 @@ function SettingsPage({
     return Array.from(types)
   }, [businessConfigs])
 
-  // ---------- KATEGORI PER CABANG (memiliki unit filter sendiri) ----------
-
+  // ---------- KATEGORI PER CABANG (dengan unit filter sendiri) ----------
   const [branchUnitFilterForCategory, setBranchUnitFilterForCategory] =
     useState('ALL')
   const [selectedBranchForCategory, setSelectedBranchForCategory] =
@@ -330,8 +323,7 @@ function SettingsPage({
     }
   }
 
-  // ---------- CABANG (punya unit filter sendiri) ----------
-
+  // ---------- CABANG (dengan unit filter sendiri) ----------
   const [branchUnitFilterForCabang, setBranchUnitFilterForCabang] =
     useState('ALL')
   const [selectedTypeId, setSelectedTypeId] = useState(
@@ -469,7 +461,6 @@ function SettingsPage({
   }
 
   // ---------- DEFAULT KATEGORI PER TIPE (UI only) ----------
-
   const [editSelectedId, setEditSelectedId] = useState(
     businessConfigs.length ? businessConfigs[0].id : '',
   )
@@ -554,7 +545,6 @@ function SettingsPage({
   }
 
   // ---------- CONFIRM MODAL CABANG ----------
-
   const renderConfirmModal = () => {
     if (!confirmModal || !confirmModal.branch) return null
     const { type, branch } = confirmModal
@@ -661,7 +651,6 @@ function SettingsPage({
   }
 
   // ---------- RENDER ----------
-
   return (
     <main
       style={{
@@ -688,7 +677,7 @@ function SettingsPage({
           gap: '1.5rem',
         }}
       >
-        {/* (Struktur Bisnis card dihapus) */}
+        {/* Struktur Bisnis card dihapus */}
 
         {/* Kategori Global */}
         <div
