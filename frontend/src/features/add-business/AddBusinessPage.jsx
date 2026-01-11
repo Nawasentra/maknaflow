@@ -7,7 +7,7 @@ import {
   fetchCategories,
 } from '../../lib/api/branchesCategories'
 
-// Fixed backend branch types
+// Fixed backend branch types (harus sama dengan BranchType di Django)
 const BRANCH_TYPES = [
   { value: 'LAUNDRY', label: 'Laundry' },
   { value: 'CARWASH', label: 'Car Wash' },
@@ -18,7 +18,7 @@ const BRANCH_TYPES = [
 function AddBusinessPage({ businessConfigs, setBusinessConfigs, showToast }) {
   const [step, setStep] = useState(1)
   const [branchName, setBranchName] = useState('')
-  const [branchType, setBranchType] = useState('') // enum value
+  const [branchType, setBranchType] = useState('') // enum value: LAUNDRY / CARWASH / KOS / OTHER
   const [incomeCategories, setIncomeCategories] = useState([])
   const [expenseCategories, setExpenseCategories] = useState([])
   const [incomeInput, setIncomeInput] = useState('')
@@ -142,7 +142,7 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs, showToast }) {
     try {
       const branchPayload = {
         name: branchName.trim(),
-        branch_type: branchType,
+        branch_type: branchType, // enum sesuai BranchType (LAUNDRY/CARWASH/..)
       }
       await createBranch(branchPayload)
 
