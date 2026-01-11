@@ -4,67 +4,10 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
 import LoginPage from './features/auth/LoginPage'
 import AuthenticatedLayout from './layout/AuthenticatedLayout'
 import { fetchTransactions } from './lib/api/transactions'
+import { fetchBranches } from './lib/api/branchesCategories'
 import { googleLogout } from '@react-oauth/google'
 
-// CONFIG: tipe + cabang + default kategori
-const initialBusinessConfigs = [
-  {
-    id: 'Laundry',
-    unitBusiness: 'Laundry',
-    defaultIncomeCategories: ['Cuci Kering', 'Cuci Basah', 'Setrika'],
-    defaultExpenseCategories: ['Gaji Karyawan'],
-    branches: [
-      {
-        id: 'Laundry Antapani',
-        name: 'Laundry Antapani',
-        incomeCategories: null,
-        expenseCategories: null,
-        active: true,
-      },
-      {
-        id: 'Laundry Buah Batu',
-        name: 'Laundry Buah Batu',
-        incomeCategories: null,
-        expenseCategories: null,
-        active: true,
-      },
-    ],
-    active: true,
-  },
-  {
-    id: 'Carwash',
-    unitBusiness: 'Carwash',
-    defaultIncomeCategories: ['Cuci Motor'],
-    defaultExpenseCategories: ['Beli Sabun'],
-    branches: [
-      {
-        id: 'Carwash',
-        name: 'Carwash',
-        incomeCategories: null,
-        expenseCategories: null,
-        active: true,
-      },
-    ],
-    active: true,
-  },
-  {
-    id: 'Kos-kosan',
-    unitBusiness: 'Kos-kosan',
-    defaultIncomeCategories: ['Sewa Kamar'],
-    defaultExpenseCategories: [],
-    branches: [
-      {
-        id: 'Kos-kosan',
-        name: 'Kos-kosan',
-        incomeCategories: null,
-        expenseCategories: null,
-        active: true,
-      },
-    ],
-    active: true,
-  },
-]
-
+// DEFAULT APP SETTINGS (bukan data cabang)
 const initialAppSettings = {
   currency: 'IDR',
   defaultTransactionType: 'Income',
@@ -74,15 +17,10 @@ const initialAppSettings = {
 // INITIAL THEME HELPER
 const getInitialTheme = () => {
   const stored = localStorage.getItem('theme')
-  console.log('stored theme =', stored)
   if (stored === 'light' || stored === 'dark') return stored
-
   if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
-    console.log('system prefers dark, using dark')
     return 'dark'
   }
-
-  console.log('no stored theme, using light')
   return 'light'
 }
 
@@ -99,16 +37,15 @@ function parseJwt(token) {
 
 function App() {
   const [transactions, setTransactions] = useState([])
-  // always keep businessConfigs as an array
-  const [businessConfigs, setBusinessConfigs] = useState(
-    Array.isArray(initialBusinessConfigs) ? initialBusinessConfigs : [],
-  )
+
+  // businessConfigs SEKARANG selalu dibangun dari backend
+  const [businessConfigs, setBusinessConfigs] = useState([])
   const [appSettings, setAppSettings] = useState(initialAppSettings)
   const [lastUsedType, setLastUsedType] = useState('Income')
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState('')
 
-  // wrapper to guarantee array for all callers
+  // wrapper so every caller keeps businessConfigs as array
   const safeSetBusinessConfigs = (next) => {
     if (typeof next === 'function') {
       setBusinessConfigs((prev) => {
@@ -176,6 +113,52 @@ function App() {
     }
   }, [isAuthenticated])
 
+  // LOAD BRANCHES UNTUK businessConfigs (ikut backend)
+  useEffect(() => {
+    if (!isAuthenticated) return
+    let cancelled = false
+
+    async function loadBranches() {
+      try {
+        const branches = await fetchBranches()
+        if (cancelled) return
+
+        // group by branch_type dari backend
+        const groupedObj = branches.reduce((acc, br) => {
+          const type = br.branch_type || 'OTHER'
+          if (!acc[type]) {
+            acc[type] = {
+              id: type, // enum: LAUNDRY, CARWASH, KOS, OTHER
+              unitBusiness: type,
+              defaultIncomeCategories: [],
+              defaultExpenseCategories: [],
+              branches: [],
+              active: true,
+            }
+          }
+          acc[type].branches.push({
+            id: br.id,
+            name: br.name,
+            incomeCategories: null,
+            expenseCategories: null,
+            active: true, // UI-only flag
+          })
+          return acc
+        }, {})
+
+        safeSetBusinessConfigs(Object.values(groupedObj))
+      } catch (e) {
+        console.error('Failed to load branches:', e)
+        showToast('Gagal memuat data cabang.', 'error')
+      }
+    }
+
+    loadBranches()
+    return () => {
+      cancelled = true
+    }
+  }, [isAuthenticated])
+
   // BUILD NOTIFICATIONS
   useEffect(() => {
     if (!transactions || transactions.length === 0) return
@@ -199,17 +182,12 @@ function App() {
 
   // APPLY THEME TO <html> AND PERSIST
   useEffect(() => {
-    console.log('applying theme to html:', theme)
     document.documentElement.setAttribute('data-theme', theme)
     localStorage.setItem('theme', theme)
   }, [theme])
 
   const toggleTheme = () => {
-    setTheme((prev) => {
-      const next = prev === 'dark' ? 'light' : 'dark'
-      console.log('toggling theme:', prev, '->', next)
-      return next
-    })
+    setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'))
   }
 
   // login that talks to backend

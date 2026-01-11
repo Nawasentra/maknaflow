@@ -4,7 +4,6 @@ import api from '../axios'
 // ------- BRANCHES -------
 
 // Ambil branches dan dedup by name (case-insensitive)
-// supaya di dropdown +TambahTransaksi tidak ada 2x "Laundry Batu"
 export async function fetchBranches() {
   const res = await api.get('/branches/')
   const data = Array.isArray(res.data) ? res.data : res.data.results || []
@@ -32,9 +31,13 @@ export async function updateBranch(id, payload) {
   return res.data
 }
 
+export async function deleteBranch(id) {
+  const res = await api.delete(`/branches/${id}/`)
+  return res.data
+}
+
 // ------- CATEGORIES -------
 
-// Ambil kategori apa adanya; dedup & autocomplete di-handle di AddBusinessPage
 export async function fetchCategories() {
   const res = await api.get('/categories/')
   const data = Array.isArray(res.data) ? res.data : res.data.results || []
