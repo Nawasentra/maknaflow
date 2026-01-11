@@ -22,6 +22,18 @@ function parseLocalDate(isoDateStr) {
   return new Date(year, month - 1, day)
 }
 
+const UNIT_LABELS = ['Laundry', 'Carwash', 'Kos', 'Other']
+
+function normalizeUnit(unit) {
+  if (!unit) return ''
+  const u = String(unit).toUpperCase()
+  if (u === 'LAUNDRY') return 'Laundry'
+  if (u === 'CARWASH') return 'Carwash'
+  if (u === 'KOS') return 'Kos'
+  if (u === 'OTHER') return 'Other'
+  return unit
+}
+
 function DashboardPage({ transactions, isLoading, error }) {
   const [filterDate, setFilterDate] = useState('7 Hari Terakhir')
   const [filterUnit, setFilterUnit] = useState('Semua Unit')
@@ -43,24 +55,14 @@ function DashboardPage({ transactions, isLoading, error }) {
 
   // ---------- OPTIONS: UNIT & CABANG ----------
 
-  const unitOptions = useMemo(() => {
-    const baseUnits = ['Laundry', 'Carwash', 'Kos', 'Other']
-    const dynamicUnits = Array.from(
-      new Set(
-        safeTransactions
-          .map((t) => t.unitBusiness)
-          .filter(Boolean),
-      ),
-    )
-
-    const allUnits = Array.from(new Set([...baseUnits, ...dynamicUnits]))
-    return ['Semua Unit', ...allUnits]
-  }, [safeTransactions])
+  const unitOptions = ['Semua Unit', ...UNIT_LABELS]
 
   const branchOptions = useMemo(() => {
     let source = safeTransactions
     if (filterUnit !== 'Semua Unit') {
-      source = source.filter((t) => t.unitBusiness === filterUnit)
+      source = source.filter(
+        (t) => normalizeUnit(t.unitBusiness) === filterUnit,
+      )
     }
     const names = Array.from(
       new Set(
@@ -94,8 +96,10 @@ function DashboardPage({ transactions, isLoading, error }) {
         inRange = txDate >= start && txDate <= end
       }
 
+      const normalizedUnit = normalizeUnit(t.unitBusiness)
       const unitMatch =
-        filterUnit === 'Semua Unit' || t.unitBusiness === filterUnit
+        filterUnit === 'Semua Unit' || normalizedUnit === filterUnit
+
       const branchMatch =
         filterBranch === 'Semua Cabang' || t.branch === filterBranch
 
@@ -157,7 +161,7 @@ function DashboardPage({ transactions, isLoading, error }) {
     ([name, value]) => ({
       name:
         name === 'CASH'
-          ? 'Cash'
+          ? 'Tunai'
           : name === 'QRIS'
           ? 'QRIS'
           : name === 'TRANSFER'
@@ -223,8 +227,6 @@ function DashboardPage({ transactions, isLoading, error }) {
       </main>
     )
   }
-
-  // Tidak ada early-return untuk "tidak ada transaksi" → dashboard tetap tampil
 
   return (
     <main
@@ -539,7 +541,7 @@ function DashboardPage({ transactions, isLoading, error }) {
                   >
                     {incomeSources.map((entry) => {
                       let color = '#6b7280'
-                      if (entry.name === 'Cash') color = '#22c55e'
+                      if (entry.name === 'Tunai') color = '#22c55e'
                       if (entry.name === 'QRIS') color = '#3b82f6'
                       if (entry.name === 'Transfer') color = '#f59e0b'
                       return <Cell key={entry.name} fill={color} />
