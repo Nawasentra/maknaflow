@@ -1,30 +1,38 @@
-import React, { useState } from 'react'
+// src/features/add-business/AddBusinessPage.jsx
+import React, { useState, useEffect } from 'react'
+import {
+  createBranch,
+  createCategory,
+  fetchBranches,
+  fetchCategories,
+} from '../../lib/api/branchesCategories'
+
+// Fixed backend branch types
+const BRANCH_TYPES = [
+  { value: 'LAUNDRY', label: 'Laundry' },
+  { value: 'CARWASH', label: 'Car Wash' },
+  { value: 'KOS', label: 'Kos' },
+  { value: 'OTHER', label: 'Other Business' },
+]
 
 function AddBusinessPage({ businessConfigs, setBusinessConfigs, showToast }) {
   const [step, setStep] = useState(1)
   const [branchName, setBranchName] = useState('')
-  const [unitType, setUnitType] = useState('')
-  const [newUnitType, setNewUnitType] = useState('')
+  const [branchType, setBranchType] = useState('') // enum value
   const [incomeCategories, setIncomeCategories] = useState([])
   const [expenseCategories, setExpenseCategories] = useState([])
   const [incomeInput, setIncomeInput] = useState('')
   const [expenseInput, setExpenseInput] = useState('')
+  const [loading, setLoading] = useState(false)
 
-  const effectiveUnitType =
-    unitType === 'Custom' && newUnitType.trim() ? newUnitType.trim() : unitType
-
-  const steps = [
-    { id: 1, label: 'Informasi Dasar' },
-    { id: 2, label: 'Konfirmasi & Aktivasi' },
-  ]
-
-  React.useEffect(() => {
-    if (!unitType || unitType === 'Custom') {
+  // If user selects an existing type and you already have defaults, preload them
+  useEffect(() => {
+    if (!branchType) {
       setIncomeCategories([])
       setExpenseCategories([])
       return
     }
-    const cfg = businessConfigs.find((b) => b.unitBusiness === unitType)
+    const cfg = businessConfigs.find((b) => b.branch_type === branchType || b.id === branchType)
     if (!cfg) {
       setIncomeCategories([])
       setExpenseCategories([])
@@ -32,7 +40,7 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs, showToast }) {
     }
     setIncomeCategories(cfg.defaultIncomeCategories || [])
     setExpenseCategories(cfg.defaultExpenseCategories || [])
-  }, [unitType, businessConfigs]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [branchType, businessConfigs])
 
   const handleAddIncomeCategory = () => {
     const trimmed = incomeInput.trim()
@@ -62,59 +70,105 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs, showToast }) {
 
   const canGoNext =
     branchName.trim() &&
-    effectiveUnitType &&
+    branchType &&
     (incomeCategories.length > 0 || expenseCategories.length > 0)
 
-  const handleActivate = () => {
-    if (!canGoNext) return
+  const branchTypeLabel = (value) =>
+    BRANCH_TYPES.find((t) => t.value === value)?.label || value
 
-    const existingIndex = businessConfigs.findIndex(
-      (b) => b.unitBusiness === effectiveUnitType,
-    )
-
-    if (existingIndex >= 0) {
-      const existing = businessConfigs[existingIndex]
-      const newBranch = {
-        id: branchName.trim(),
-        name: branchName.trim(),
-        incomeCategories: incomeCategories.length ? incomeCategories : null,
-        expenseCategories: expenseCategories.length ? expenseCategories : null,
-        active: true,
-      }
-      const updated = [...businessConfigs]
-      updated[existingIndex] = {
-        ...existing,
-        branches: [...existing.branches, newBranch],
-      }
-      setBusinessConfigs(updated)
-    } else {
-      const newConfig = {
-        id: effectiveUnitType,
-        unitBusiness: effectiveUnitType,
-        defaultIncomeCategories: incomeCategories,
-        defaultExpenseCategories: expenseCategories,
-        branches: [
-          {
-            id: branchName.trim(),
-            name: branchName.trim(),
-            incomeCategories: null,
-            expenseCategories: null,
-            active: true,
-          },
-        ],
-        active: true,
-      }
-      setBusinessConfigs([...businessConfigs, newConfig])
-    }
-
+  const resetForm = () => {
     setStep(1)
     setBranchName('')
-    setUnitType('')
-    setNewUnitType('')
+    setBranchType('')
     setIncomeCategories([])
     setExpenseCategories([])
-    showToast?.('Berhasil mengaktivasi unit bisnis baru.')
+    setIncomeInput('')
+    setExpenseInput('')
   }
+
+  // After creating things in backend, rebuild businessConfigs from API
+  const rebuildBusinessConfigsFromApi = async () => {
+    const [branches, categories] = await Promise.all([
+      fetchBranches(),
+      fetchCategories(),
+    ])
+
+    const byType = {}
+    branches.forEach((br) => {
+      if (!byType[br.branch_type]) {
+        byType[br.branch_type] = {
+          id: br.branch_type,
+          branch_type: br.branch_type,
+          unitBusiness: br.branch_type,
+          defaultIncomeCategories: [],
+          defaultExpenseCategories: [],
+          branches: [],
+          active: true,
+        }
+      }
+      byType[br.branch_type].branches.push({
+        id: br.id,
+        name: br.name,
+        active: true,
+      })
+    })
+
+    categories.forEach((cat) => {
+      Object.values(byType).forEach((cfg) => {
+        if (cat.transaction_type === 'INCOME') {
+          if (!cfg.defaultIncomeCategories.includes(cat.name)) {
+            cfg.defaultIncomeCategories.push(cat.name)
+          }
+        } else if (cat.transaction_type === 'EXPENSE') {
+          if (!cfg.defaultExpenseCategories.includes(cat.name)) {
+            cfg.defaultExpenseCategories.push(cat.name)
+          }
+        }
+      })
+    })
+
+    setBusinessConfigs(Object.values(byType))
+  }
+
+  const handleActivate = async () => {
+    if (!canGoNext || loading) return
+    setLoading(true)
+
+    try {
+      // 1) Create branch
+      const branchPayload = {
+        name: branchName.trim(),
+        branch_type: branchType,
+      }
+      await createBranch(branchPayload)
+
+      // 2) Create categories (global, not linked per-branch yet)
+      const promises = []
+      incomeCategories.forEach((name) => {
+        promises.push(createCategory({ name, transaction_type: 'INCOME' }))
+      })
+      expenseCategories.forEach((name) => {
+        promises.push(createCategory({ name, transaction_type: 'EXPENSE' }))
+      })
+      await Promise.all(promises)
+
+      // 3) Sync local config with backend
+      await rebuildBusinessConfigsFromApi()
+
+      resetForm()
+      showToast?.('Berhasil mengaktivasi unit bisnis baru.')
+    } catch (e) {
+      console.error(e)
+      showToast?.('Gagal menyimpan unit bisnis.', 'error')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const steps = [
+    { id: 1, label: 'Informasi Dasar' },
+    { id: 2, label: 'Konfirmasi & Aktivasi' },
+  ]
 
   return (
     <main
@@ -146,7 +200,7 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs, showToast }) {
           alignItems: 'flex-start',
         }}
       >
-        {/* Step list */}
+        {/* Step indicator */}
         <div
           style={{
             backgroundColor: 'var(--bg-elevated)',
@@ -271,8 +325,8 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs, showToast }) {
                   Tipe Unit Bisnis
                 </label>
                 <select
-                  value={unitType}
-                  onChange={(e) => setUnitType(e.target.value)}
+                  value={branchType}
+                  onChange={(e) => setBranchType(e.target.value)}
                   style={{
                     width: '100%',
                     backgroundColor: 'var(--bg)',
@@ -286,31 +340,12 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs, showToast }) {
                   }}
                 >
                   <option value="">Pilih tipe…</option>
-                  {businessConfigs.map((b) => (
-                    <option key={b.id} value={b.unitBusiness}>
-                      {b.unitBusiness}
+                  {BRANCH_TYPES.map((t) => (
+                    <option key={t.value} value={t.value}>
+                      {t.label}
                     </option>
                   ))}
-                  <option value="Custom">Tambah tipe baru…</option>
                 </select>
-                {unitType === 'Custom' && (
-                  <input
-                    placeholder="Contoh: Barbershop"
-                    value={newUnitType}
-                    onChange={(e) => setNewUnitType(e.target.value)}
-                    style={{
-                      marginTop: 8,
-                      width: '100%',
-                      backgroundColor: 'var(--bg)',
-                      borderRadius: 9999,
-                      border: '1px solid var(--border)',
-                      padding: '0.7rem 1rem',
-                      fontSize: 13,
-                      color: 'var(--text)',
-                      outline: 'none',
-                    }}
-                  />
-                )}
               </div>
 
               <div
@@ -368,7 +403,7 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs, showToast }) {
                         backgroundColor: 'var(--accent)',
                         borderRadius: 9999,
                         border: 'none',
-                        color: 'var(--bg)',   // changed
+                        color: 'var(--bg)',
                         fontSize: 12,
                         fontWeight: 600,
                         padding: '0.45rem 0.9rem',
@@ -476,7 +511,7 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs, showToast }) {
                         backgroundColor: 'var(--accent)',
                         borderRadius: 9999,
                         border: 'none',
-                        color: 'var(--bg)',   // changed
+                        color: 'var(--bg)',
                         fontSize: 12,
                         fontWeight: 600,
                         padding: '0.45rem 0.9rem',
@@ -642,7 +677,7 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs, showToast }) {
                 <p style={{ fontSize: 12, color: 'var(--subtext)', marginBottom: 4 }}>
                   Tipe unit bisnis:
                   <span style={{ color: 'var(--text)', marginLeft: 4 }}>
-                    {effectiveUnitType || '-'}
+                    {branchTypeLabel(branchType) || '-'}
                   </span>
                 </p>
               </div>
@@ -779,23 +814,24 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs, showToast }) {
               <button
                 type="button"
                 onClick={handleActivate}
-                disabled={!canGoNext}
+                disabled={!canGoNext || loading}
                 style={{
-                  backgroundColor: canGoNext ? 'var(--accent)' : '#4b5563',
+                  backgroundColor:
+                    !canGoNext || loading ? '#4b5563' : 'var(--accent)',
                   borderRadius: 9999,
                   border: 'none',
-                  color: canGoNext ? 'var(--bg)' : '#e5e7eb',
+                  color: !canGoNext || loading ? '#e5e7eb' : 'var(--bg)',
                   fontSize: 13,
                   fontWeight: 600,
                   padding: '0.6rem 1.8rem',
-                  cursor: canGoNext ? 'pointer' : 'not-allowed',
+                  cursor: !canGoNext || loading ? 'not-allowed' : 'pointer',
                   display: 'inline-flex',
                   alignItems: 'center',
                   gap: 8,
                 }}
               >
-                Aktivasi Unit Bisnis
-                <span>✓</span>
+                {loading ? 'Menyimpan...' : 'Aktivasi Unit Bisnis'}
+                {!loading && <span>✓</span>}
               </button>
             </div>
           </div>
