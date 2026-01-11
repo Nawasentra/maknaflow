@@ -17,21 +17,24 @@ import {
 } from 'recharts'
 
 function DashboardPage({ transactions, isLoading, error }) {
-  const [filterDate, setFilterDate] = useState('Hari Ini')
+  const [filterDate, setFilterDate] = useState('7 Hari Terakhir')
   const [filterUnit, setFilterUnit] = useState('Semua Unit')
   const [filterBranch, setFilterBranch] = useState('Semua Cabang')
   const [customStart, setCustomStart] = useState('')
   const [customEnd, setCustomEnd] = useState('')
 
   const today = new Date()
-  const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate())
+  const startOfToday = new Date(
+    today.getFullYear(),
+    today.getMonth(),
+    today.getDate(),
+  )
   const sevenDaysAgo = new Date(startOfToday)
   sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6)
   const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1)
 
   // ---------- OPTIONS: UNIT & CABANG ----------
 
-  // Unit Bisnis unik (LAUNDRY, CARWASH, dst) dari transaksi
   const unitOptions = useMemo(() => {
     const units = Array.from(
       new Set(
@@ -43,14 +46,11 @@ function DashboardPage({ transactions, isLoading, error }) {
     return ['Semua Unit', ...units]
   }, [transactions])
 
-  // Cabang unik, bergantung pada Unit Bisnis yang dipilih
   const branchOptions = useMemo(() => {
     let source = transactions || []
-
     if (filterUnit !== 'Semua Unit') {
       source = source.filter((t) => t.unitBusiness === filterUnit)
     }
-
     const names = Array.from(
       new Set(
         source
@@ -58,20 +58,8 @@ function DashboardPage({ transactions, isLoading, error }) {
           .filter(Boolean),
       ),
     )
-
     return ['Semua Cabang', ...names]
   }, [transactions, filterUnit])
-
-  // Pastikan filterBranch tetap valid kalau unit berubah
-  if (!branchOptions.includes(filterBranch)) {
-    // fallback ke "Semua Cabang"
-    if (filterBranch !== 'Semua Cabang') {
-      // kecil kemungkinan infinite render karena ini sync di render;
-      // tapi untuk aman: cek dulu length
-      // eslint-disable-next-line no-console
-      console.log('Reset filterBranch ke "Semua Cabang"')
-    }
-  }
 
   // ---------- FILTER TRANSAKSI ----------
 
@@ -80,7 +68,6 @@ function DashboardPage({ transactions, isLoading, error }) {
       if (!t.date) return false
       const txDate = new Date(t.date)
 
-      // Filter tanggal
       let inRange = true
       if (filterDate === 'Hari Ini') {
         inRange = txDate.toDateString() === startOfToday.toDateString()
@@ -94,11 +81,8 @@ function DashboardPage({ transactions, isLoading, error }) {
         inRange = txDate >= start && txDate <= end
       }
 
-      // Filter Unit Bisnis
       const unitMatch =
         filterUnit === 'Semua Unit' || t.unitBusiness === filterUnit
-
-      // Filter Cabang (berdasar nama cabang)
       const branchMatch =
         filterBranch === 'Semua Cabang' || t.branch === filterBranch
 
@@ -117,7 +101,7 @@ function DashboardPage({ transactions, isLoading, error }) {
     startOfMonth,
   ])
 
-  // ---------- AGGREGATION KPI ----------
+  // ---------- KPI ----------
 
   const incomeTotal = filteredTransactions
     .filter((t) => t.type === 'Income')
@@ -130,7 +114,7 @@ function DashboardPage({ transactions, isLoading, error }) {
   const netProfit = incomeTotal - expenseTotal
   const totalTransactions = filteredTransactions.length
 
-  // ---------- DATA UNTUK CHART ----------
+  // ---------- CHART DATA ----------
 
   const dailyMap = filteredTransactions.reduce((acc, t) => {
     const key = t.date
@@ -149,18 +133,22 @@ function DashboardPage({ transactions, isLoading, error }) {
     (a, b) => new Date(a.date) - new Date(b.date),
   )
 
+  // PENTING: gunakan metode pembayaran, bukan email/source
   const incomeSourcesMap = filteredTransactions
     .filter((t) => t.type === 'Income')
     .reduce((acc, t) => {
-      const key = t.payment || 'Unknown'
+      // di mapping fetchTransactions pastikan field `payment` berisi payment_method (CASH/QRIS/TRANSFER)
+      const key = t.payment || t.payment_method || 'Unknown'
       acc[key] = (acc[key] || 0) + (t.amount || 0)
       return acc
     }, {})
 
-  const incomeSources = Object.entries(incomeSourcesMap).map(([name, value]) => ({
-    name,
-    value,
-  }))
+  const incomeSources = Object.entries(incomeSourcesMap).map(
+    ([name, value]) => ({
+      name,
+      value,
+    }),
+  )
 
   const expenseCatMap = filteredTransactions
     .filter((t) => t.type === 'Expense')
@@ -170,10 +158,12 @@ function DashboardPage({ transactions, isLoading, error }) {
       return acc
     }, {})
 
-  const expenseByCategory = Object.entries(expenseCatMap).map(([name, value]) => ({
-    name,
-    value,
-  }))
+  const expenseByCategory = Object.entries(expenseCatMap).map(
+    ([name, value]) => ({
+      name,
+      value,
+    }),
+  )
 
   const formatCurrency = (amount) =>
     new Intl.NumberFormat('id-ID', {
@@ -217,7 +207,6 @@ function DashboardPage({ transactions, isLoading, error }) {
     )
   }
 
-  // Jika tidak ada transaksi sama sekali
   if (!transactions || transactions.length === 0) {
     return (
       <main
@@ -284,7 +273,6 @@ function DashboardPage({ transactions, isLoading, error }) {
             >
               Rentang Tanggal
             </label>
-
             <div
               style={{
                 display: 'grid',
@@ -329,7 +317,6 @@ function DashboardPage({ transactions, isLoading, error }) {
                   opacity: filterDate === 'Custom' ? 1 : 0.5,
                 }}
               />
-
               <input
                 type="date"
                 value={customEnd}
@@ -470,12 +457,21 @@ function DashboardPage({ transactions, isLoading, error }) {
             padding: '1.5rem',
           }}
         >
-          <h3 style={{ fontSize: '1.25rem', fontWeight: '600', marginBottom: '1.5rem' }}>
+          <h3
+            style={{
+              fontSize: '1.25rem',
+              fontWeight: '600',
+              marginBottom: '1.5rem',
+            }}
+          >
             📈 Tren Pendapatan vs Pengeluaran
           </h3>
           <div style={{ height: 400 }}>
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={trendData} margin={{ top: 20, right: 20, left: 0, bottom: 0 }}>
+              <LineChart
+                data={trendData}
+                margin={{ top: 20, right: 20, left: 0, bottom: 0 }}
+              >
                 <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" />
                 <XAxis dataKey="date" stroke="#9ca3af" />
                 <YAxis stroke="#9ca3af" />
@@ -515,7 +511,13 @@ function DashboardPage({ transactions, isLoading, error }) {
           }}
         >
           <div>
-            <h4 style={{ fontSize: '1.125rem', fontWeight: '600', marginBottom: '1rem' }}>
+            <h4
+              style={{
+                fontSize: '1.125rem',
+                fontWeight: '600',
+                marginBottom: '1rem',
+              }}
+            >
               🥧 Sumber Pendapatan
             </h4>
             <div style={{ height: 200 }}>
@@ -532,7 +534,10 @@ function DashboardPage({ transactions, isLoading, error }) {
                     paddingAngle={3}
                   >
                     {incomeSources.map((entry, index) => (
-                      <Cell key={entry.name} fill={index === 0 ? '#22c55e' : '#3b82f6'} />
+                      <Cell
+                        key={entry.name}
+                        fill={index === 0 ? '#22c55e' : '#3b82f6'}
+                      />
                     ))}
                   </Pie>
                   <Tooltip />
@@ -543,7 +548,13 @@ function DashboardPage({ transactions, isLoading, error }) {
           </div>
 
           <div>
-            <h4 style={{ fontSize: '1.125rem', fontWeight: '600', marginBottom: '1rem' }}>
+            <h4
+              style={{
+                fontSize: '1.125rem',
+                fontWeight: '600',
+                marginBottom: '1rem',
+              }}
+            >
               📊 Top Pengeluaran
             </h4>
             <div style={{ height: 200 }}>
