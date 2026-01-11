@@ -41,10 +41,23 @@ export async function deleteBranch(id) {
 export async function fetchCategories() {
   const res = await api.get('/categories/')
   const data = Array.isArray(res.data) ? res.data : res.data.results || []
+  // expected: [{id, name, transaction_type, branches: [...]}, ...]
   return data
 }
 
 export async function createCategory(payload) {
+  // payload: { name, transaction_type, branches?: [branchId, ...] }
   const res = await api.post('/categories/', payload)
+  return res.data
+}
+
+export async function updateCategory(id, payload) {
+  // payload: { name?, transaction_type?, branches? }
+  const res = await api.patch(`/categories/${id}/`, payload)
+  return res.data
+}
+
+export async function deleteCategory(id) {
+  const res = await api.delete(`/categories/${id}/`)
   return res.data
 }

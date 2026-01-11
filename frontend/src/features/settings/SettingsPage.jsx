@@ -1,6 +1,13 @@
 // src/features/settings/SettingsPage.jsx
 import React, { useState, useEffect } from 'react'
-import { updateBranch, deleteBranch } from '../../lib/api/branchesCategories'
+import {
+  updateBranch,
+  deleteBranch,
+  fetchCategories as fetchCategoriesApi,
+  createCategory,
+  updateCategory,
+  deleteCategory,
+} from '../../lib/api/branchesCategories'
 
 const BRANCH_TYPES = [
   { value: 'LAUNDRY', label: 'Laundry' },
@@ -19,7 +26,7 @@ function SettingsPage({
   setAppSettings,
   showToast,
 }) {
-  // selected unit = group by branch_type (id is the enum)
+  // ========== STATE: CABANG / STRUKTUR BISNIS ==========
   const [selectedTypeId, setSelectedTypeId] = useState(
     businessConfigs.length ? businessConfigs[0].id : '',
   )
@@ -150,7 +157,7 @@ function SettingsPage({
     }
   }
 
-  // Default categories (kept only in UI for now)
+  // ========== STATE: DEFAULT KATEGORI PER TIPE (UI-ONLY, SAMA) ==========
   const [editSelectedId, setEditSelectedId] = useState(
     businessConfigs.length ? businessConfigs[0].id : '',
   )
@@ -232,78 +239,87 @@ function SettingsPage({
     setBusinessConfigs(updated)
   }
 
-  // Kategori (UI only, with rename + delete)
-  const [selectedCategoryTypeId, setSelectedCategoryTypeId] = useState(
-    businessConfigs.length ? businessConfigs[0].id : '',
-  )
-  const categoryUnit =
-    businessConfigs.find((b) => b.id === selectedCategoryTypeId) || null
+  // ========== STATE: KATEGORI (BACKEND /categories/) ==========
+  const [categories, setCategories] = useState([])
+  const [categoriesLoading, setCategoriesLoading] = useState(false)
+  const [categoryTypeFilter, setCategoryTypeFilter] = useState('INCOME') // 'INCOME' | 'EXPENSE'
   const [newCategoryName, setNewCategoryName] = useState('')
-  const [editingCategoryIndex, setEditingCategoryIndex] = useState(null)
+  const [editingCategoryId, setEditingCategoryId] = useState(null)
   const [editingCategoryName, setEditingCategoryName] = useState('')
 
-  const categoryList = categoryUnit?.categories || []
+  useEffect(() => {
+    const loadCategories = async () => {
+      try {
+        setCategoriesLoading(true)
+        const data = await fetchCategoriesApi()
+        setCategories(Array.isArray(data) ? data : [])
+      } catch (e) {
+        console.error(e)
+        showToast?.('Gagal memuat kategori.', 'error')
+      } finally {
+        setCategoriesLoading(false)
+      }
+    }
+    loadCategories()
+  }, [showToast])
 
-  const handleAddCategory = () => {
-    if (!categoryUnit) return
+  const filteredCategories = categories.filter(
+    (c) => c.transaction_type === categoryTypeFilter,
+  )
+
+  const handleAddCategoryBackend = async () => {
     const trimmed = newCategoryName.trim()
     if (!trimmed) return
-    const updated = businessConfigs.map((b) =>
-      b.id === categoryUnit.id
-        ? {
-            ...b,
-            categories: [...(b.categories || []), trimmed],
-          }
-        : b,
-    )
-    setBusinessConfigs(updated)
-    setNewCategoryName('')
-    showToast?.('Kategori berhasil ditambahkan.')
+    try {
+      const created = await createCategory({
+        name: trimmed,
+        transaction_type: categoryTypeFilter,
+      })
+      setCategories((prev) => [...prev, created])
+      setNewCategoryName('')
+      showToast?.('Kategori berhasil ditambahkan.')
+    } catch (e) {
+      console.error(e)
+      showToast?.('Gagal menambah kategori.', 'error')
+    }
   }
 
-  const handleDeleteCategory = (index) => {
-    if (!categoryUnit) return
-    const updatedList = (categoryUnit.categories || []).filter(
-      (_, i) => i !== index,
-    )
-    const updated = businessConfigs.map((b) =>
-      b.id === categoryUnit.id
-        ? {
-            ...b,
-            categories: updatedList,
-          }
-        : b,
-    )
-    setBusinessConfigs(updated)
-    showToast?.('Kategori berhasil dihapus.')
+  const handleStartEditCategoryBackend = (cat) => {
+    setEditingCategoryId(cat.id)
+    setEditingCategoryName(cat.name)
   }
 
-  const handleStartEditCategory = (index, name) => {
-    setEditingCategoryIndex(index)
-    setEditingCategoryName(name)
-  }
-
-  const handleSaveEditCategory = () => {
-    if (!categoryUnit || editingCategoryIndex === null) return
+  const handleSaveEditCategoryBackend = async () => {
     const trimmed = editingCategoryName.trim()
-    if (!trimmed) return
-    const updatedList = (categoryUnit.categories || []).map((cat, idx) =>
-      idx === editingCategoryIndex ? trimmed : cat,
-    )
-    const updated = businessConfigs.map((b) =>
-      b.id === categoryUnit.id
-        ? {
-            ...b,
-            categories: updatedList,
-          }
-        : b,
-    )
-    setBusinessConfigs(updated)
-    setEditingCategoryIndex(null)
-    setEditingCategoryName('')
-    showToast?.('Kategori berhasil diubah.')
+    if (!trimmed || !editingCategoryId) return
+    try {
+      const updated = await updateCategory(editingCategoryId, {
+        name: trimmed,
+      })
+      setCategories((prev) =>
+        prev.map((c) => (c.id === updated.id ? updated : c)),
+      )
+      setEditingCategoryId(null)
+      setEditingCategoryName('')
+      showToast?.('Kategori berhasil diubah.')
+    } catch (e) {
+      console.error(e)
+      showToast?.('Gagal mengubah kategori.', 'error')
+    }
   }
 
+  const handleDeleteCategoryBackend = async (id) => {
+    try {
+      await deleteCategory(id)
+      setCategories((prev) => prev.filter((c) => c.id !== id))
+      showToast?.('Kategori berhasil dihapus.')
+    } catch (e) {
+      console.error(e)
+      showToast?.('Gagal menghapus kategori. Pastikan tidak dipakai transaksi.', 'error')
+    }
+  }
+
+  // ========== CONFIRM MODAL CABANG ==========
   const renderConfirmModal = () => {
     if (!confirmModal || !confirmModal.branch) return null
     const { type, branch } = confirmModal
@@ -412,6 +428,7 @@ function SettingsPage({
     )
   }
 
+  // ========== RENDER ==========
   return (
     <main
       style={{
@@ -472,7 +489,7 @@ function SettingsPage({
           </div>
         </div>
 
-        {/* Kategori (baru) */}
+        {/* Kategori (CRUD backend) */}
         <div
           style={{
             backgroundColor: 'var(--bg-elevated)',
@@ -485,35 +502,48 @@ function SettingsPage({
             Kategori
           </h2>
 
-          <div style={{ marginBottom: '1rem' }}>
-            <p style={{ fontSize: 12, color: 'var(--subtext)', marginBottom: 6 }}>
-              Pilih Tipe Unit Bisnis
+          <div style={{ marginBottom: '0.75rem' }}>
+            <p style={{ fontSize: 12, color: 'var(--subtext)', marginBottom: 4 }}>
+              Tipe transaksi
             </p>
-            <select
-              value={selectedCategoryTypeId}
-              onChange={(e) => setSelectedCategoryTypeId(e.target.value)}
-              style={{
-                width: '100%',
-                backgroundColor: 'var(--bg)',
-                borderRadius: 12,
-                border: '1px solid var(--border)',
-                padding: '0.7rem 1rem',
-                fontSize: 13,
-                color: 'var(--text)',
-                outline: 'none',
-              }}
-            >
-              {BRANCH_TYPES.map((t) => (
-                <option key={t.value} value={t.value}>
-                  {t.label}
-                </option>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {[
+                { value: 'INCOME', label: 'Income' },
+                { value: 'EXPENSE', label: 'Expense' },
+              ].map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => {
+                    setCategoryTypeFilter(opt.value)
+                    setEditingCategoryId(null)
+                    setEditingCategoryName('')
+                  }}
+                  style={{
+                    padding: '0.4rem 0.9rem',
+                    borderRadius: 9999,
+                    border:
+                      categoryTypeFilter === opt.value
+                        ? '1px solid var(--accent)'
+                        : '1px solid var(--border)',
+                    backgroundColor:
+                      categoryTypeFilter === opt.value ? 'var(--accent)' : 'transparent',
+                    color:
+                      categoryTypeFilter === opt.value ? 'var(--bg)' : 'var(--text)',
+                    fontSize: 12,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                  }}
+                >
+                  {opt.label}
+                </button>
               ))}
-            </select>
+            </div>
           </div>
 
           <div style={{ marginBottom: '0.75rem' }}>
             <p style={{ fontSize: 12, color: 'var(--subtext)', marginBottom: 4 }}>
-              Tambah kategori
+              Tambah kategori ({categoryTypeFilter === 'INCOME' ? 'Income' : 'Expense'})
             </p>
             <div style={{ display: 'flex', gap: 8 }}>
               <input
@@ -523,7 +553,7 @@ function SettingsPage({
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
                     e.preventDefault()
-                    handleAddCategory()
+                    handleAddCategoryBackend()
                   }
                 }}
                 style={{
@@ -539,7 +569,7 @@ function SettingsPage({
               />
               <button
                 type="button"
-                onClick={handleAddCategory}
+                onClick={handleAddCategoryBackend}
                 style={{
                   backgroundColor: 'var(--accent)',
                   borderRadius: 9999,
@@ -563,10 +593,19 @@ function SettingsPage({
               gap: 8,
             }}
           >
-            {categoryList && categoryList.length > 0 ? (
-              categoryList.map((cat, idx) => (
+            {categoriesLoading ? (
+              <span
+                style={{
+                  fontSize: 11,
+                  color: 'var(--subtext)',
+                }}
+              >
+                Memuat kategori...
+              </span>
+            ) : filteredCategories.length > 0 ? (
+              filteredCategories.map((cat) => (
                 <div
-                  key={`${cat}-${idx}`}
+                  key={cat.id}
                   style={{
                     display: 'inline-flex',
                     alignItems: 'center',
@@ -578,7 +617,7 @@ function SettingsPage({
                     fontSize: 11,
                   }}
                 >
-                  {editingCategoryIndex === idx ? (
+                  {editingCategoryId === cat.id ? (
                     <>
                       <input
                         value={editingCategoryName}
@@ -595,7 +634,7 @@ function SettingsPage({
                       />
                       <button
                         type="button"
-                        onClick={handleSaveEditCategory}
+                        onClick={handleSaveEditCategoryBackend}
                         style={{
                           border: 'none',
                           backgroundColor: '#22c55e',
@@ -611,10 +650,10 @@ function SettingsPage({
                     </>
                   ) : (
                     <>
-                      <span>{cat}</span>
+                      <span>{cat.name}</span>
                       <button
                         type="button"
-                        onClick={() => handleStartEditCategory(idx, cat)}
+                        onClick={() => handleStartEditCategoryBackend(cat)}
                         style={{
                           border: 'none',
                           background: 'none',
@@ -629,7 +668,7 @@ function SettingsPage({
                   )}
                   <button
                     type="button"
-                    onClick={() => handleDeleteCategory(idx)}
+                    onClick={() => handleDeleteCategoryBackend(cat.id)}
                     style={{
                       border: 'none',
                       background: 'none',
