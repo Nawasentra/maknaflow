@@ -40,7 +40,7 @@ function Field({ label, children }) {
 function TransactionsPage({
   transactions,
   setTransactions,
-  businessConfigs, // kept for future use
+  businessConfigs,
   appSettings,
   lastUsedType,
   setLastUsedType,
@@ -62,7 +62,7 @@ function TransactionsPage({
     direction: 'desc',
   })
 
-  // ---------- LOAD DATA ONCE ----------
+  // Load data once
   useEffect(() => {
     const load = async () => {
       try {
@@ -83,7 +83,7 @@ function TransactionsPage({
     }
     load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []) // run only once
+  }, [])
 
   const filteredTransactions = transactions.filter((t) => {
     if (!searchTerm) return true
@@ -445,14 +445,13 @@ function AddTransactionModal({
   const [amountInput, setAmountInput] = useState('')
   const [description, setDescription] = useState('')
 
-  const filteredCategories = useMemo(
-    () =>
-      categories.filter(
-        (c) =>
-          c.transaction_type === (type === 'Income' ? 'INCOME' : 'EXPENSE'),
-      ),
-    [categories, type],
-  )
+  const safeBranches = Array.isArray(branches) ? branches : []
+  const safeCategories = Array.isArray(categories) ? categories : []
+
+  const filteredCategories = useMemo(() => {
+    const txType = type === 'Income' ? 'INCOME' : 'EXPENSE'
+    return safeCategories.filter((c) => c.transaction_type === txType)
+  }, [safeCategories, type])
 
   const pembayaranOptions = [
     { label: 'QRIS', value: 'QRIS' },
@@ -572,7 +571,7 @@ function AddTransactionModal({
               style={inputStyle}
             >
               <option value="">Pilih cabang</option>
-              {branches.map((b) => (
+              {safeBranches.map((b) => (
                 <option key={b.id} value={b.id}>
                   {b.name}
                 </option>
