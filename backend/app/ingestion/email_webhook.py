@@ -167,6 +167,7 @@ class EmailWebhookService:
         
         transaction_date = date.today()
         metadata = (parsed_data or {}).get("metadata", {})
+        
         if metadata.get("date"):
             try:
                 date_str = str(metadata["date"]).strip()

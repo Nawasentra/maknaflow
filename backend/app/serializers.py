@@ -56,6 +56,7 @@ class TransactionSerializer(serializers.ModelSerializer):
             'source_identifier',
             'evidence_image',
             'is_verified',
+            'payment_method',
 
             # Expanded Fields (for OUTPUT/GET)
             'branch_name',

@@ -44,10 +44,10 @@ link_categories_to_branches.short_description = "Link selected categories to bra
 class TransactionAdmin(admin.ModelAdmin):
     list_display = [
         'id', 'date', 'branch_name', 'amount', 'transaction_type', 
-        'category_name', 'reported_by', 'is_verified', 'source', 'created_at'
+        'category_name', 'payment_method', 'reported_by', 'is_verified', 'source', 'created_at'
     ]
     list_filter = [
-        'transaction_type', 'source', 'is_verified', 'is_valid',
+        'transaction_type', 'payment_method', 'source', 'is_verified', 'is_valid',
         'date', 'created_at', 'branch'
     ]
     search_fields = [
@@ -61,7 +61,7 @@ class TransactionAdmin(admin.ModelAdmin):
         ('Transaction Details', {
             'fields': (
                 'branch', 'date', 'amount', 'transaction_type', 
-                'category', 'description'
+                'category', 'payment_method', 'description'
             )
         }),
         ('Tracking', {
