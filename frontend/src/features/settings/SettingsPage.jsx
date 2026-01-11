@@ -1,4 +1,4 @@
-// frontend/src/features/settings/SettingsPage.jsx
+// src/features/settings/SettingsPage.jsx
 import React, { useState, useEffect, useMemo } from 'react'
 import {
   updateBranch,
@@ -9,6 +9,11 @@ import {
   deleteCategory,
 } from '../../lib/api/branchesCategories'
 
+// Sumber enum sama seperti di backend:
+// LAUNDRY = 'LAUNDRY', 'Laundry Service'
+// CARWASH = 'CARWASH', 'Car Wash'
+// KOS     = 'KOS', 'Kos'
+// OTHER   = 'OTHER', 'Other Business'
 const BRANCH_TYPES = [
   { value: 'LAUNDRY', label: 'Laundry' },
   { value: 'CARWASH', label: 'Carwash' },
@@ -27,7 +32,7 @@ const branchTypeLabelById = (id, businessConfigs) => {
   return branchTypeLabelByType(unit.type)
 }
 
-// chip kategori – biru gelap, kontras tinggi
+// Chip kategori biru gelap
 const chipStyle = {
   display: 'inline-flex',
   alignItems: 'center',
@@ -47,13 +52,10 @@ function SettingsPage({
   setAppSettings,
   showToast,
 }) {
-  // ---------- KATEGORI GLOBAL (backend) ----------
+  // ---------- KATEGORI GLOBAL (backend, TANPA UI) ----------
+  // Tetap fetch supaya kategori per cabang bisa pakai sumber ini
   const [categories, setCategories] = useState([])
   const [categoriesLoading, setCategoriesLoading] = useState(false)
-  const [categoryTypeFilter, setCategoryTypeFilter] = useState('INCOME')
-  const [newCategoryName, setNewCategoryName] = useState('')
-  const [editingCategoryId, setEditingCategoryId] = useState(null)
-  const [editingCategoryName, setEditingCategoryName] = useState('')
 
   useEffect(() => {
     const loadCategories = async () => {
@@ -71,71 +73,14 @@ function SettingsPage({
     loadCategories()
   }, [showToast])
 
-  const filteredCategories = categories.filter(
-    (c) => c.transaction_type === categoryTypeFilter,
-  )
-
-  const handleAddCategoryBackend = async () => {
-    const trimmed = newCategoryName.trim()
-    if (!trimmed) return
-    try {
-      const created = await createCategory({
-        name: trimmed,
-        transaction_type: categoryTypeFilter,
-      })
-      setCategories((prev) => [...prev, created])
-      setNewCategoryName('')
-      showToast?.('Kategori berhasil ditambahkan.')
-    } catch (e) {
-      console.error(e)
-      showToast?.('Gagal menambah kategori.', 'error')
-    }
-  }
-
-  const handleStartEditCategoryBackend = (cat) => {
-    setEditingCategoryId(cat.id)
-    setEditingCategoryName(cat.name)
-  }
-
-  const handleSaveEditCategoryBackend = async () => {
-    const trimmed = editingCategoryName.trim()
-    if (!trimmed || !editingCategoryId) return
-    try {
-      const updated = await updateCategory(editingCategoryId, { name: trimmed })
-      setCategories((prev) =>
-        prev.map((c) => (c.id === updated.id ? updated : c)),
-      )
-      setEditingCategoryId(null)
-      setEditingCategoryName('')
-      showToast?.('Kategori berhasil diubah.')
-    } catch (e) {
-      console.error(e)
-      showToast?.('Gagal mengubah kategori.', 'error')
-    }
-  }
-
-  const handleDeleteCategoryBackend = async (id) => {
-    try {
-      await deleteCategory(id)
-      setCategories((prev) => prev.filter((c) => c.id !== id))
-      showToast?.('Kategori berhasil dihapus.')
-    } catch (e) {
-      console.error(e)
-      showToast?.(
-        'Gagal menghapus kategori. Pastikan tidak dipakai transaksi.',
-        'error',
-      )
-    }
-  }
-
-  // ---------- FLATTEN CABANG ----------
+  // ---------- FLATTEN CABANG + TYPE ----------
   const allBranchesFlat = useMemo(() => {
     const result = []
     ;(businessConfigs || []).forEach((unit) => {
       ;(unit.branches || []).forEach((br) => {
         result.push({
           unitId: unit.id,
-          unitType: unit.type,               // LAUNDRY | CARWASH | KOS | OTHER
+          unitType: unit.type, // LAUNDRY | CARWASH | KOS | OTHER
           unitLabel: branchTypeLabelByType(unit.type),
           id: br.id,
           name: br.name,
@@ -148,21 +93,24 @@ function SettingsPage({
     return result
   }, [businessConfigs])
 
-  // untuk mengisi dropdown tipe unit
   const unitTypeOptions = useMemo(
-    () => Array.from(new Set((businessConfigs || []).map((u) => u.type).filter(Boolean))),
+    () =>
+      Array.from(
+        new Set((businessConfigs || []).map((u) => u.type).filter(Boolean)),
+      ),
     [businessConfigs],
   )
 
   // ---------- KATEGORI PER CABANG ----------
   const [branchUnitFilterForCategory, setBranchUnitFilterForCategory] =
-    useState('ALL')                            // 'ALL' atau enum
+    useState('ALL') // ALL atau enum
   const [selectedBranchForCategory, setSelectedBranchForCategory] =
     useState('')
-  const [branchCategoryTab, setBranchCategoryTab] = useState('INCOME')
+  const [branchCategoryTab, setBranchCategoryTab] = useState('INCOME') // INCOME | EXPENSE
   const [branchCategorySearch, setBranchCategorySearch] = useState('')
   const [branchNewCategoryName, setBranchNewCategoryName] = useState('')
 
+  // Filter cabang berdasarkan tipe unit
   const branchesForCategoryCard = useMemo(() => {
     if (branchUnitFilterForCategory === 'ALL') return allBranchesFlat
     return allBranchesFlat.filter(
@@ -170,20 +118,19 @@ function SettingsPage({
     )
   }, [allBranchesFlat, branchUnitFilterForCategory])
 
+  // Auto pilih cabang pertama kalau filter berubah
   useEffect(() => {
-    if (!selectedBranchForCategory && branchesForCategoryCard.length > 0) {
-      setSelectedBranchForCategory(String(branchesForCategoryCard[0].id))
-    } else if (
-      selectedBranchForCategory &&
+    if (!branchesForCategoryCard.length) {
+      setSelectedBranchForCategory('')
+      return
+    }
+    if (
+      !selectedBranchForCategory ||
       !branchesForCategoryCard.find(
         (b) => String(b.id) === String(selectedBranchForCategory),
       )
     ) {
-      if (branchesForCategoryCard.length > 0) {
-        setSelectedBranchForCategory(String(branchesForCategoryCard[0].id))
-      } else {
-        setSelectedBranchForCategory('')
-      }
+      setSelectedBranchForCategory(String(branchesForCategoryCard[0].id))
     }
   }, [branchesForCategoryCard, selectedBranchForCategory])
 
@@ -205,39 +152,35 @@ function SettingsPage({
     return Array.isArray(ids) ? ids : []
   }, [selectedBranchForCategoryObj, branchCategoryTab])
 
-  const branchAssignedCategories = useMemo(() => {
-    const txType = branchCategoryTab
+  // Filter kategori global sesuai:
+  // - tipe transaksi (INCOME/EXPENSE)
+  // - cari
+  const filteredGlobalByTxType = useMemo(() => {
     const list = categories.filter(
-      (c) =>
-        c.transaction_type === txType &&
-        assignedCategoryIdsForBranch.includes(c.id),
+      (c) => c.transaction_type === branchCategoryTab,
     )
     if (!branchCategorySearch) return list
     const q = branchCategorySearch.toLowerCase()
     return list.filter((c) => c.name.toLowerCase().includes(q))
-  }, [
-    categories,
-    assignedCategoryIdsForBranch,
-    branchCategoryTab,
-    branchCategorySearch,
-  ])
+  }, [categories, branchCategoryTab, branchCategorySearch])
 
-  const branchAvailableCategories = useMemo(() => {
-    const txType = branchCategoryTab
-    const list = categories.filter(
-      (c) =>
-        c.transaction_type === txType &&
-        !assignedCategoryIdsForBranch.includes(c.id),
-    )
-    if (!branchCategorySearch) return list
-    const q = branchCategorySearch.toLowerCase()
-    return list.filter((c) => c.name.toLowerCase().includes(q))
-  }, [
-    categories,
-    assignedCategoryIdsForBranch,
-    branchCategoryTab,
-    branchCategorySearch,
-  ])
+  // Kategori yang sudah aktif di cabang
+  const branchAssignedCategories = useMemo(
+    () =>
+      filteredGlobalByTxType.filter((c) =>
+        assignedCategoryIdsForBranch.includes(c.id),
+      ),
+    [filteredGlobalByTxType, assignedCategoryIdsForBranch],
+  )
+
+  // Kategori global lain (belum aktif di cabang) – sumber pilihan
+  const branchAvailableCategories = useMemo(
+    () =>
+      filteredGlobalByTxType.filter(
+        (c) => !assignedCategoryIdsForBranch.includes(c.id),
+      ),
+    [filteredGlobalByTxType, assignedCategoryIdsForBranch],
+  )
 
   const updateBranchCategoryIds = (branchId, txType, updater) => {
     setBusinessConfigs((prev) => {
@@ -260,8 +203,8 @@ function SettingsPage({
   const handleBranchAttachCategory = (categoryId) => {
     if (!selectedBranchForCategoryObj) return
     const txType = branchCategoryTab
-    updateBranchCategoryIds(selectedBranchForCategoryObj.id, txType, (prevIds) => {
-      const set = new Set(prevIds)
+    updateBranchCategoryIds(selectedBranchForCategoryObj.id, txType, (prev) => {
+      const set = new Set(prev)
       set.add(categoryId)
       return Array.from(set)
     })
@@ -271,8 +214,8 @@ function SettingsPage({
   const handleBranchDetachCategory = (categoryId) => {
     if (!selectedBranchForCategoryObj) return
     const txType = branchCategoryTab
-    updateBranchCategoryIds(selectedBranchForCategoryObj.id, txType, (prevIds) =>
-      prevIds.filter((id) => id !== categoryId),
+    updateBranchCategoryIds(selectedBranchForCategoryObj.id, txType, (prev) =>
+      prev.filter((id) => id !== categoryId),
     )
     showToast?.(
       'Kategori dihapus dari cabang, kategori global tetap ada.',
@@ -289,6 +232,7 @@ function SettingsPage({
     if (!trimmed) return
     const txType = branchCategoryTab
 
+    // cek duplikat nama di kategori global
     const existing = categories.find(
       (c) =>
         c.transaction_type === txType &&
@@ -306,8 +250,8 @@ function SettingsPage({
         target = created
       }
 
-      updateBranchCategoryIds(selectedBranchForCategoryObj.id, txType, (prevIds) => {
-        const set = new Set(prevIds)
+      updateBranchCategoryIds(selectedBranchForCategoryObj.id, txType, (prev) => {
+        const set = new Set(prev)
         set.add(target.id)
         return Array.from(set)
       })
@@ -322,7 +266,7 @@ function SettingsPage({
     }
   }
 
-  // ---------- CABANG ----------
+  // ---------- CABANG (card "Cabang") ----------
   const [branchUnitFilterForCabang, setBranchUnitFilterForCabang] =
     useState('ALL')
   const [selectedTypeId, setSelectedTypeId] = useState(
@@ -459,29 +403,10 @@ function SettingsPage({
     }
   }
 
-  // ---------- DEFAULT KATEGORI PER TIPE (UI only) ----------
-  const [defaultUnitTypeFilter, setDefaultUnitTypeFilter] = useState('ALL')
+  // ---------- DEFAULT KATEGORI PER TIPE (pakai satu dropdown sumber unit) ----------
   const [editSelectedId, setEditSelectedId] = useState(
     businessConfigs.length ? businessConfigs[0].id : '',
   )
-
-  const defaultUnits = useMemo(() => {
-    if (defaultUnitTypeFilter === 'ALL') return businessConfigs
-    return (businessConfigs || []).filter(
-      (u) => u.type === defaultUnitTypeFilter,
-    )
-  }, [businessConfigs, defaultUnitTypeFilter])
-
-  useEffect(() => {
-    if (!defaultUnits.length) {
-      setEditSelectedId('')
-      return
-    }
-    if (!defaultUnits.find((u) => u.id === editSelectedId)) {
-      setEditSelectedId(defaultUnits[0].id)
-    }
-  }, [defaultUnits, editSelectedId])
-
   const editSelected =
     businessConfigs.find((b) => b.id === editSelectedId) || null
 
@@ -695,222 +620,6 @@ function SettingsPage({
           gap: '1.5rem',
         }}
       >
-        {/* Struktur Bisnis card dihapus */}
-
-        {/* Kategori Global */}
-        <div
-          style={{
-            backgroundColor: 'var(--bg-elevated)',
-            border: '1px solid var(--border)',
-            borderRadius: '12px',
-            padding: '1.5rem',
-          }}
-        >
-          <h2
-            style={{
-              fontSize: '1.1rem',
-              fontWeight: 600,
-              marginBottom: '1rem',
-            }}
-          >
-            Kategori Global
-          </h2>
-
-          <div style={{ marginBottom: '0.75rem' }}>
-            <p
-              style={{
-                fontSize: 12,
-                color: 'var(--subtext)',
-                marginBottom: 4,
-              }}
-            >
-              Tipe transaksi
-            </p>
-            <div style={{ display: 'flex', gap: 8 }}>
-              {[
-                { value: 'INCOME', label: 'Income' },
-                { value: 'EXPENSE', label: 'Expense' },
-              ].map((opt) => (
-                <button
-                  key={opt.value}
-                  type="button"
-                  onClick={() => {
-                    setCategoryTypeFilter(opt.value)
-                    setEditingCategoryId(null)
-                    setEditingCategoryName('')
-                  }}
-                  style={{
-                    padding: '0.4rem 0.9rem',
-                    borderRadius: 9999,
-                    border:
-                      categoryTypeFilter === opt.value
-                        ? '1px solid var(--accent)'
-                        : '1px solid var(--border)',
-                    backgroundColor:
-                      categoryTypeFilter === opt.value ? 'var(--accent)' : 'transparent',
-                    color:
-                      categoryTypeFilter === opt.value ? 'var(--bg)' : 'var(--text)',
-                    fontSize: 12,
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                  }}
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div style={{ marginBottom: '0.75rem' }}>
-            <p
-              style={{
-                fontSize: 12,
-                color: 'var(--subtext)',
-                marginBottom: 4,
-              }}
-            >
-              Tambah kategori {categoryTypeFilter === 'INCOME' ? 'Income' : 'Expense'}
-            </p>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <input
-                placeholder="Nama kategori..."
-                value={newCategoryName}
-                onChange={(e) => setNewCategoryName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault()
-                    handleAddCategoryBackend()
-                  }
-                }}
-                style={{
-                  flex: 1,
-                  backgroundColor: 'var(--bg)',
-                  borderRadius: 9999,
-                  border: '1px solid var(--border)',
-                  padding: '0.5rem 0.9rem',
-                  fontSize: 12,
-                  color: 'var(--text)',
-                  outline: 'none',
-                }}
-              />
-              <button
-                type="button"
-                onClick={handleAddCategoryBackend}
-                style={{
-                  backgroundColor: 'var(--accent)',
-                  borderRadius: 9999,
-                  border: 'none',
-                  color: 'var(--bg)',
-                  fontSize: 12,
-                  fontWeight: 600,
-                  padding: '0.45rem 0.9rem',
-                  cursor: 'pointer',
-                }}
-              >
-                Tambah
-              </button>
-            </div>
-          </div>
-
-          <div
-            style={{
-              display: 'flex',
-              flexWrap: 'wrap',
-              gap: 8,
-            }}
-          >
-            {categoriesLoading ? (
-              <span style={{ fontSize: 11, color: 'var(--subtext)' }}>
-                Memuat kategori...
-              </span>
-            ) : filteredCategories.length === 0 ? (
-              <span style={{ fontSize: 11, color: 'var(--subtext)' }}>
-                Belum ada kategori untuk tipe ini.
-              </span>
-            ) : (
-              filteredCategories.map((cat) => (
-                <div
-                  key={cat.id}
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 6,
-                    padding: '0.35rem 0.8rem',
-                    borderRadius: 9999,
-                    backgroundColor: '#2563eb',
-                    color: '#f9fafb',
-                    border: '1px solid #1d4ed8',
-                    fontSize: 11,
-                  }}
-                >
-                  {editingCategoryId === cat.id ? (
-                    <>
-                      <input
-                        value={editingCategoryName}
-                        onChange={(e) => setEditingCategoryName(e.target.value)}
-                        style={{
-                          backgroundColor: 'var(--bg)',
-                          borderRadius: 9999,
-                          border: '1px solid var(--border)',
-                          padding: '0.25rem 0.5rem',
-                          fontSize: 11,
-                          color: 'var(--text)',
-                          outline: 'none',
-                        }}
-                      />
-                      <button
-                        type="button"
-                        onClick={handleSaveEditCategoryBackend}
-                        style={{
-                          border: 'none',
-                          backgroundColor: '#22c55e',
-                          color: 'white',
-                          cursor: 'pointer',
-                          fontSize: 11,
-                          borderRadius: 9999,
-                          padding: '0.2rem 0.6rem',
-                        }}
-                      >
-                        Simpan
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      <span>{cat.name}</span>
-                      <button
-                        type="button"
-                        onClick={() => handleStartEditCategoryBackend(cat)}
-                        style={{
-                          border: 'none',
-                          background: 'none',
-                          color: '#bfdbfe',
-                          cursor: 'pointer',
-                          fontSize: 11,
-                        }}
-                      >
-                        Ubah
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteCategoryBackend(cat.id)}
-                        style={{
-                          border: 'none',
-                          background: 'none',
-                          color: '#fecaca',
-                          cursor: 'pointer',
-                          fontSize: 12,
-                        }}
-                      >
-                        ✕
-                      </button>
-                    </>
-                  )}
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-
         {/* Kategori per Cabang */}
         <div
           style={{
@@ -1145,7 +854,11 @@ function SettingsPage({
             >
               Kategori aktif di cabang ini
             </p>
-            {branchAssignedCategories.length === 0 ? (
+            {categoriesLoading ? (
+              <span style={{ fontSize: 11, color: 'var(--subtext)' }}>
+                Memuat kategori...
+              </span>
+            ) : branchAssignedCategories.length === 0 ? (
               <span style={{ fontSize: 11, color: 'var(--subtext)' }}>
                 Belum ada kategori untuk tipe ini di cabang ini.
               </span>
@@ -1393,7 +1106,7 @@ function SettingsPage({
           )}
         </div>
 
-        {/* Default Kategori per Tipe */}
+        {/* Default Kategori per Tipe (pakai sumber bisnisConfigs langsung) */}
         <div
           style={{
             backgroundColor: 'var(--bg-elevated)',
@@ -1413,38 +1126,6 @@ function SettingsPage({
           </h2>
 
           <div style={{ marginBottom: '1.25rem' }}>
-            <p
-              style={{
-                fontSize: 12,
-                color: 'var(--subtext)',
-                marginBottom: 6,
-              }}
-            >
-              Tipe Unit Bisnis
-            </p>
-            <select
-              value={defaultUnitTypeFilter}
-              onChange={(e) => setDefaultUnitTypeFilter(e.target.value)}
-              style={{
-                width: '100%',
-                backgroundColor: 'var(--bg)',
-                borderRadius: 12,
-                border: '1px solid var(--border)',
-                padding: '0.7rem 1rem',
-                fontSize: 13,
-                color: 'var(--text)',
-                outline: 'none',
-                marginBottom: 8,
-              }}
-            >
-              <option value="ALL">Semua Unit</option>
-              {unitTypeOptions.map((t) => (
-                <option key={t} value={t}>
-                  {branchTypeLabelByType(t)}
-                </option>
-              ))}
-            </select>
-
             <label
               style={{
                 display: 'block',
@@ -1470,7 +1151,7 @@ function SettingsPage({
                 outline: 'none',
               }}
             >
-              {defaultUnits.map((b) => (
+              {businessConfigs.map((b) => (
                 <option key={b.id} value={b.id}>
                   {branchTypeLabelById(b.id, businessConfigs)}
                 </option>
