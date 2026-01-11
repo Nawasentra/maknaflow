@@ -40,7 +40,7 @@ function Field({ label, children }) {
 function TransactionsPage({
   transactions,
   setTransactions,
-  businessConfigs,
+  businessConfigs, // kept for future use
   appSettings,
   lastUsedType,
   setLastUsedType,
@@ -62,7 +62,7 @@ function TransactionsPage({
     direction: 'desc',
   })
 
-  // Load initial data
+  // ---------- LOAD DATA ONCE ----------
   useEffect(() => {
     const load = async () => {
       try {
@@ -82,7 +82,8 @@ function TransactionsPage({
       }
     }
     load()
-  }, [setTransactions, showToast])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []) // run only once
 
   const filteredTransactions = transactions.filter((t) => {
     if (!searchTerm) return true
