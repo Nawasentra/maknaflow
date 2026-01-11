@@ -43,7 +43,10 @@ function mapTransaction(t) {
     category: t.category_name || 'Lainnya',
     type,
     amount: Number(t.amount ?? 0),
-    payment: t.payment_method || t.reported_by_email || 'Unknown',
+
+    // HANYA payment_method → CASH / QRIS / TRANSFER / null
+    payment: t.payment_method || 'Unknown',
+
     source,
     description: t.description,
     createdAt: t.created_at,
@@ -61,7 +64,8 @@ function mapToBackendPayload(frontendTx) {
     amount: frontendTx.amount,
     description: frontendTx.description || '',
     payment_method: frontendTx.payment,   // "CASH" | "QRIS" | "TRANSFER"
-    transaction_type: frontendTx.type === 'Income' ? 'INCOME' : 'EXPENSE',
+    transaction_type:
+      frontendTx.type === 'Income' ? 'INCOME' : 'EXPENSE',
     source: 'MANUAL',
   }
 }
