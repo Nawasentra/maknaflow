@@ -244,8 +244,8 @@ function SettingsPage({
     const desc = isDelete
       ? `Yakin ingin menghapus cabang "${branch.name}"? Tindakan ini tidak bisa dibatalkan.`
       : branch.active === false
-      ? `Aktifkan kembali cabang "${branch.name}" di UI?`
-      : `Nonaktifkan cabang "${branch.name}" di UI?`
+      ? `Aktifkan kembali cabang "${branch.name}"?`
+      : `Nonaktifkan cabang "${branch.name}"?`
 
     const onConfirm = async () => {
       if (isDelete) {
@@ -485,8 +485,8 @@ function SettingsPage({
                       }}
                     >
                       {selectedBranch.active === false
-                        ? 'Aktifkan Cabang (UI)'
-                        : 'Nonaktifkan Cabang (UI)'}
+                        ? 'Aktifkan Cabang'
+                        : 'Nonaktifkan Cabang'}
                     </button>
                     <button
                       type="button"
@@ -525,7 +525,7 @@ function SettingsPage({
           }}
         >
           <h2 style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '1rem' }}>
-            Default Kategori per Tipe (hanya di UI)
+            Default Kategori per Tipe
           </h2>
 
           <div style={{ marginBottom: '1.25rem' }}>
