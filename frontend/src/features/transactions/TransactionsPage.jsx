@@ -44,10 +44,12 @@ function TransactionsPage({
   lastUsedType,
   setLastUsedType,
   showToast,
-  onRefresh, // <-- baru: dipass dari AuthenticatedLayout
+  onRefresh,
 }) {
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
+  const [filterUnit, setFilterUnit] = useState('Semua Unit')
+  const [filterBranch, setFilterBranch] = useState('Semua Cabang')
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [transactionToDelete, setTransactionToDelete] = useState(null)
   const [addOpen, setAddOpen] = useState(false)
@@ -60,21 +62,15 @@ function TransactionsPage({
     direction: 'desc',
   })
 
-  const setSafeBranches = (br) =>
-    setBranches(Array.isArray(br) ? br : [])
+  const setSafeBranches = (br) => setBranches(Array.isArray(br) ? br : [])
+  const setSafeCategories = (cat) => setCategories(Array.isArray(cat) ? cat : [])
 
-  const setSafeCategories = (cat) =>
-    setCategories(Array.isArray(cat) ? cat : [])
-
-  // --- Hanya load branches & categories di sini ---
+  // --- Load branches & categories ---
   useEffect(() => {
     const loadMeta = async () => {
       try {
         setLoading(true)
-        const [br, cat] = await Promise.all([
-          fetchBranches(),
-          fetchCategories(),
-        ])
+        const [br, cat] = await Promise.all([fetchBranches(), fetchCategories()])
         setSafeBranches(br)
         setSafeCategories(cat)
       } catch (e) {
@@ -90,17 +86,58 @@ function TransactionsPage({
 
   const safeTransactions = Array.isArray(transactions) ? transactions : []
 
-  const filteredTransactions = safeTransactions.filter((t) => {
-    if (!searchTerm) return true
-    const q = searchTerm.toLowerCase()
-    return (
-      t.branch?.toLowerCase().includes(q) ||
-      t.unitBusiness?.toLowerCase().includes(q) ||
-      t.category?.toLowerCase().includes(q) ||
-      t.type?.toLowerCase().includes(q) ||
-      t.payment?.toLowerCase().includes(q) ||
-      (t.source || '').toLowerCase().includes(q)
+  // --- Generate opsi Unit & Cabang dari transactions ---
+  const unitOptions = useMemo(() => {
+    const units = Array.from(
+      new Set(safeTransactions.map((t) => t.unitBusiness).filter(Boolean)),
     )
+    return ['Semua Unit', ...units]
+  }, [safeTransactions])
+
+  const branchOptions = useMemo(() => {
+    let source = safeTransactions
+    if (filterUnit !== 'Semua Unit') {
+      source = source.filter((t) => t.unitBusiness === filterUnit)
+    }
+    const names = Array.from(
+      new Set(source.map((t) => t.branch).filter(Boolean)),
+    )
+    return ['Semua Cabang', ...names]
+  }, [safeTransactions, filterUnit])
+
+  // Pastikan filterBranch tetap valid kalau unit berubah
+  useEffect(() => {
+    if (!branchOptions.includes(filterBranch)) {
+      setFilterBranch('Semua Cabang')
+    }
+  }, [branchOptions, filterBranch])
+
+  // --- Filter transaksi berdasarkan search + Unit + Cabang ---
+  const filteredTransactions = safeTransactions.filter((t) => {
+    // Search term
+    if (searchTerm) {
+      const q = searchTerm.toLowerCase()
+      const matchSearch =
+        t.branch?.toLowerCase().includes(q) ||
+        t.unitBusiness?.toLowerCase().includes(q) ||
+        t.category?.toLowerCase().includes(q) ||
+        t.type?.toLowerCase().includes(q) ||
+        t.payment?.toLowerCase().includes(q) ||
+        (t.source || '').toLowerCase().includes(q)
+      if (!matchSearch) return false
+    }
+
+    // Unit filter
+    if (filterUnit !== 'Semua Unit' && t.unitBusiness !== filterUnit) {
+      return false
+    }
+
+    // Branch filter
+    if (filterBranch !== 'Semua Cabang' && t.branch !== filterBranch) {
+      return false
+    }
+
+    return true
   })
 
   const sortedTransactions = [...filteredTransactions].sort((a, b) => {
@@ -240,12 +277,15 @@ function TransactionsPage({
                   : `${sortedTransactions.length} transaksi ditemukan`}
               </p>
             </div>
+
+            {/* Search & Action Buttons */}
             <div
               style={{
                 display: 'flex',
                 gap: '0.5rem',
                 width: '100%',
-                maxWidth: '500px',
+                maxWidth: '100%',
+                flexWrap: 'wrap',
               }}
             >
               <input
@@ -254,6 +294,7 @@ function TransactionsPage({
                 onChange={(e) => setSearchTerm(e.target.value)}
                 style={{
                   flex: 1,
+                  minWidth: '200px',
                   backgroundColor: 'var(--bg)',
                   border: '1px solid var(--border)',
                   borderRadius: '8px',
@@ -263,7 +304,7 @@ function TransactionsPage({
                 }}
               />
               <button
-                onClick={onRefresh} // <-- pakai fungsi dari App.jsx
+                onClick={onRefresh}
                 style={{
                   backgroundColor: 'transparent',
                   color: 'var(--subtext)',
@@ -293,6 +334,86 @@ function TransactionsPage({
               >
                 + Tambah Transaksi
               </button>
+            </div>
+
+            {/* Filter Unit + Cabang */}
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+                gap: '1rem',
+                width: '100%',
+                alignItems: 'flex-end',
+              }}
+            >
+              {/* Filter Unit Bisnis */}
+              <div>
+                <label
+                  style={{
+                    display: 'block',
+                    color: 'var(--subtext)',
+                    fontSize: '0.875rem',
+                    marginBottom: '0.5rem',
+                  }}
+                >
+                  Unit Bisnis
+                </label>
+                <select
+                  value={filterUnit}
+                  onChange={(e) => {
+                    setFilterUnit(e.target.value)
+                    setFilterBranch('Semua Cabang')
+                  }}
+                  style={{
+                    width: '100%',
+                    backgroundColor: 'var(--bg)',
+                    border: '1px solid var(--border)',
+                    borderRadius: '8px',
+                    padding: '0.75rem',
+                    color: 'var(--text)',
+                    fontSize: '0.875rem',
+                  }}
+                >
+                  {unitOptions.map((u) => (
+                    <option key={u} value={u}>
+                      {u}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Filter Cabang */}
+              <div>
+                <label
+                  style={{
+                    display: 'block',
+                    color: 'var(--subtext)',
+                    fontSize: '0.875rem',
+                    marginBottom: '0.5rem',
+                  }}
+                >
+                  Cabang
+                </label>
+                <select
+                  value={filterBranch}
+                  onChange={(e) => setFilterBranch(e.target.value)}
+                  style={{
+                    width: '100%',
+                    backgroundColor: 'var(--bg)',
+                    border: '1px solid var(--border)',
+                    borderRadius: '8px',
+                    padding: '0.75rem',
+                    color: 'var(--text)',
+                    fontSize: '0.875rem',
+                  }}
+                >
+                  {branchOptions.map((b) => (
+                    <option key={b} value={b}>
+                      {b}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
           </div>
         </div>
@@ -381,6 +502,8 @@ function TransactionsPage({
           categories={categories}
           appSettings={appSettings}
           lastUsedType={lastUsedType}
+          businessConfigs={businessConfigs}
+          showToast={showToast}
         />
       )}
     </main>
@@ -492,13 +615,15 @@ function AddTransactionModal({
   categories,
   appSettings,
   lastUsedType,
+  businessConfigs,
+  showToast,
 }) {
   const [branchId, setBranchId] = useState('')
   const [categoryId, setCategoryId] = useState('')
   const [date, setDate] = useState('')
   const [type, setType] = useState(
     appSettings.defaultTransactionType === 'Income' ||
-      appSettings.defaultTransactionType === 'Expense'
+    appSettings.defaultTransactionType === 'Expense'
       ? appSettings.defaultTransactionType
       : lastUsedType || 'Income',
   )
@@ -508,11 +633,37 @@ function AddTransactionModal({
 
   const safeBranches = Array.isArray(branches) ? branches : []
   const safeCategories = Array.isArray(categories) ? categories : []
+  const safeBusinessConfigs = Array.isArray(businessConfigs)
+    ? businessConfigs
+    : []
 
+  // Filter kategori berdasarkan cabang + tipe
   const filteredCategories = useMemo(() => {
     const txType = type === 'Income' ? 'INCOME' : 'EXPENSE'
-    return safeCategories.filter((c) => c.transaction_type === txType)
-  }, [safeCategories, type])
+    const pool = safeCategories.filter((c) => c.transaction_type === txType)
+
+    const numericBranchId = Number(branchId)
+    if (!numericBranchId) return pool
+    if (!safeBusinessConfigs.length) return pool
+
+    let mappingIds = null
+    safeBusinessConfigs.forEach((unit) => {
+      (unit.branches || []).forEach((br) => {
+        if (br.id === numericBranchId) {
+          mappingIds =
+            txType === 'INCOME'
+              ? br.incomeCategories || null
+              : br.expenseCategories || null
+        }
+      })
+    })
+
+    if (!mappingIds || !mappingIds.length) {
+      return pool
+    }
+
+    return pool.filter((c) => mappingIds.includes(c.id))
+  }, [safeCategories, type, branchId, safeBusinessConfigs])
 
   const pembayaranOptions = [
     { label: 'QRIS', value: 'QRIS' },
@@ -535,6 +686,7 @@ function AddTransactionModal({
     const digits = amountInput.replace(/[^\d]/g, '')
 
     if (!date || !branchId || !categoryId || !type || !payment || !digits) {
+      showToast?.('Lengkapi semua field sebelum menyimpan.', 'error')
       return
     }
 
@@ -618,7 +770,10 @@ function AddTransactionModal({
           <Field label="Cabang">
             <select
               value={branchId}
-              onChange={(e) => setBranchId(e.target.value)}
+              onChange={(e) => {
+                setBranchId(e.target.value)
+                setCategoryId('')
+              }}
               style={inputStyle}
             >
               <option value="">Pilih cabang</option>
@@ -633,7 +788,10 @@ function AddTransactionModal({
           <Field label="Tipe">
             <select
               value={type}
-              onChange={(e) => setType(e.target.value)}
+              onChange={(e) => {
+                setType(e.target.value)
+                setCategoryId('')
+              }}
               style={inputStyle}
             >
               <option value="Income">Income</option>

@@ -36,11 +36,16 @@ function mapTransaction(t) {
   return {
     id: t.id,
     date: t.date,
+
     // Unit bisnis pakai enum branch_type (LAUNDRY, CARWASH, KOS, OTHER)
     unitBusiness: t.branch_type || 'Unknown',
+
     // Cabang pakai nama cabang
     branch: t.branch_name || 'Unknown',
+
+    // Nama kategori dari expanded field di TransactionSerializer
     category: t.category_name || 'Lainnya',
+
     type,
     amount: Number(t.amount ?? 0),
 
@@ -50,6 +55,8 @@ function mapTransaction(t) {
     source,
     description: t.description,
     createdAt: t.created_at,
+
+    // Id mentah untuk keperluan form
     branchId: t.branch,
     categoryId: t.category,
   }
@@ -59,11 +66,11 @@ function mapTransaction(t) {
 function mapToBackendPayload(frontendTx) {
   return {
     date: frontendTx.date,
-    branch: frontendTx.branchId,          // integer, required
-    category: frontendTx.categoryId,      // integer, required
+    branch: frontendTx.branchId,        // integer, required
+    category: frontendTx.categoryId,    // integer, required
     amount: frontendTx.amount,
     description: frontendTx.description || '',
-    payment_method: frontendTx.payment,   // "CASH" | "QRIS" | "TRANSFER"
+    payment_method: frontendTx.payment, // "CASH" | "QRIS" | "TRANSFER"
     transaction_type:
       frontendTx.type === 'Income' ? 'INCOME' : 'EXPENSE',
     source: 'MANUAL',

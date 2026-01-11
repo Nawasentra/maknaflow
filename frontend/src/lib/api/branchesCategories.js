@@ -38,21 +38,21 @@ export async function deleteBranch(id) {
 
 // ------- CATEGORIES -------
 
+// NOTE: backend CategorySerializer hanya kirim {id, name, transaction_type}
 export async function fetchCategories() {
   const res = await api.get('/categories/')
   const data = Array.isArray(res.data) ? res.data : res.data.results || []
-  // expected: [{id, name, transaction_type, branches: [...]}, ...]
   return data
 }
 
 export async function createCategory(payload) {
-  // payload: { name, transaction_type, branches?: [branchId, ...] }
+  // payload: { name, transaction_type }
   const res = await api.post('/categories/', payload)
   return res.data
 }
 
 export async function updateCategory(id, payload) {
-  // payload: { name?, transaction_type?, branches? }
+  // payload: { name?, transaction_type? }
   const res = await api.patch(`/categories/${id}/`, payload)
   return res.data
 }

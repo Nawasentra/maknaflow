@@ -1,5 +1,5 @@
 // src/features/settings/SettingsPage.jsx
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import {
   updateBranch,
   deleteBranch,
@@ -18,6 +18,17 @@ const BRANCH_TYPES = [
 
 const branchTypeLabel = (value) =>
   BRANCH_TYPES.find((t) => t.value === value)?.label || value
+
+const chipStyle = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 4,
+  padding: '0.3rem 0.7rem',
+  borderRadius: 9999,
+  backgroundColor: 'rgba(148,163,184,0.16)',
+  color: 'var(--text)',
+  fontSize: 11,
+}
 
 function SettingsPage({
   businessConfigs,
@@ -319,6 +330,159 @@ function SettingsPage({
     }
   }
 
+  // ========== MAPPING KATEGORI PER CABANG (frontend only) ==========
+  // Flatten semua cabang dari businessConfigs
+  const allBranchesFlat = useMemo(() => {
+    const result = []
+    ;(businessConfigs || []).forEach((unit) => {
+      ;(unit.branches || []).forEach((br) => {
+        result.push({
+          unitId: unit.id,
+          unitLabel: branchTypeLabel(unit.id),
+          id: br.id,
+          name: br.name,
+          active: br.active,
+          incomeCategories: br.incomeCategories || null,
+          expenseCategories: br.expenseCategories || null,
+        })
+      })
+    })
+    return result
+  }, [businessConfigs])
+
+  const [selectedBranchForCategory, setSelectedBranchForCategory] = useState('')
+  const [branchCategoryTab, setBranchCategoryTab] = useState('INCOME') // INCOME | EXPENSE
+  const [branchCategorySearch, setBranchCategorySearch] = useState('')
+  const [branchNewCategoryName, setBranchNewCategoryName] = useState('')
+
+  // Auto pilih cabang pertama untuk section kategori per cabang
+  useEffect(() => {
+    if (!selectedBranchForCategory && allBranchesFlat.length > 0) {
+      setSelectedBranchForCategory(String(allBranchesFlat[0].id))
+    }
+  }, [selectedBranchForCategory, allBranchesFlat])
+
+  const selectedBranchForCategoryObj = useMemo(
+    () =>
+      allBranchesFlat.find(
+        (b) => String(b.id) === String(selectedBranchForCategory),
+      ) || null,
+    [allBranchesFlat, selectedBranchForCategory],
+  )
+
+  const assignedCategoryIdsForBranch = useMemo(() => {
+    if (!selectedBranchForCategoryObj) return []
+    const key =
+      branchCategoryTab === 'INCOME'
+        ? 'incomeCategories'
+        : 'expenseCategories'
+    const ids = selectedBranchForCategoryObj[key]
+    return Array.isArray(ids) ? ids : []
+  }, [selectedBranchForCategoryObj, branchCategoryTab])
+
+  const branchAssignedCategories = useMemo(() => {
+    const txType = branchCategoryTab
+    const list = categories.filter(
+      (c) =>
+        c.transaction_type === txType &&
+        assignedCategoryIdsForBranch.includes(c.id),
+    )
+    if (!branchCategorySearch) return list
+    const q = branchCategorySearch.toLowerCase()
+    return list.filter((c) => c.name.toLowerCase().includes(q))
+  }, [categories, assignedCategoryIdsForBranch, branchCategoryTab, branchCategorySearch])
+
+  const branchAvailableCategories = useMemo(() => {
+    const txType = branchCategoryTab
+    const list = categories.filter(
+      (c) =>
+        c.transaction_type === txType &&
+        !assignedCategoryIdsForBranch.includes(c.id),
+    )
+    if (!branchCategorySearch) return list
+    const q = branchCategorySearch.toLowerCase()
+    return list.filter((c) => c.name.toLowerCase().includes(q))
+  }, [categories, assignedCategoryIdsForBranch, branchCategoryTab, branchCategorySearch])
+
+  const updateBranchCategoryIds = (branchId, txType, updater) => {
+    setBusinessConfigs((prev) => {
+      const prevArray = Array.isArray(prev) ? prev : []
+      return prevArray.map((unit) => {
+        const branches = Array.isArray(unit.branches) ? unit.branches : []
+        const updatedBranches = branches.map((br) => {
+          if (String(br.id) !== String(branchId)) return br
+          const key = txType === 'INCOME' ? 'incomeCategories' : 'expenseCategories'
+          const currentIds = Array.isArray(br[key]) ? br[key] : []
+          const newIds = updater(currentIds)
+          return {
+            ...br,
+            [key]: newIds,
+          }
+        })
+        return { ...unit, branches: updatedBranches }
+      })
+    })
+  }
+
+  const handleBranchAttachCategory = (categoryId) => {
+    if (!selectedBranchForCategoryObj) return
+    const txType = branchCategoryTab
+    updateBranchCategoryIds(selectedBranchForCategoryObj.id, txType, (prevIds) => {
+      const set = new Set(prevIds || [])
+      set.add(categoryId)
+      return Array.from(set)
+    })
+    showToast?.('Kategori diaktifkan untuk cabang ini.', 'success')
+  }
+
+  const handleBranchDetachCategory = (categoryId) => {
+    if (!selectedBranchForCategoryObj) return
+    const txType = branchCategoryTab
+    updateBranchCategoryIds(selectedBranchForCategoryObj.id, txType, (prevIds) =>
+      (prevIds || []).filter((id) => id !== categoryId),
+    )
+    showToast?.('Kategori dihapus dari cabang (kategori global tetap ada).', 'success')
+  }
+
+  const handleBranchAddNewCategory = async () => {
+    if (!selectedBranchForCategoryObj) {
+      showToast?.('Pilih cabang dulu.', 'error')
+      return
+    }
+    const trimmed = branchNewCategoryName.trim()
+    if (!trimmed) return
+    const txType = branchCategoryTab
+
+    // cek apakah nama + tipe sudah ada di kategori global
+    const existing = categories.find(
+      (c) =>
+        c.transaction_type === txType &&
+        c.name.trim().toLowerCase() === trimmed.toLowerCase(),
+    )
+
+    try {
+      let target = existing
+      if (!target) {
+        const created = await createCategory({
+          name: trimmed,
+          transaction_type: txType,
+        })
+        setCategories((prev) => [...prev, created])
+        target = created
+      }
+      updateBranchCategoryIds(selectedBranchForCategoryObj.id, txType, (prevIds) => {
+        const set = new Set(prevIds || [])
+        set.add(target.id)
+        return Array.from(set)
+      })
+      setBranchNewCategoryName('')
+      showToast?.('Kategori ditambahkan dan diaktifkan untuk cabang ini.', 'success')
+    } catch (e) {
+      console.error(e)
+      showToast?.('Gagal menambah kategori untuk cabang.', 'error')
+    }
+  }
+
   // ========== CONFIRM MODAL CABANG ==========
   const renderConfirmModal = () => {
     if (!confirmModal || !confirmModal.branch) return null
@@ -499,7 +663,7 @@ function SettingsPage({
           }}
         >
           <h2 style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '1rem' }}>
-            Kategori
+            Kategori (Global)
           </h2>
 
           <div style={{ marginBottom: '0.75rem' }}>
@@ -690,6 +854,254 @@ function SettingsPage({
               >
                 Belum ada kategori untuk tipe ini.
               </span>
+            )}
+          </div>
+        </div>
+
+        {/* Kategori per cabang */}
+        <div
+          style={{
+            backgroundColor: 'var(--bg-elevated)',
+            border: '1px solid var(--border)',
+            borderRadius: '12px',
+            padding: '1.5rem',
+          }}
+        >
+          <h2 style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '1rem' }}>
+            Kategori per Cabang
+          </h2>
+
+          <div
+            style={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: 12,
+              marginBottom: '1rem',
+              alignItems: 'flex-end',
+            }}
+          >
+            <div style={{ minWidth: 220 }}>
+              <p style={{ fontSize: 12, color: 'var(--subtext)', marginBottom: 6 }}>
+                Pilih cabang
+              </p>
+              <select
+                value={selectedBranchForCategory}
+                onChange={(e) => setSelectedBranchForCategory(e.target.value)}
+                style={{
+                  width: '100%',
+                  backgroundColor: 'var(--bg)',
+                  borderRadius: 12,
+                  border: '1px solid var(--border)',
+                  padding: '0.7rem 1rem',
+                  fontSize: 13,
+                  color: 'var(--text)',
+                  outline: 'none',
+                }}
+              >
+                {allBranchesFlat.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.name} ({b.unitLabel})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <p style={{ fontSize: 12, color: 'var(--subtext)', marginBottom: 4 }}>
+                Tipe transaksi
+              </p>
+              <div style={{ display: 'flex', gap: 8 }}>
+                {[
+                  { value: 'INCOME', label: 'Income' },
+                  { value: 'EXPENSE', label: 'Expense' },
+                ].map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => setBranchCategoryTab(opt.value)}
+                    style={{
+                      padding: '0.4rem 0.9rem',
+                      borderRadius: 9999,
+                      border:
+                        branchCategoryTab === opt.value
+                          ? '1px solid var(--accent)'
+                          : '1px solid var(--border)',
+                      backgroundColor:
+                        branchCategoryTab === opt.value
+                          ? 'var(--accent)'
+                          : 'transparent',
+                      color:
+                        branchCategoryTab === opt.value
+                          ? 'var(--bg)'
+                          : 'var(--text)',
+                      fontSize: 12,
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ flex: 1, minWidth: 220 }}>
+              <p style={{ fontSize: 12, color: 'var(--subtext)', marginBottom: 4 }}>
+                Cari kategori di cabang ini
+              </p>
+              <input
+                value={branchCategorySearch}
+                onChange={(e) => setBranchCategorySearch(e.target.value)}
+                placeholder="Cari nama kategori..."
+                style={{
+                  width: '100%',
+                  backgroundColor: 'var(--bg)',
+                  borderRadius: 12,
+                  border: '1px solid var(--border)',
+                  padding: '0.6rem 0.9rem',
+                  fontSize: 12,
+                  color: 'var(--text)',
+                  outline: 'none',
+                }}
+              />
+            </div>
+          </div>
+
+          <div style={{ marginBottom: '0.75rem' }}>
+            <p style={{ fontSize: 12, color: 'var(--subtext)', marginBottom: 4 }}>
+              Tambah kategori baru untuk cabang ini (
+              {branchCategoryTab === 'INCOME' ? 'Income' : 'Expense'})
+            </p>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input
+                placeholder="Nama kategori..."
+                value={branchNewCategoryName}
+                onChange={(e) => setBranchNewCategoryName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    handleBranchAddNewCategory()
+                  }
+                }}
+                style={{
+                  flex: 1,
+                  backgroundColor: 'var(--bg)',
+                  borderRadius: 9999,
+                  border: '1px solid var(--border)',
+                  padding: '0.5rem 0.9rem',
+                  fontSize: 12,
+                  color: 'var(--text)',
+                  outline: 'none',
+                }}
+              />
+              <button
+                type="button"
+                onClick={handleBranchAddNewCategory}
+                style={{
+                  backgroundColor: 'var(--accent)',
+                  borderRadius: 9999,
+                  border: 'none',
+                  color: 'var(--bg)',
+                  fontSize: 12,
+                  fontWeight: 600,
+                  padding: '0.45rem 0.9rem',
+                  cursor: 'pointer',
+                }}
+              >
+                Tambah ke Cabang
+              </button>
+            </div>
+          </div>
+
+          <div
+            style={{
+              borderTop: '1px solid var(--border)',
+              paddingTop: '0.75rem',
+              marginTop: '0.5rem',
+            }}
+          >
+            <p style={{ fontSize: 12, color: 'var(--subtext)', marginBottom: 4 }}>
+              Kategori aktif di cabang ini:
+            </p>
+            {branchAssignedCategories.length === 0 ? (
+              <span style={{ fontSize: 11, color: 'var(--subtext)' }}>
+                Belum ada kategori untuk tipe ini di cabang ini.
+              </span>
+            ) : (
+              <div
+                style={{
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  gap: 6,
+                  marginBottom: 6,
+                }}
+              >
+                {branchAssignedCategories.map((cat) => (
+                  <span key={cat.id} style={chipStyle}>
+                    {cat.name}
+                    <button
+                      type="button"
+                      onClick={() => handleBranchDetachCategory(cat.id)}
+                      style={{
+                        border: 'none',
+                        background: 'none',
+                        color: '#f97316',
+                        cursor: 'pointer',
+                        fontSize: 12,
+                      }}
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+
+            {branchAvailableCategories.length > 0 && (
+              <>
+                <p
+                  style={{
+                    fontSize: 12,
+                    color: 'var(--subtext)',
+                    marginTop: 6,
+                    marginBottom: 4,
+                  }}
+                >
+                  Kategori global lain (belum aktif di cabang ini):
+                </p>
+                <div
+                  style={{
+                    display: 'flex',
+                    flexWrap: 'wrap',
+                    gap: 6,
+                  }}
+                >
+                  {branchAvailableCategories.slice(0, 20).map((cat) => (
+                    <button
+                      key={cat.id}
+                      type="button"
+                      onClick={() => handleBranchAttachCategory(cat.id)}
+                      style={{
+                        ...chipStyle,
+                        backgroundColor: 'transparent',
+                        border: '1px dashed var(--border)',
+                      }}
+                    >
+                      + {cat.name}
+                    </button>
+                  ))}
+                  {branchAvailableCategories.length > 20 && (
+                    <span
+                      style={{
+                        fontSize: 11,
+                        color: 'var(--subtext)',
+                      }}
+                    >
+                      dan {branchAvailableCategories.length - 20} lainnya...
+                    </span>
+                  )}
+                </div>
+              </>
             )}
           </div>
         </div>
