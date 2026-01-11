@@ -1,4 +1,6 @@
-import React, { useState, useMemo } from 'react'
+// src/pages/TransactionsPage.jsx
+import React, { useState, useMemo, useEffect } from 'react'
+import { fetchTransactions, createTransaction, deleteTransaction } from '../lib/api/transactions'
 
 const inputStyle = {
   width: '100%',
@@ -30,14 +32,14 @@ function Field({ label, children }) {
 }
 
 function TransactionsPage({
-  transactions,
-  setTransactions,
   businessConfigs,
   appSettings,
   lastUsedType,
   setLastUsedType,
   showToast,
 }) {
+  const [transactions, setTransactions] = useState([])
+  const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [transactionToDelete, setTransactionToDelete] = useState(null)
@@ -48,15 +50,31 @@ function TransactionsPage({
     direction: 'desc',
   })
 
+  // Initial load from backend
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const data = await fetchTransactions()
+        setTransactions(data)
+      } catch (e) {
+        console.error(e)
+        showToast?.('Gagal memuat transaksi.', 'error')
+      } finally {
+        setLoading(false)
+      }
+    }
+    load()
+  }, [showToast])
+
   const filteredTransactions = transactions.filter((t) => {
     if (!searchTerm) return true
     const q = searchTerm.toLowerCase()
     return (
-      t.branch.toLowerCase().includes(q) ||
-      t.unitBusiness.toLowerCase().includes(q) ||
-      t.category.toLowerCase().includes(q) ||
-      t.type.toLowerCase().includes(q) ||
-      t.payment.toLowerCase().includes(q) ||
+      t.branch?.toLowerCase().includes(q) ||
+      t.unitBusiness?.toLowerCase().includes(q) ||
+      t.category?.toLowerCase().includes(q) ||
+      t.type?.toLowerCase().includes(q) ||
+      t.payment?.toLowerCase().includes(q) ||
       (t.source || '').toLowerCase().includes(q)
     )
   })
@@ -93,13 +111,19 @@ function TransactionsPage({
     setConfirmOpen(true)
   }
 
-  const handleConfirmDelete = () => {
+  const handleConfirmDelete = async () => {
     if (transactionToDelete) {
-      setTransactions((prev) => prev.filter((t) => t.id !== transactionToDelete.id))
+      try {
+        await deleteTransaction(transactionToDelete.id)
+        setTransactions((prev) => prev.filter((t) => t.id !== transactionToDelete.id))
+        showToast?.('Berhasil menghapus transaksi.')
+      } catch (e) {
+        console.error(e)
+        showToast?.('Gagal menghapus transaksi.', 'error')
+      }
     }
     setConfirmOpen(false)
     setTransactionToDelete(null)
-    showToast?.('Berhasil menghapus transaksi.')
   }
 
   const handleCancelDelete = () => {
@@ -107,18 +131,18 @@ function TransactionsPage({
     setTransactionToDelete(null)
   }
 
-  const handleAddTransaction = (newTx) => {
-    setTransactions((prev) => [
-      ...prev,
-      {
-        ...newTx,
-        id: prev.length ? Math.max(...prev.map((p) => p.id)) + 1 : 1,
-        source: 'Manual',
-      },
-    ])
-    setLastUsedType(newTx.type)
-    setAddOpen(false)
-    showToast?.('Berhasil menambahkan transaksi.')
+  // newTx must contain branchId & categoryId if backend requires FK IDs
+  const handleAddTransaction = async (newTx) => {
+    try {
+      const saved = await createTransaction(newTx)
+      setTransactions((prev) => [...prev, saved])
+      setLastUsedType?.(newTx.type)
+      setAddOpen(false)
+      showToast?.('Berhasil menambahkan transaksi.')
+    } catch (e) {
+      console.error(e)
+      showToast?.('Gagal menyimpan transaksi.', 'error')
+    }
   }
 
   return (
@@ -169,7 +193,7 @@ function TransactionsPage({
                   margin: '0.25rem 0 0 0',
                 }}
               >
-                {sortedTransactions.length} transaksi ditemukan
+                {loading ? 'Memuat...' : `${sortedTransactions.length} transaksi ditemukan`}
               </p>
             </div>
             <div
@@ -257,7 +281,9 @@ function TransactionsPage({
                       fontSize: '0.9rem',
                     }}
                   >
-                    Belum ada transaksi yang cocok dengan filter/cari.
+                    {loading
+                      ? 'Memuat data transaksi...'
+                      : 'Belum ada transaksi yang cocok dengan filter/cari.'}
                   </td>
                 </tr>
               ) : (
@@ -396,7 +422,6 @@ function AddTransactionModal({
     [businessConfigs, existingData],
   )
 
-  // Initial states as requested
   const [unitBusiness, setUnitBusiness] = useState('')
   const [branch, setBranch] = useState('')
   const [date, setDate] = useState('')
@@ -447,7 +472,6 @@ function AddTransactionModal({
     return unique(existingData.map((t) => t.category))
   }, [configForUnit, branch, type, existingData, unitBusiness])
 
-  // Fixed pembayaran options
   const pembayaranOptions = ['QRIS', 'Cash', 'Transfer']
 
   const formatAmountDisplay = (raw) => {
@@ -466,6 +490,19 @@ function AddTransactionModal({
     if (!date || !unitBusiness || !branch || !category || !type || !payment || !digits) {
       return
     }
+
+    // NOTE: backend IDs are required for branchId/categoryId if your API expects FK ids.
+    const selectedBranchConfig =
+      configForUnit?.branches.find((b) => b.name === branch) || null
+    const branchId = selectedBranchConfig?.id || null
+
+    const selectedCategoryName = category
+    const selectedCategoryObj =
+      (selectedBranchConfig?.incomeCategories || [])
+        .concat(selectedBranchConfig?.expenseCategories || [])
+        .find((c) => c.name === selectedCategoryName) || null
+    const categoryId = selectedCategoryObj?.id || null
+
     onSave({
       date,
       unitBusiness,
@@ -474,6 +511,8 @@ function AddTransactionModal({
       type,
       amount: Number(digits),
       payment,
+      branchId,
+      categoryId,
     })
   }
 
@@ -575,11 +614,7 @@ function AddTransactionModal({
           </Field>
 
           <Field label="Tipe">
-            <select
-              value={type}
-              onChange={(e) => setType(e.target.value)}
-              style={inputStyle}
-            >
+            <select value={type} onChange={(e) => setType(e.target.value)} style={inputStyle}>
               <option value="Income">Income</option>
               <option value="Expense">Expense</option>
             </select>
