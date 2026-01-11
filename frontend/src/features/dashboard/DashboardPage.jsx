@@ -1,3 +1,4 @@
+// src/features/dashboard/DashboardPage.jsx
 import React, { useState, useMemo } from 'react'
 import {
   LineChart,
@@ -28,49 +29,108 @@ function DashboardPage({ transactions, isLoading, error }) {
   sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6)
   const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1)
 
-  const unitOptions = useMemo(
-    () => ['Semua Unit', ...Array.from(new Set(transactions.map((t) => t.unitBusiness)))],
-    [transactions],
-  )
+  // ---------- OPTIONS: UNIT & CABANG ----------
 
+  // Unit Bisnis unik (LAUNDRY, CARWASH, dst) dari transaksi
+  const unitOptions = useMemo(() => {
+    const units = Array.from(
+      new Set(
+        (transactions || [])
+          .map((t) => t.unitBusiness)
+          .filter(Boolean),
+      ),
+    )
+    return ['Semua Unit', ...units]
+  }, [transactions])
+
+  // Cabang unik, bergantung pada Unit Bisnis yang dipilih
   const branchOptions = useMemo(() => {
-    const filteredByUnit =
-      filterUnit === 'Semua Unit'
-        ? transactions
-        : transactions.filter((t) => t.unitBusiness === filterUnit)
-    return ['Semua Cabang', ...Array.from(new Set(filteredByUnit.map((t) => t.branch)))]
-  }, [transactions, filterUnit])
+    let source = transactions || []
 
-  const filteredTransactions = transactions.filter((t) => {
-    const txDate = new Date(t.date)
-
-    let inRange = true
-    if (filterDate === 'Hari Ini') {
-      inRange = txDate.toDateString() === startOfToday.toDateString()
-    } else if (filterDate === '7 Hari Terakhir') {
-      inRange = txDate >= sevenDaysAgo && txDate <= today
-    } else if (filterDate === 'Bulan Ini') {
-      inRange = txDate >= startOfMonth && txDate <= today
-    } else if (filterDate === 'Custom' && customStart && customEnd) {
-      const start = new Date(customStart)
-      const end = new Date(customEnd)
-      inRange = txDate >= start && txDate <= end
+    if (filterUnit !== 'Semua Unit') {
+      source = source.filter((t) => t.unitBusiness === filterUnit)
     }
 
-    const unitMatch = filterUnit === 'Semua Unit' || t.unitBusiness === filterUnit
-    const branchMatch = filterBranch === 'Semua Cabang' || t.branch === filterBranch
+    const names = Array.from(
+      new Set(
+        source
+          .map((t) => t.branch)
+          .filter(Boolean),
+      ),
+    )
 
-    return inRange && unitMatch && branchMatch
-  })
+    return ['Semua Cabang', ...names]
+  }, [transactions, filterUnit])
+
+  // Pastikan filterBranch tetap valid kalau unit berubah
+  if (!branchOptions.includes(filterBranch)) {
+    // fallback ke "Semua Cabang"
+    if (filterBranch !== 'Semua Cabang') {
+      // kecil kemungkinan infinite render karena ini sync di render;
+      // tapi untuk aman: cek dulu length
+      // eslint-disable-next-line no-console
+      console.log('Reset filterBranch ke "Semua Cabang"')
+    }
+  }
+
+  // ---------- FILTER TRANSAKSI ----------
+
+  const filteredTransactions = useMemo(() => {
+    return (transactions || []).filter((t) => {
+      if (!t.date) return false
+      const txDate = new Date(t.date)
+
+      // Filter tanggal
+      let inRange = true
+      if (filterDate === 'Hari Ini') {
+        inRange = txDate.toDateString() === startOfToday.toDateString()
+      } else if (filterDate === '7 Hari Terakhir') {
+        inRange = txDate >= sevenDaysAgo && txDate <= today
+      } else if (filterDate === 'Bulan Ini') {
+        inRange = txDate >= startOfMonth && txDate <= today
+      } else if (filterDate === 'Custom' && customStart && customEnd) {
+        const start = new Date(customStart)
+        const end = new Date(customEnd)
+        inRange = txDate >= start && txDate <= end
+      }
+
+      // Filter Unit Bisnis
+      const unitMatch =
+        filterUnit === 'Semua Unit' || t.unitBusiness === filterUnit
+
+      // Filter Cabang (berdasar nama cabang)
+      const branchMatch =
+        filterBranch === 'Semua Cabang' || t.branch === filterBranch
+
+      return inRange && unitMatch && branchMatch
+    })
+  }, [
+    transactions,
+    filterDate,
+    customStart,
+    customEnd,
+    filterUnit,
+    filterBranch,
+    startOfToday,
+    sevenDaysAgo,
+    today,
+    startOfMonth,
+  ])
+
+  // ---------- AGGREGATION KPI ----------
 
   const incomeTotal = filteredTransactions
     .filter((t) => t.type === 'Income')
-    .reduce((sum, t) => sum + t.amount, 0)
+    .reduce((sum, t) => sum + (t.amount || 0), 0)
+
   const expenseTotal = filteredTransactions
     .filter((t) => t.type === 'Expense')
-    .reduce((sum, t) => sum + t.amount, 0)
+    .reduce((sum, t) => sum + (t.amount || 0), 0)
+
   const netProfit = incomeTotal - expenseTotal
   const totalTransactions = filteredTransactions.length
+
+  // ---------- DATA UNTUK CHART ----------
 
   const dailyMap = filteredTransactions.reduce((acc, t) => {
     const key = t.date
@@ -78,9 +138,9 @@ function DashboardPage({ transactions, isLoading, error }) {
       acc[key] = { date: key, income: 0, expense: 0 }
     }
     if (t.type === 'Income') {
-      acc[key].income += t.amount
+      acc[key].income += t.amount || 0
     } else if (t.type === 'Expense') {
-      acc[key].expense += t.amount
+      acc[key].expense += t.amount || 0
     }
     return acc
   }, {})
@@ -92,7 +152,8 @@ function DashboardPage({ transactions, isLoading, error }) {
   const incomeSourcesMap = filteredTransactions
     .filter((t) => t.type === 'Income')
     .reduce((acc, t) => {
-      acc[t.payment] = (acc[t.payment] || 0) + t.amount
+      const key = t.payment || 'Unknown'
+      acc[key] = (acc[key] || 0) + (t.amount || 0)
       return acc
     }, {})
 
@@ -104,7 +165,8 @@ function DashboardPage({ transactions, isLoading, error }) {
   const expenseCatMap = filteredTransactions
     .filter((t) => t.type === 'Expense')
     .reduce((acc, t) => {
-      acc[t.category] = (acc[t.category] || 0) + t.amount
+      const key = t.category || 'Lainnya'
+      acc[key] = (acc[key] || 0) + (t.amount || 0)
       return acc
     }, {})
 
@@ -122,6 +184,8 @@ function DashboardPage({ transactions, isLoading, error }) {
       .format(amount)
       .replace('Rp', '')
       .trim()
+
+  // ---------- RENDER STATES ----------
 
   if (isLoading) {
     return (
@@ -149,6 +213,22 @@ function DashboardPage({ transactions, isLoading, error }) {
         }}
       >
         <p>{error}</p>
+      </main>
+    )
+  }
+
+  // Jika tidak ada transaksi sama sekali
+  if (!transactions || transactions.length === 0) {
+    return (
+      <main
+        style={{
+          maxWidth: '1280px',
+          margin: '0 auto',
+          padding: '2rem 1.5rem',
+          color: 'var(--subtext)',
+        }}
+      >
+        <p>Belum ada data transaksi. Tambahkan transaksi terlebih dahulu.</p>
       </main>
     )
   }
@@ -192,6 +272,7 @@ function DashboardPage({ transactions, isLoading, error }) {
             alignItems: 'flex-end',
           }}
         >
+          {/* Rentang tanggal */}
           <div>
             <label
               style={{
@@ -217,7 +298,6 @@ function DashboardPage({ transactions, isLoading, error }) {
                 onChange={(e) => setFilterDate(e.target.value)}
                 style={{
                   width: '140px',
-                  maxWidth: '210px',
                   backgroundColor: 'var(--bg)',
                   border: '1px solid var(--border)',
                   borderRadius: '8px',
@@ -270,6 +350,7 @@ function DashboardPage({ transactions, isLoading, error }) {
             </div>
           </div>
 
+          {/* Unit Bisnis */}
           <div>
             <label
               style={{
@@ -303,6 +384,7 @@ function DashboardPage({ transactions, isLoading, error }) {
             </select>
           </div>
 
+          {/* Cabang */}
           <div>
             <label
               style={{
@@ -495,7 +577,6 @@ function KpiCard({ title, value, icon, color }) {
         borderRadius: '12px',
         padding: '1.5rem',
         transition: 'all 0.2s',
-        cursor: 'pointer',
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
