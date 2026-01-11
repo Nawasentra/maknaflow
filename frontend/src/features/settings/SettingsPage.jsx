@@ -11,9 +11,9 @@ import {
 
 const BRANCH_TYPES = [
   { value: 'LAUNDRY', label: 'Laundry' },
-  { value: 'CARWASH', label: 'Car Wash' },
+  { value: 'CARWASH', label: 'Carwash' },
   { value: 'KOS', label: 'Kos' },
-  { value: 'OTHER', label: 'Other Business' },
+  { value: 'OTHER', label: 'Other' },
 ]
 
 const branchTypeLabelByType = (type) => {
@@ -135,7 +135,7 @@ function SettingsPage({
       ;(unit.branches || []).forEach((br) => {
         result.push({
           unitId: unit.id,
-          unitType: unit.type,
+          unitType: unit.type,               // LAUNDRY | CARWASH | KOS | OTHER
           unitLabel: branchTypeLabelByType(unit.type),
           id: br.id,
           name: br.name,
@@ -148,16 +148,15 @@ function SettingsPage({
     return result
   }, [businessConfigs])
 
-  const unitTypeOptions = useMemo(() => {
-    const types = new Set(
-      (businessConfigs || []).map((u) => u.type).filter(Boolean),
-    )
-    return Array.from(types)
-  }, [businessConfigs])
+  // untuk mengisi dropdown tipe unit
+  const unitTypeOptions = useMemo(
+    () => Array.from(new Set((businessConfigs || []).map((u) => u.type).filter(Boolean))),
+    [businessConfigs],
+  )
 
   // ---------- KATEGORI PER CABANG ----------
   const [branchUnitFilterForCategory, setBranchUnitFilterForCategory] =
-    useState('ALL')
+    useState('ALL')                            // 'ALL' atau enum
   const [selectedBranchForCategory, setSelectedBranchForCategory] =
     useState('')
   const [branchCategoryTab, setBranchCategoryTab] = useState('INCOME')
@@ -461,9 +460,28 @@ function SettingsPage({
   }
 
   // ---------- DEFAULT KATEGORI PER TIPE (UI only) ----------
+  const [defaultUnitTypeFilter, setDefaultUnitTypeFilter] = useState('ALL')
   const [editSelectedId, setEditSelectedId] = useState(
     businessConfigs.length ? businessConfigs[0].id : '',
   )
+
+  const defaultUnits = useMemo(() => {
+    if (defaultUnitTypeFilter === 'ALL') return businessConfigs
+    return (businessConfigs || []).filter(
+      (u) => u.type === defaultUnitTypeFilter,
+    )
+  }, [businessConfigs, defaultUnitTypeFilter])
+
+  useEffect(() => {
+    if (!defaultUnits.length) {
+      setEditSelectedId('')
+      return
+    }
+    if (!defaultUnits.find((u) => u.id === editSelectedId)) {
+      setEditSelectedId(defaultUnits[0].id)
+    }
+  }, [defaultUnits, editSelectedId])
+
   const editSelected =
     businessConfigs.find((b) => b.id === editSelectedId) || null
 
@@ -980,7 +998,7 @@ function SettingsPage({
               >
                 {branchesForCategoryCard.map((b) => (
                   <option key={b.id} value={b.id}>
-                    {b.name} ({b.unitLabel})
+                    {b.name}
                   </option>
                 ))}
               </select>
@@ -1375,7 +1393,7 @@ function SettingsPage({
           )}
         </div>
 
-        {/* Default kategori per tipe */}
+        {/* Default Kategori per Tipe */}
         <div
           style={{
             backgroundColor: 'var(--bg-elevated)',
@@ -1395,6 +1413,38 @@ function SettingsPage({
           </h2>
 
           <div style={{ marginBottom: '1.25rem' }}>
+            <p
+              style={{
+                fontSize: 12,
+                color: 'var(--subtext)',
+                marginBottom: 6,
+              }}
+            >
+              Tipe Unit Bisnis
+            </p>
+            <select
+              value={defaultUnitTypeFilter}
+              onChange={(e) => setDefaultUnitTypeFilter(e.target.value)}
+              style={{
+                width: '100%',
+                backgroundColor: 'var(--bg)',
+                borderRadius: 12,
+                border: '1px solid var(--border)',
+                padding: '0.7rem 1rem',
+                fontSize: 13,
+                color: 'var(--text)',
+                outline: 'none',
+                marginBottom: 8,
+              }}
+            >
+              <option value="ALL">Semua Unit</option>
+              {unitTypeOptions.map((t) => (
+                <option key={t} value={t}>
+                  {branchTypeLabelByType(t)}
+                </option>
+              ))}
+            </select>
+
             <label
               style={{
                 display: 'block',
@@ -1420,7 +1470,7 @@ function SettingsPage({
                 outline: 'none',
               }}
             >
-              {businessConfigs.map((b) => (
+              {defaultUnits.map((b) => (
                 <option key={b.id} value={b.id}>
                   {branchTypeLabelById(b.id, businessConfigs)}
                 </option>
