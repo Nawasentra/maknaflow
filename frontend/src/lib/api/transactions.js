@@ -1,7 +1,7 @@
 // src/lib/api/transactions.js
 import api from '../axios'
 
-// --- OPTIONAL: remove once backend is stable ---
+// MOCK only for fallback / testing
 const mockTransactions = [
   {
     id: 1,
@@ -13,10 +13,9 @@ const mockTransactions = [
     amount: 250000,
     payment: 'Cash',
   },
-  // ... you can keep or delete the rest
 ]
 
-// Map backend TransactionSerializer -> frontend shape
+// Backend -> frontend mapper
 function mapTransaction(t) {
   const type =
     t.transaction_type === 'INCOME'
@@ -35,13 +34,12 @@ function mapTransaction(t) {
   return {
     id: t.id,
     date: t.date,
-    // assuming backend returns branch_name & category_name
     unitBusiness: t.branch_name || 'Unknown',
     branch: t.branch_name || 'Unknown',
     category: t.category_name || 'Lainnya',
     type,
     amount: Number(t.amount ?? 0),
-    payment: t.payment_method || t.reported_by_email || 'Unknown', // adjust to your field
+    payment: t.payment_method || t.reported_by_email || 'Unknown',
     source,
     description: t.description,
     createdAt: t.created_at,
@@ -50,15 +48,15 @@ function mapTransaction(t) {
   }
 }
 
-// Map frontend payload -> backend serializer shape
+// Frontend -> backend mapper
 function mapToBackendPayload(frontendTx) {
   return {
-    date: frontendTx.date,                         // 'YYYY-MM-DD'
-    branch: frontendTx.branchId,                  // FK id
-    category: frontendTx.categoryId,              // FK id
+    date: frontendTx.date,
+    branch: frontendTx.branchId, // FK id
+    category: frontendTx.categoryId, // FK id
     amount: frontendTx.amount,
     description: frontendTx.description || '',
-    payment_method: frontendTx.payment,           // field name in your serializer
+    payment_method: frontendTx.payment,
     transaction_type: frontendTx.type === 'Income' ? 'INCOME' : 'EXPENSE',
     source: 'MANUAL',
   }
@@ -77,18 +75,20 @@ export async function fetchTransactions(params = {}) {
 
 export async function createTransaction(frontendTx) {
   try {
+    console.log('createTransaction payload frontend:', frontendTx)
     const payload = mapToBackendPayload(frontendTx)
+    console.log('createTransaction payload backend:', payload)
     const res = await api.post('/transactions/', payload)
+    console.log('createTransaction response:', res.data)
     return mapTransaction(res.data)
   } catch (err) {
-    console.error('createTransaction failed, falling back to mock:', err)
-    const newId =
-      mockTransactions.length === 0
-        ? 1
-        : Math.max(...mockTransactions.map((t) => t.id)) + 1
-    const tx = { id: newId, ...frontendTx }
-    mockTransactions.push(tx)
-    return tx
+    console.error(
+      'createTransaction error:',
+      err.response?.status,
+      err.response?.data || err.message,
+    )
+    // IMPORTANT: throw so you see the error; do NOT silently mock
+    throw err
   }
 }
 
@@ -96,10 +96,6 @@ export async function deleteTransaction(id) {
   try {
     await api.delete(`/transactions/${id}/`)
   } catch (err) {
-    console.error('deleteTransaction failed:', err)
-  }
-  const idx = mockTransactions.findIndex((t) => t.id === id)
-  if (idx !== -1) {
-    mockTransactions.splice(idx, 1)
+    console.error('deleteTransaction error:', err.response?.status, err.response?.data)
   }
 }

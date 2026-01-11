@@ -1,6 +1,10 @@
 // src/pages/TransactionsPage.jsx
 import React, { useState, useMemo, useEffect } from 'react'
-import { fetchTransactions, createTransaction, deleteTransaction } from '../lib/api/transactions'
+import {
+  fetchTransactions,
+  createTransaction,
+  deleteTransaction,
+} from '../lib/api/transactions'
 
 const inputStyle = {
   width: '100%',
@@ -50,11 +54,12 @@ function TransactionsPage({
     direction: 'desc',
   })
 
-  // Initial load from backend
+  // Load from backend once
   useEffect(() => {
     const load = async () => {
       try {
         const data = await fetchTransactions()
+        console.log('fetchTransactions result:', data)
         setTransactions(data)
       } catch (e) {
         console.error(e)
@@ -131,8 +136,8 @@ function TransactionsPage({
     setTransactionToDelete(null)
   }
 
-  // newTx must contain branchId & categoryId if backend requires FK IDs
   const handleAddTransaction = async (newTx) => {
+    console.log('handleAddTransaction RECEIVED:', newTx)
     try {
       const saved = await createTransaction(newTx)
       setTransactions((prev) => [...prev, saved])
@@ -486,22 +491,43 @@ function AddTransactionModal({
   }
 
   const handleSubmit = () => {
+    console.log('SUBMIT CLICKED')
     const digits = amountInput.replace(/[^\d]/g, '')
     if (!date || !unitBusiness || !branch || !category || !type || !payment || !digits) {
+      console.log('MISSING FIELD', {
+        date,
+        unitBusiness,
+        branch,
+        category,
+        type,
+        payment,
+        digits,
+      })
       return
     }
 
-    // NOTE: backend IDs are required for branchId/categoryId if your API expects FK ids.
     const selectedBranchConfig =
       configForUnit?.branches.find((b) => b.name === branch) || null
     const branchId = selectedBranchConfig?.id || null
 
-    const selectedCategoryName = category
-    const selectedCategoryObj =
-      (selectedBranchConfig?.incomeCategories || [])
-        .concat(selectedBranchConfig?.expenseCategories || [])
-        .find((c) => c.name === selectedCategoryName) || null
+    const allCats = [
+      ...(selectedBranchConfig?.incomeCategories || []),
+      ...(selectedBranchConfig?.expenseCategories || []),
+    ]
+    const selectedCategoryObj = allCats.find((c) => c.name === category) || null
     const categoryId = selectedCategoryObj?.id || null
+
+    console.log('CALLING onSave with:', {
+      date,
+      unitBusiness,
+      branch,
+      category,
+      type,
+      amount: Number(digits),
+      payment,
+      branchId,
+      categoryId,
+    })
 
     onSave({
       date,
