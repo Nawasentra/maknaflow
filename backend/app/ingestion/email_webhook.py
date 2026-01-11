@@ -1,5 +1,6 @@
 from django.conf import settings
 from django.core.exceptions import ValidationError
+from django.db import IntegrityError
 from datetime import date, datetime
 import logging
 import re
@@ -187,6 +188,7 @@ class EmailWebhookService:
                 logger.warning("Failed to parse date '%s': %s", metadata.get("date"), e)
         
         transactions = []
+        duplicates = 0
         category_cache = {}
         items = (parsed_data or {}).get(items_key, [])
         logger.info(f"Processing {len(items)} items for transactions")
@@ -227,8 +229,12 @@ class EmailWebhookService:
                 )
                 transactions.append(trans)
                 logger.debug(f"Created transaction ID {trans.id} for {name}: Rp {amount:,}")
+            except IntegrityError:
+                duplicates += 1
+                logger.warning(f"Duplicate transaction skipped for {name}: Rp {amount:,} on {transaction_date}")
+                continue
             except Exception as e:
                 logger.error(f"Failed to create transaction for item {item}: {e}", exc_info=True)
         
-        logger.info(f"Successfully created {len(transactions)} transactions")
+        logger.info(f"Successfully created {len(transactions)} transactions ({duplicates} duplicates skipped)")
         return transactions
