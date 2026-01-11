@@ -60,7 +60,6 @@ function TransactionsPage({
     direction: 'desc',
   })
 
-  // helper: always return arrays
   const setSafeTransactions = (tx) =>
     setTransactions(Array.isArray(tx) ? tx : [])
 
@@ -70,7 +69,7 @@ function TransactionsPage({
   const setSafeCategories = (cat) =>
     setCategories(Array.isArray(cat) ? cat : [])
 
-  // common loader (can be reused by Refresh button)
+  // loader bisa dipanggil ulang (tombol Refresh)
   const loadAll = async () => {
     try {
       setLoading(true)
@@ -90,7 +89,6 @@ function TransactionsPage({
     }
   }
 
-  // initial load
   useEffect(() => {
     loadAll()
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -308,7 +306,7 @@ function TransactionsPage({
                 <ThSortable label="Kategori" onClick={() => handleSort('category')} />
                 <ThSortable label="Tipe" onClick={() => handleSort('type')} />
                 <ThSortable label="Jumlah" onClick={() => handleSort('amount')} />
-                <ThSortable label="Pembayaran" onClick={() => handleSort('payment')} />
+                {/* kolom Pembayaran DIHAPUS dari tabel */}
                 <ThSortable label="Source" onClick={() => handleSort('source')} />
                 <th
                   style={{
@@ -327,8 +325,9 @@ function TransactionsPage({
             <tbody>
               {sortedTransactions.length === 0 ? (
                 <tr>
+                  {/* kolom berkurang 1 → colSpan 8 */}
                   <td
-                    colSpan={9}
+                    colSpan={8}
                     style={{
                       padding: '1.5rem',
                       textAlign: 'center',
@@ -776,9 +775,7 @@ function TransactionRow({ transaction, onAskDelete }) {
       >
         Rp {new Intl.NumberFormat('id-ID').format(transaction.amount)}
       </td>
-      <td style={{ padding: '1rem 1.5rem', color: 'var(--subtext)' }}>
-        {transaction.payment}
-      </td>
+      {/* kolom Pembayaran di tabel dihapus */}
       <td style={{ padding: '1rem 1.5rem' }}>
         <span
           style={{

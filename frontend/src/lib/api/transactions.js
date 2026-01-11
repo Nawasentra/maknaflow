@@ -6,13 +6,13 @@ import api from '../axios'
 export async function fetchBranches() {
   const res = await api.get('/branches/')
   // expected: [{id, name, branch_type, address}, ...]
-  return res.data
+  return Array.isArray(res.data) ? res.data : res.data.results || []
 }
 
 export async function fetchCategories() {
   const res = await api.get('/categories/')
   // expected: [{id, name, transaction_type}, ...]
-  return res.data
+  return Array.isArray(res.data) ? res.data : res.data.results || []
 }
 
 // ---------- TRANSACTIONS ----------
@@ -36,7 +36,9 @@ function mapTransaction(t) {
   return {
     id: t.id,
     date: t.date,
-    unitBusiness: t.branch_name || 'Unknown',
+    // Unit bisnis pakai enum branch_type (LAUNDRY, CARWASH, KOS, OTHER)
+    unitBusiness: t.branch_type || 'Unknown',
+    // Cabang pakai nama cabang
     branch: t.branch_name || 'Unknown',
     category: t.category_name || 'Lainnya',
     type,
