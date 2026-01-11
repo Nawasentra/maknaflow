@@ -3,11 +3,13 @@ import React, { useState, useEffect, useMemo } from 'react'
 import {
   updateBranch,
   deleteBranch,
+} from '../../lib/api/branchesCategories'
+import {
   fetchCategories as fetchCategoriesApi,
   createCategory,
   updateCategory,
   deleteCategory,
-} from '../../lib/api/branchesCategories'
+} from '../../lib/api/categories'
 
 const BRANCH_TYPES = [
   { value: 'LAUNDRY', label: 'Laundry' },
@@ -16,17 +18,23 @@ const BRANCH_TYPES = [
   { value: 'OTHER', label: 'Other Business' },
 ]
 
-const branchTypeLabel = (value) =>
-  BRANCH_TYPES.find((t) => t.value === value)?.label || value
+const branchTypeLabel = (id, businessConfigs) => {
+  const unit = businessConfigs.find((u) => u.id === id)
+  if (!unit) return ''
+  const found = BRANCH_TYPES.find((t) => t.value === unit.type)
+  return found?.label || unit.type || ''
+}
 
+// chip kategori (dipakai banyak tempat) – dibuat lebih kontras
 const chipStyle = {
   display: 'inline-flex',
   alignItems: 'center',
   gap: 4,
-  padding: '0.3rem 0.7rem',
+  padding: '0.35rem 0.8rem',
   borderRadius: 9999,
-  backgroundColor: 'rgba(148,163,184,0.16)',
-  color: 'var(--text)',
+  backgroundColor: 'rgba(59,130,246,0.15)',
+  color: '#1d4ed8',
+  border: '1px solid rgba(59,130,246,0.4)',
   fontSize: 11,
 }
 
@@ -37,27 +45,28 @@ function SettingsPage({
   setAppSettings,
   showToast,
 }) {
-  // ========== STATE: CABANG / STRUKTUR BISNIS ==========
+  // ---------- STATE CABANG (tanpa Struktur Bisnis card) ----------
+
   const [selectedTypeId, setSelectedTypeId] = useState(
     businessConfigs.length ? businessConfigs[0].id : '',
   )
+
   const selectedUnit =
     businessConfigs.find((b) => b.id === selectedTypeId) || null
 
   const [selectedBranchId, setSelectedBranchId] = useState(
-    selectedUnit && selectedUnit.branches.length ? selectedUnit.branches[0].id : '',
+    selectedUnit && selectedUnit.branches.length ? selectedUnit.branches[0].id : null,
   )
 
-  const [confirmModal, setConfirmModal] = useState(null)
-  // shape: { type: 'toggle' | 'delete', branch }
+  const [confirmModal, setConfirmModal] = useState(null) // {type: 'toggle'|'delete', branch}
 
   useEffect(() => {
     if (!selectedUnit) {
-      setSelectedBranchId('')
+      setSelectedBranchId(null)
       return
     }
     if (!selectedUnit.branches.length) {
-      setSelectedBranchId('')
+      setSelectedBranchId(null)
       return
     }
     if (!selectedUnit.branches.find((b) => b.id === selectedBranchId)) {
@@ -67,9 +76,9 @@ function SettingsPage({
   }, [selectedTypeId, businessConfigs])
 
   const selectedBranch =
-    selectedUnit && selectedUnit.branches.find((b) => b.id === selectedBranchId)
+    selectedUnit?.branches.find((b) => b.id === selectedBranchId) || null
 
-  // Rename branch -> PATCH /branches/{id}/
+  // Rename branch
   const handleRenameBranch = async (newName) => {
     if (!selectedBranch) return
     const trimmed = newName.trim()
@@ -95,27 +104,22 @@ function SettingsPage({
     }
   }
 
-  // UI-only toggle active flag (with confirm)
+  // toggle active
   const requestToggleBranchActive = () => {
     if (!selectedBranch) return
-    setConfirmModal({
-      type: 'toggle',
-      branch: selectedBranch,
-    })
+    setConfirmModal({ type: 'toggle', branch: selectedBranch })
   }
 
   const performToggleBranchActive = () => {
     if (!selectedBranch) return
-    const nowActive = selectedBranch.active === false ? true : false
+    const nowActive = selectedBranch.active ? false : true
     setBusinessConfigs((prev) =>
       prev.map((u) =>
         u.id === selectedUnit.id
           ? {
               ...u,
               branches: u.branches.map((br) =>
-                br.id === selectedBranch.id
-                  ? { ...br, active: nowActive }
-                  : br,
+                br.id === selectedBranch.id ? { ...br, active: nowActive } : br,
               ),
             }
           : u,
@@ -128,13 +132,10 @@ function SettingsPage({
     )
   }
 
-  // Delete branch (backend + update state)
+  // delete branch
   const requestDeleteBranch = () => {
     if (!selectedBranch) return
-    setConfirmModal({
-      type: 'delete',
-      branch: selectedBranch,
-    })
+    setConfirmModal({ type: 'delete', branch: selectedBranch })
   }
 
   const performDeleteBranch = async () => {
@@ -146,19 +147,17 @@ function SettingsPage({
           u.id === selectedUnit.id
             ? {
                 ...u,
-                branches: u.branches.filter(
-                  (br) => br.id !== selectedBranch.id,
-                ),
+                branches: u.branches.filter((br) => br.id !== selectedBranch.id),
               }
             : u,
         ),
       )
       showToast?.(`Cabang ${selectedBranch.name} berhasil dihapus.`)
-      setSelectedBranchId(
-        selectedUnit.branches.length
-          ? selectedUnit.branches[0].id
-          : '',
-      )
+      if (selectedUnit.branches.length) {
+        setSelectedBranchId(selectedUnit.branches[0].id)
+      } else {
+        setSelectedBranchId(null)
+      }
     } catch (e) {
       console.error(e)
       showToast?.(
@@ -168,11 +167,14 @@ function SettingsPage({
     }
   }
 
-  // ========== STATE: DEFAULT KATEGORI PER TIPE (UI-ONLY, SAMA) ==========
+  // ---------- STATE DEFAULT KATEGORI PER TIPE (UI only, tetap) ----------
+
   const [editSelectedId, setEditSelectedId] = useState(
     businessConfigs.length ? businessConfigs[0].id : '',
   )
-  const editSelected = businessConfigs.find((b) => b.id === editSelectedId)
+  const editSelected =
+    businessConfigs.find((b) => b.id === editSelectedId) || null
+
   const [incomeInput, setIncomeInput] = useState('')
   const [expenseInput, setExpenseInput] = useState('')
 
@@ -180,7 +182,7 @@ function SettingsPage({
     if (!editSelected) return
     const trimmed = incomeInput.trim()
     if (!trimmed) return
-    if (!(editSelected.defaultIncomeCategories || []).includes(trimmed)) {
+    if (!editSelected.defaultIncomeCategories?.includes(trimmed)) {
       const updated = businessConfigs.map((b) =>
         b.id === editSelected.id
           ? {
@@ -202,7 +204,7 @@ function SettingsPage({
     if (!editSelected) return
     const trimmed = expenseInput.trim()
     if (!trimmed) return
-    if (!(editSelected.defaultExpenseCategories || []).includes(trimmed)) {
+    if (!editSelected.defaultExpenseCategories?.includes(trimmed)) {
       const updated = businessConfigs.map((b) =>
         b.id === editSelected.id
           ? {
@@ -250,14 +252,14 @@ function SettingsPage({
     setBusinessConfigs(updated)
   }
 
-  // ========== STATE: KATEGORI (BACKEND /categories/) ==========
+  // ---------- STATE KATEGORI BACKEND (GLOBAL) ----------
+
   const [categories, setCategories] = useState([])
   const [categoriesLoading, setCategoriesLoading] = useState(false)
-  const [categoryTypeFilter, setCategoryTypeFilter] = useState('INCOME') // 'INCOME' | 'EXPENSE'
+  const [categoryTypeFilter, setCategoryTypeFilter] = useState('INCOME') // INCOME | EXPENSE
   const [newCategoryName, setNewCategoryName] = useState('')
   const [editingCategoryId, setEditingCategoryId] = useState(null)
   const [editingCategoryName, setEditingCategoryName] = useState('')
-  const [globalCategorySearch, setGlobalCategorySearch] = useState('') // NEW
 
   useEffect(() => {
     const loadCategories = async () => {
@@ -275,13 +277,9 @@ function SettingsPage({
     loadCategories()
   }, [showToast])
 
-  const filteredCategories = categories
-    .filter((c) => c.transaction_type === categoryTypeFilter)
-    .filter((c) => {
-      if (!globalCategorySearch) return true
-      const q = globalCategorySearch.toLowerCase()
-      return (c.name || '').toLowerCase().includes(q)
-    })
+  const filteredCategories = categories.filter(
+    (c) => c.transaction_type === categoryTypeFilter,
+  )
 
   const handleAddCategoryBackend = async () => {
     const trimmed = newCategoryName.trim()
@@ -331,24 +329,31 @@ function SettingsPage({
       showToast?.('Kategori berhasil dihapus.')
     } catch (e) {
       console.error(e)
-      showToast?.('Gagal menghapus kategori. Pastikan tidak dipakai transaksi.', 'error')
+      showToast?.(
+        'Gagal menghapus kategori. Pastikan tidak dipakai transaksi.',
+        'error',
+      )
     }
   }
 
-  // ========== MAPPING KATEGORI PER CABANG (frontend only) ==========
-  // Flatten semua cabang dari businessConfigs
+  // ---------- MAPPING KATEGORI PER CABANG (frontend only) ----------
+
   const allBranchesFlat = useMemo(() => {
     const result = []
-    ;(businessConfigs || []).forEach((unit) => {
+    businessConfigs.forEach((unit) => {
       ;(unit.branches || []).forEach((br) => {
+        const branchUnitLabel =
+          BRANCH_TYPES.find((t) => t.value === unit.type)?.label ||
+          unit.type ||
+          ''
         result.push({
           unitId: unit.id,
-          unitLabel: branchTypeLabel(unit.id),
+          unitLabel: branchUnitLabel,
           id: br.id,
           name: br.name,
           active: br.active,
-          incomeCategories: br.incomeCategories || null,
-          expenseCategories: br.expenseCategories || null,
+          incomeCategories: br.incomeCategories || [],
+          expenseCategories: br.expenseCategories || [],
         })
       })
     })
@@ -360,7 +365,7 @@ function SettingsPage({
   const [branchCategorySearch, setBranchCategorySearch] = useState('')
   const [branchNewCategoryName, setBranchNewCategoryName] = useState('')
 
-  // Auto pilih cabang pertama untuk section kategori per cabang
+  // auto pilih cabang pertama untuk kategori-per-cabang
   useEffect(() => {
     if (!selectedBranchForCategory && allBranchesFlat.length > 0) {
       setSelectedBranchForCategory(String(allBranchesFlat[0].id))
@@ -395,7 +400,12 @@ function SettingsPage({
     if (!branchCategorySearch) return list
     const q = branchCategorySearch.toLowerCase()
     return list.filter((c) => c.name.toLowerCase().includes(q))
-  }, [categories, assignedCategoryIdsForBranch, branchCategoryTab, branchCategorySearch])
+  }, [
+    categories,
+    assignedCategoryIdsForBranch,
+    branchCategoryTab,
+    branchCategorySearch,
+  ])
 
   const branchAvailableCategories = useMemo(() => {
     const txType = branchCategoryTab
@@ -407,7 +417,12 @@ function SettingsPage({
     if (!branchCategorySearch) return list
     const q = branchCategorySearch.toLowerCase()
     return list.filter((c) => c.name.toLowerCase().includes(q))
-  }, [categories, assignedCategoryIdsForBranch, branchCategoryTab, branchCategorySearch])
+  }, [
+    categories,
+    assignedCategoryIdsForBranch,
+    branchCategoryTab,
+    branchCategorySearch,
+  ])
 
   const updateBranchCategoryIds = (branchId, txType, updater) => {
     setBusinessConfigs((prev) => {
@@ -416,13 +431,11 @@ function SettingsPage({
         const branches = Array.isArray(unit.branches) ? unit.branches : []
         const updatedBranches = branches.map((br) => {
           if (String(br.id) !== String(branchId)) return br
-          const key = txType === 'INCOME' ? 'incomeCategories' : 'expenseCategories'
+          const key =
+            txType === 'INCOME' ? 'incomeCategories' : 'expenseCategories'
           const currentIds = Array.isArray(br[key]) ? br[key] : []
           const newIds = updater(currentIds)
-          return {
-            ...br,
-            [key]: newIds,
-          }
+          return { ...br, [key]: newIds }
         })
         return { ...unit, branches: updatedBranches }
       })
@@ -433,7 +446,7 @@ function SettingsPage({
     if (!selectedBranchForCategoryObj) return
     const txType = branchCategoryTab
     updateBranchCategoryIds(selectedBranchForCategoryObj.id, txType, (prevIds) => {
-      const set = new Set(prevIds || [])
+      const set = new Set(prevIds)
       set.add(categoryId)
       return Array.from(set)
     })
@@ -444,9 +457,12 @@ function SettingsPage({
     if (!selectedBranchForCategoryObj) return
     const txType = branchCategoryTab
     updateBranchCategoryIds(selectedBranchForCategoryObj.id, txType, (prevIds) =>
-      (prevIds || []).filter((id) => id !== categoryId),
+      prevIds.filter((id) => id !== categoryId),
     )
-    showToast?.('Kategori dihapus dari cabang (kategori global tetap ada).', 'success')
+    showToast?.(
+      'Kategori dihapus dari cabang, kategori global tetap ada.',
+      'success',
+    )
   }
 
   const handleBranchAddNewCategory = async () => {
@@ -458,7 +474,7 @@ function SettingsPage({
     if (!trimmed) return
     const txType = branchCategoryTab
 
-    // cek apakah nama + tipe sudah ada di kategori global
+    // cek duplikat nama di kategori global (case-insensitive)
     const existing = categories.find(
       (c) =>
         c.transaction_type === txType &&
@@ -475,20 +491,25 @@ function SettingsPage({
         setCategories((prev) => [...prev, created])
         target = created
       }
+
       updateBranchCategoryIds(selectedBranchForCategoryObj.id, txType, (prevIds) => {
-        const set = new Set(prevIds || [])
+        const set = new Set(prevIds)
         set.add(target.id)
         return Array.from(set)
       })
       setBranchNewCategoryName('')
-      showToast?.('Kategori ditambahkan dan diaktifkan untuk cabang ini.', 'success')
+      showToast?.(
+        'Kategori ditambahkan dan diaktifkan untuk cabang ini.',
+        'success',
+      )
     } catch (e) {
       console.error(e)
       showToast?.('Gagal menambah kategori untuk cabang.', 'error')
     }
   }
 
-  // ========== CONFIRM MODAL CABANG ==========
+  // ---------- CONFIRM MODAL CABANG ----------
+
   const renderConfirmModal = () => {
     if (!confirmModal || !confirmModal.branch) return null
     const { type, branch } = confirmModal
@@ -499,17 +520,14 @@ function SettingsPage({
       ? 'Aktifkan Cabang'
       : 'Nonaktifkan Cabang'
     const desc = isDelete
-      ? `Yakin ingin menghapus cabang "${branch.name}"? Semua transaksi yang terkait cabang ini akan ikut terhapus (aturan server).`
+      ? `Yakin ingin menghapus cabang ${branch.name}? Tindakan ini tidak bisa dibatalkan.`
       : branch.active === false
-      ? `Aktifkan kembali cabang "${branch.name}"?`
-      : `Nonaktifkan cabang "${branch.name}"?`
+      ? `Aktifkan kembali cabang ${branch.name}?`
+      : `Nonaktifkan cabang ${branch.name}?`
 
     const onConfirm = async () => {
-      if (isDelete) {
-        await performDeleteBranch()
-      } else {
-        performToggleBranchActive()
-      }
+      if (isDelete) await performDeleteBranch()
+      else performToggleBranchActive()
       setConfirmModal(null)
     }
 
@@ -597,7 +615,8 @@ function SettingsPage({
     )
   }
 
-  // ========== RENDER ==========
+  // ---------- RENDER ----------
+
   return (
     <main
       style={{
@@ -607,8 +626,14 @@ function SettingsPage({
         color: 'var(--text)',
       }}
     >
-      <h1 style={{ fontSize: '1.875rem', fontWeight: '700', marginBottom: '2rem' }}>
-        ⚙️ Settings
+      <h1
+        style={{
+          fontSize: '1.875rem',
+          fontWeight: 700,
+          marginBottom: '2rem',
+        }}
+      >
+        Settings
       </h1>
 
       <div
@@ -618,7 +643,9 @@ function SettingsPage({
           gap: '1.5rem',
         }}
       >
-        {/* Struktur Bisnis (per branch_type) */}
+        {/* (Struktur Bisnis card DIHAPUS) */}
+
+        {/* Kategori Global */}
         <div
           style={{
             backgroundColor: 'var(--bg-elevated)',
@@ -627,52 +654,24 @@ function SettingsPage({
             padding: '1.5rem',
           }}
         >
-          <h2 style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '1rem' }}>
-            Struktur Bisnis
-          </h2>
-
-          <div style={{ marginBottom: '1rem' }}>
-            <p style={{ fontSize: 12, color: 'var(--subtext)', marginBottom: 6 }}>
-              Tipe Unit Bisnis
-            </p>
-            <select
-              value={selectedTypeId}
-              onChange={(e) => setSelectedTypeId(e.target.value)}
-              style={{
-                width: '100%',
-                backgroundColor: 'var(--bg)',
-                borderRadius: 12,
-                border: '1px solid var(--border)',
-                padding: '0.7rem 1rem',
-                fontSize: 13,
-                color: 'var(--text)',
-                outline: 'none',
-              }}
-            >
-              {BRANCH_TYPES.map((t) => (
-                <option key={t.value} value={t.value}>
-                  {t.label}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        {/* Kategori (CRUD backend) */}
-        <div
-          style={{
-            backgroundColor: 'var(--bg-elevated)',
-            border: '1px solid var(--border)',
-            borderRadius: '12px',
-            padding: '1.5rem',
-          }}
-        >
-          <h2 style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '1rem' }}>
-            Kategori (Global)
+          <h2
+            style={{
+              fontSize: '1.1rem',
+              fontWeight: 600,
+              marginBottom: '1rem',
+            }}
+          >
+            Kategori Global
           </h2>
 
           <div style={{ marginBottom: '0.75rem' }}>
-            <p style={{ fontSize: 12, color: 'var(--subtext)', marginBottom: 4 }}>
+            <p
+              style={{
+                fontSize: 12,
+                color: 'var(--subtext)',
+                marginBottom: 4,
+              }}
+            >
               Tipe transaksi
             </p>
             <div style={{ display: 'flex', gap: 8 }}>
@@ -710,31 +709,15 @@ function SettingsPage({
             </div>
           </div>
 
-          {/* NEW: search kategori global */}
           <div style={{ marginBottom: '0.75rem' }}>
-            <p style={{ fontSize: 12, color: 'var(--subtext)', marginBottom: 4 }}>
-              Cari kategori global
-            </p>
-            <input
-              value={globalCategorySearch}
-              onChange={(e) => setGlobalCategorySearch(e.target.value)}
-              placeholder="Cari nama kategori..."
+            <p
               style={{
-                width: '100%',
-                backgroundColor: 'var(--bg)',
-                borderRadius: 12,
-                border: '1px solid var(--border)',
-                padding: '0.6rem 0.9rem',
                 fontSize: 12,
-                color: 'var(--text)',
-                outline: 'none',
+                color: 'var(--subtext)',
+                marginBottom: 4,
               }}
-            />
-          </div>
-
-          <div style={{ marginBottom: '0.75rem' }}>
-            <p style={{ fontSize: 12, color: 'var(--subtext)', marginBottom: 4 }}>
-              Tambah kategori ({categoryTypeFilter === 'INCOME' ? 'Income' : 'Expense'})
+            >
+              Tambah kategori {categoryTypeFilter === 'INCOME' ? 'Income' : 'Expense'}
             </p>
             <div style={{ display: 'flex', gap: 8 }}>
               <input
@@ -785,15 +768,14 @@ function SettingsPage({
             }}
           >
             {categoriesLoading ? (
-              <span
-                style={{
-                  fontSize: 11,
-                  color: 'var(--subtext)',
-                }}
-              >
+              <span style={{ fontSize: 11, color: 'var(--subtext)' }}>
                 Memuat kategori...
               </span>
-            ) : filteredCategories.length > 0 ? (
+            ) : filteredCategories.length === 0 ? (
+              <span style={{ fontSize: 11, color: 'var(--subtext)' }}>
+                Belum ada kategori untuk tipe ini.
+              </span>
+            ) : (
               filteredCategories.map((cat) => (
                 <div
                   key={cat.id}
@@ -855,37 +837,28 @@ function SettingsPage({
                       >
                         Ubah
                       </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteCategoryBackend(cat.id)}
+                        style={{
+                          border: 'none',
+                          background: 'none',
+                          color: '#fecaca',
+                          cursor: 'pointer',
+                          fontSize: 12,
+                        }}
+                      >
+                        ✕
+                      </button>
                     </>
                   )}
-                  <button
-                    type="button"
-                    onClick={() => handleDeleteCategoryBackend(cat.id)}
-                    style={{
-                      border: 'none',
-                      background: 'none',
-                      color: '#fecaca',
-                      cursor: 'pointer',
-                      fontSize: 12,
-                    }}
-                  >
-                    ×
-                  </button>
                 </div>
               ))
-            ) : (
-              <span
-                style={{
-                  fontSize: 11,
-                  color: 'var(--subtext)',
-                }}
-              >
-                Belum ada kategori untuk tipe ini.
-              </span>
             )}
           </div>
         </div>
 
-        {/* Kategori per cabang */}
+        {/* Kategori per Cabang (memiliki dropdown cabang sendiri) */}
         <div
           style={{
             backgroundColor: 'var(--bg-elevated)',
@@ -894,7 +867,13 @@ function SettingsPage({
             padding: '1.5rem',
           }}
         >
-          <h2 style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '1rem' }}>
+          <h2
+            style={{
+              fontSize: '1.1rem',
+              fontWeight: 600,
+              marginBottom: '1rem',
+            }}
+          >
             Kategori per Cabang
           </h2>
 
@@ -908,7 +887,13 @@ function SettingsPage({
             }}
           >
             <div style={{ minWidth: 220 }}>
-              <p style={{ fontSize: 12, color: 'var(--subtext)', marginBottom: 6 }}>
+              <p
+                style={{
+                  fontSize: 12,
+                  color: 'var(--subtext)',
+                  marginBottom: 6,
+                }}
+              >
                 Pilih cabang
               </p>
               <select
@@ -934,7 +919,13 @@ function SettingsPage({
             </div>
 
             <div>
-              <p style={{ fontSize: 12, color: 'var(--subtext)', marginBottom: 4 }}>
+              <p
+                style={{
+                  fontSize: 12,
+                  color: 'var(--subtext)',
+                  marginBottom: 4,
+                }}
+              >
                 Tipe transaksi
               </p>
               <div style={{ display: 'flex', gap: 8 }}>
@@ -973,7 +964,13 @@ function SettingsPage({
             </div>
 
             <div style={{ flex: 1, minWidth: 220 }}>
-              <p style={{ fontSize: 12, color: 'var(--subtext)', marginBottom: 4 }}>
+              <p
+                style={{
+                  fontSize: 12,
+                  color: 'var(--subtext)',
+                  marginBottom: 4,
+                }}
+              >
                 Cari kategori di cabang ini
               </p>
               <input
@@ -995,7 +992,13 @@ function SettingsPage({
           </div>
 
           <div style={{ marginBottom: '0.75rem' }}>
-            <p style={{ fontSize: 12, color: 'var(--subtext)', marginBottom: 4 }}>
+            <p
+              style={{
+                fontSize: 12,
+                color: 'var(--subtext)',
+                marginBottom: 4,
+              }}
+            >
               Tambah kategori baru untuk cabang ini (
               {branchCategoryTab === 'INCOME' ? 'Income' : 'Expense'})
             </p>
@@ -1047,8 +1050,14 @@ function SettingsPage({
               marginTop: '0.5rem',
             }}
           >
-            <p style={{ fontSize: 12, color: 'var(--subtext)', marginBottom: 4 }}>
-              Kategori aktif di cabang ini:
+            <p
+              style={{
+                fontSize: 12,
+                color: 'var(--subtext)',
+                marginBottom: 4,
+              }}
+            >
+              Kategori aktif di cabang ini
             </p>
             {branchAssignedCategories.length === 0 ? (
               <span style={{ fontSize: 11, color: 'var(--subtext)' }}>
@@ -1077,59 +1086,50 @@ function SettingsPage({
                         fontSize: 12,
                       }}
                     >
-                      ×
+                      ✕
                     </button>
                   </span>
                 ))}
               </div>
             )}
 
-            {branchAvailableCategories.length > 0 && (
-              <>
-                <p
+            <p
+              style={{
+                fontSize: 12,
+                color: 'var(--subtext)',
+                marginTop: 6,
+                marginBottom: 4,
+              }}
+            >
+              Kategori global lain belum aktif di cabang ini
+            </p>
+            <div
+              style={{
+                display: 'flex',
+                flexWrap: 'wrap',
+                gap: 6,
+              }}
+            >
+              {branchAvailableCategories.slice(0, 20).map((cat) => (
+                <button
+                  key={cat.id}
+                  type="button"
+                  onClick={() => handleBranchAttachCategory(cat.id)}
                   style={{
-                    fontSize: 12,
-                    color: 'var(--subtext)',
-                    marginTop: 6,
-                    marginBottom: 4,
+                    ...chipStyle,
+                    backgroundColor: 'transparent',
+                    border: '1px dashed var(--border)',
                   }}
                 >
-                  Kategori global lain (belum aktif di cabang ini):
-                </p>
-                <div
-                  style={{
-                    display: 'flex',
-                    flexWrap: 'wrap',
-                    gap: 6,
-                  }}
-                >
-                  {branchAvailableCategories.slice(0, 20).map((cat) => (
-                    <button
-                      key={cat.id}
-                      type="button"
-                      onClick={() => handleBranchAttachCategory(cat.id)}
-                      style={{
-                        ...chipStyle,
-                        backgroundColor: 'transparent',
-                        border: '1px dashed var(--border)',
-                      }}
-                    >
-                      + {cat.name}
-                    </button>
-                  ))}
-                  {branchAvailableCategories.length > 20 && (
-                    <span
-                      style={{
-                        fontSize: 11,
-                        color: 'var(--subtext)',
-                      }}
-                    >
-                      dan {branchAvailableCategories.length - 20} lainnya...
-                    </span>
-                  )}
-                </div>
-              </>
-            )}
+                  {cat.name}
+                </button>
+              ))}
+              {branchAvailableCategories.length > 20 && (
+                <span style={{ fontSize: 11, color: 'var(--subtext)' }}>
+                  dan {branchAvailableCategories.length - 20} lainnya...
+                </span>
+              )}
+            </div>
           </div>
         </div>
 
@@ -1142,17 +1142,30 @@ function SettingsPage({
             padding: '1.5rem',
           }}
         >
-          <h2 style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '1rem' }}>
+          <h2
+            style={{
+              fontSize: '1.1rem',
+              fontWeight: 600,
+              marginBottom: '1rem',
+            }}
+          >
             Cabang
           </h2>
+
           {selectedUnit ? (
             <>
               <div style={{ marginBottom: '1rem' }}>
-                <p style={{ fontSize: 12, color: 'var(--subtext)', marginBottom: 6 }}>
+                <p
+                  style={{
+                    fontSize: 12,
+                    color: 'var(--subtext)',
+                    marginBottom: 6,
+                  }}
+                >
                   Pilih cabang dari tipe ini
                 </p>
                 <select
-                  value={selectedBranchId}
+                  value={selectedBranchId ?? ''}
                   onChange={(e) => setSelectedBranchId(Number(e.target.value))}
                   style={{
                     width: '100%',
@@ -1176,7 +1189,13 @@ function SettingsPage({
               {selectedBranch && (
                 <>
                   <div style={{ marginBottom: '1rem' }}>
-                    <p style={{ fontSize: 12, color: 'var(--subtext)', marginBottom: 6 }}>
+                    <p
+                      style={{
+                        fontSize: 12,
+                        color: 'var(--subtext)',
+                        marginBottom: 6,
+                      }}
+                    >
                       Ganti nama cabang
                     </p>
                     <input
@@ -1194,13 +1213,19 @@ function SettingsPage({
                       }}
                     />
                   </div>
-                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+
+                  <div
+                    style={{
+                      display: 'flex',
+                      gap: 8,
+                      flexWrap: 'wrap',
+                    }}
+                  >
                     <button
                       type="button"
                       onClick={requestToggleBranchActive}
                       style={{
-                        backgroundColor:
-                          selectedBranch.active === false ? '#6b7280' : '#22c55e',
+                        backgroundColor: selectedBranch.active === false ? '#6b7280' : '#22c55e',
                         borderRadius: 9999,
                         border: 'none',
                         color: 'var(--bg)',
@@ -1235,7 +1260,12 @@ function SettingsPage({
               )}
             </>
           ) : (
-            <p style={{ fontSize: 12, color: 'var(--subtext)' }}>
+            <p
+              style={{
+                fontSize: 12,
+                color: 'var(--subtext)',
+              }}
+            >
               Belum ada tipe unit bisnis yang dikonfigurasi.
             </p>
           )}
@@ -1250,7 +1280,13 @@ function SettingsPage({
             padding: '1.5rem',
           }}
         >
-          <h2 style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '1rem' }}>
+          <h2
+            style={{
+              fontSize: '1.1rem',
+              fontWeight: 600,
+              marginBottom: '1rem',
+            }}
+          >
             Default Kategori per Tipe
           </h2>
 
@@ -1282,7 +1318,7 @@ function SettingsPage({
             >
               {businessConfigs.map((b) => (
                 <option key={b.id} value={b.id}>
-                  {branchTypeLabel(b.id)}
+                  {branchTypeLabel(b.id, businessConfigs)}
                 </option>
               ))}
             </select>
@@ -1297,7 +1333,6 @@ function SettingsPage({
                 marginTop: '1rem',
               }}
             >
-              {/* Income defaults */}
               <div>
                 <h3
                   style={{
@@ -1317,7 +1352,7 @@ function SettingsPage({
                   }}
                 >
                   <input
-                    placeholder="Tambah kategori pendapatan…"
+                    placeholder="Tambah kategori pendapatan"
                     value={incomeInput}
                     onChange={(e) => setIncomeInput(e.target.value)}
                     onKeyDown={(e) => {
@@ -1387,24 +1422,18 @@ function SettingsPage({
                           fontSize: 12,
                         }}
                       >
-                        ×
+                        ✕
                       </button>
                     </span>
                   ))}
                   {!editSelected.defaultIncomeCategories?.length && (
-                    <span
-                      style={{
-                        fontSize: 11,
-                        color: 'var(--subtext)',
-                      }}
-                    >
+                    <span style={{ fontSize: 11, color: 'var(--subtext)' }}>
                       Belum ada kategori pendapatan default.
                     </span>
                   )}
                 </div>
               </div>
 
-              {/* Expense defaults */}
               <div>
                 <h3
                   style={{
@@ -1424,7 +1453,7 @@ function SettingsPage({
                   }}
                 >
                   <input
-                    placeholder="Tambah kategori pengeluaran…"
+                    placeholder="Tambah kategori pengeluaran"
                     value={expenseInput}
                     onChange={(e) => setExpenseInput(e.target.value)}
                     onKeyDown={(e) => {
@@ -1494,17 +1523,12 @@ function SettingsPage({
                           fontSize: 12,
                         }}
                       >
-                        ×
+                        ✕
                       </button>
                     </span>
                   ))}
                   {!editSelected.defaultExpenseCategories?.length && (
-                    <span
-                      style={{
-                        fontSize: 11,
-                        color: 'var(--subtext)',
-                      }}
-                    >
+                    <span style={{ fontSize: 11, color: 'var(--subtext)' }}>
                       Belum ada kategori pengeluaran default.
                     </span>
                   )}
