@@ -62,6 +62,10 @@ function TransactionsPage({
     direction: 'desc',
   })
 
+  // PAGINATION STATE
+  const [currentPage, setCurrentPage] = useState(1)
+  const pageSize = 10 // ganti kalau mau 20/50 dll
+
   const setSafeBranches = (br) => setBranches(Array.isArray(br) ? br : [])
   const setSafeCategories = (cat) => setCategories(Array.isArray(cat) ? cat : [])
 
@@ -140,6 +144,11 @@ function TransactionsPage({
     return true
   })
 
+  // Reset pagination ke page 1 kalau filter/search berubah
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [searchTerm, filterUnit, filterBranch])
+
   const sortedTransactions = [...filteredTransactions].sort((a, b) => {
     const { key, direction } = sortConfig
     let cmp = 0
@@ -210,6 +219,18 @@ function TransactionsPage({
       console.error(e)
       showToast?.('Gagal menyimpan transaksi.', 'error')
     }
+  }
+
+  // --- Pagination logic ---
+  const totalItems = sortedTransactions.length
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize))
+  const startIndex = (currentPage - 1) * pageSize
+  const endIndex = startIndex + pageSize
+  const paginatedTransactions = sortedTransactions.slice(startIndex, endIndex)
+
+  const goToPage = (page) => {
+    if (page < 1 || page > totalPages) return
+    setCurrentPage(page)
   }
 
   return (
@@ -455,7 +476,7 @@ function TransactionsPage({
               </tr>
             </thead>
             <tbody>
-              {sortedTransactions.length === 0 ? (
+              {paginatedTransactions.length === 0 ? (
                 <tr>
                   <td
                     colSpan={8}
@@ -472,7 +493,7 @@ function TransactionsPage({
                   </td>
                 </tr>
               ) : (
-                sortedTransactions.map((t) => (
+                paginatedTransactions.map((t) => (
                   <TransactionRow
                     key={t.id}
                     transaction={t}
@@ -482,6 +503,82 @@ function TransactionsPage({
               )}
             </tbody>
           </table>
+        </div>
+
+        {/* Pagination bar */}
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            padding: '0.75rem 1.5rem 1.25rem',
+            fontSize: '0.8rem',
+            color: 'var(--subtext)',
+            gap: '0.75rem',
+            flexWrap: 'wrap',
+          }}
+        >
+          <span>
+            Menampilkan {totalItems === 0 ? 0 : startIndex + 1}–
+            {Math.min(endIndex, totalItems)} dari {totalItems} transaksi
+          </span>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+            <button
+              onClick={() => goToPage(currentPage - 1)}
+              disabled={currentPage === 1}
+              style={{
+                padding: '0.3rem 0.6rem',
+                borderRadius: 6,
+                border: '1px solid var(--border)',
+                backgroundColor: 'transparent',
+                cursor: currentPage === 1 ? 'not-allowed' : 'pointer',
+                opacity: currentPage === 1 ? 0.5 : 1,
+              }}
+            >
+              ‹
+            </button>
+
+            {Array.from({ length: totalPages }).map((_, idx) => {
+              const page = idx + 1
+              const isActive = page === currentPage
+              return (
+                <button
+                  key={page}
+                  onClick={() => goToPage(page)}
+                  style={{
+                    minWidth: 28,
+                    padding: '0.3rem 0.5rem',
+                    borderRadius: 6,
+                    border: '1px solid var(--border)',
+                    backgroundColor: isActive
+                      ? 'var(--accent)'
+                      : 'var(--bg-elevated)',
+                    color: isActive ? 'var(--bg)' : 'var(--text)',
+                    fontSize: '0.8rem',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {page}
+                </button>
+              )
+            })}
+
+            <button
+              onClick={() => goToPage(currentPage + 1)}
+              disabled={currentPage === totalPages}
+              style={{
+                padding: '0.3rem 0.6rem',
+                borderRadius: 6,
+                border: '1px solid var(--border)',
+                backgroundColor: 'transparent',
+                cursor: currentPage === totalPages ? 'not-allowed' : 'pointer',
+                opacity: currentPage === totalPages ? 0.5 : 1,
+              }}
+            >
+              ›
+            </button>
+          </div>
         </div>
       </div>
 
