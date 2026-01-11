@@ -219,7 +219,28 @@ function TransactionsPage({
     setTransactionToDelete(null)
   }
 
+  // prevent duplikat transaksi (tanggal + cabang + kategori + type + amount + payment)
   const handleAddTransaction = async (newTx) => {
+    const isDuplicate = safeTransactions.some((t) => {
+      return (
+        t.date === newTx.date &&
+        t.branchId === newTx.branchId &&
+        t.categoryId === newTx.categoryId &&
+        t.type === newTx.type &&
+        Number(t.amount) === Number(newTx.amount) &&
+        (t.payment || '').toUpperCase() ===
+          (newTx.payment || '').toUpperCase()
+      )
+    })
+
+    if (isDuplicate) {
+      showToast?.(
+        'Transaksi dengan data yang sama sudah ada. Cek kembali sebelum menyimpan.',
+        'error',
+      )
+      return
+    }
+
     try {
       const saved = await createTransaction(newTx)
       setTransactions((prev) => [
@@ -617,6 +638,7 @@ function TransactionsPage({
           lastUsedType={lastUsedType}
           businessConfigs={businessConfigs}
           showToast={showToast}
+          existingTransactions={safeTransactions}
         />
       )}
     </main>
@@ -743,6 +765,7 @@ function AddTransactionModal({
   const [payment, setPayment] = useState('')
   const [amountInput, setAmountInput] = useState('')
   const [description, setDescription] = useState('')
+  const [categorySearch, setCategorySearch] = useState('')
 
   const safeBranches = Array.isArray(branches) ? branches : []
   const safeCategories = Array.isArray(categories) ? categories : []
@@ -750,32 +773,50 @@ function AddTransactionModal({
     ? businessConfigs
     : []
 
+  // filter + dedup + sort kategori
   const filteredCategories = useMemo(() => {
     const txType = type === 'Income' ? 'INCOME' : 'EXPENSE'
     const pool = safeCategories.filter((c) => c.transaction_type === txType)
 
     const numericBranchId = Number(branchId)
-    if (!numericBranchId) return pool
-    if (!safeBusinessConfigs.length) return pool
+    let result = pool
 
-    let mappingIds = null
-    safeBusinessConfigs.forEach((unit) => {
-      ;(unit.branches || []).forEach((br) => {
-        if (br.id === numericBranchId) {
-          mappingIds =
-            txType === 'INCOME'
-              ? br.incomeCategories || null
-              : br.expenseCategories || null
-        }
+    if (numericBranchId && safeBusinessConfigs.length) {
+      let mappingIds = null
+      safeBusinessConfigs.forEach((unit) => {
+        ;(unit.branches || []).forEach((br) => {
+          if (br.id === numericBranchId) {
+            mappingIds =
+              txType === 'INCOME'
+                ? br.incomeCategories || null
+                : br.expenseCategories || null
+          }
+        })
       })
-    })
-
-    if (!mappingIds || !mappingIds.length) {
-      return pool
+      if (mappingIds && mappingIds.length) {
+        result = pool.filter((c) => mappingIds.includes(c.id))
+      }
     }
 
-    return pool.filter((c) => mappingIds.includes(c.id))
+    // dedup case-insensitive
+    const dedup = new Map()
+    result.forEach((c) => {
+      const key = c.name.trim().toLowerCase()
+      if (!dedup.has(key)) dedup.set(key, c)
+    })
+
+    return Array.from(dedup.values()).sort((a, b) =>
+      a.name.localeCompare(b.name, 'id', { sensitivity: 'base' }),
+    )
   }, [safeCategories, type, branchId, safeBusinessConfigs])
+
+  const visibleCategories = useMemo(() => {
+    if (!categorySearch) return filteredCategories
+    const q = categorySearch.toLowerCase()
+    return filteredCategories.filter((c) =>
+      c.name.toLowerCase().includes(q),
+    )
+  }, [filteredCategories, categorySearch])
 
   const pembayaranOptions = [
     { label: 'QRIS', value: 'QRIS' },
@@ -934,13 +975,24 @@ function AddTransactionModal({
 
           <div>
             <Field label="Kategori">
+              <input
+                type="text"
+                placeholder="Cari kategori..."
+                value={categorySearch}
+                onChange={(e) => setCategorySearch(e.target.value)}
+                style={{
+                  ...inputStyle,
+                  marginBottom: '0.35rem',
+                  fontSize: '0.8rem',
+                }}
+              />
               <select
                 value={categoryId}
                 onChange={(e) => setCategoryId(e.target.value)}
                 style={inputStyle}
               >
                 <option value="">Pilih kategori</option>
-                {filteredCategories.map((c) => (
+                {visibleCategories.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.name}
                   </option>
@@ -1079,6 +1131,11 @@ function TransactionRow({ transaction, onAskDelete }) {
       <td style={{ padding: '1rem 1.5rem' }}>
         <span
           style={{
+            display: 'inline-block',
+            maxWidth: 220,
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
             padding: '0.375rem 0.75rem',
             backgroundColor: 'rgba(59, 130, 246, 0.15)',
             color: '#60a5fa',
@@ -1086,6 +1143,7 @@ function TransactionRow({ transaction, onAskDelete }) {
             fontSize: '0.75rem',
             fontWeight: '500',
           }}
+          title={transaction.branch}
         >
           {transaction.branch}
         </span>
