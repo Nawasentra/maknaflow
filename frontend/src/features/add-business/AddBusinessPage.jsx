@@ -1,5 +1,4 @@
-// src/features/add-business/AddBusinessPage.jsx
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import {
   createBranch,
   createCategory,
@@ -18,12 +17,33 @@ const BRANCH_TYPES = [
 function AddBusinessPage({ businessConfigs, setBusinessConfigs, showToast }) {
   const [step, setStep] = useState(1)
   const [branchName, setBranchName] = useState('')
-  const [branchType, setBranchType] = useState('') // enum value: LAUNDRY / CARWASH / KOS / OTHER
+  const [branchType, setBranchType] = useState('') // enum value
   const [incomeCategories, setIncomeCategories] = useState([])
   const [expenseCategories, setExpenseCategories] = useState([])
   const [incomeInput, setIncomeInput] = useState('')
   const [expenseInput, setExpenseInput] = useState('')
   const [loading, setLoading] = useState(false)
+
+  // data referensi untuk suggestions + duplikat
+  const [existingBranches, setExistingBranches] = useState([])
+  const [existingCategories, setExistingCategories] = useState([])
+
+  // sekali di-mount: ambil semua cabang & kategori yang sudah ada
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const [branches, categories] = await Promise.all([
+          fetchBranches(),
+          fetchCategories(),
+        ])
+        setExistingBranches(Array.isArray(branches) ? branches : [])
+        setExistingCategories(Array.isArray(categories) ? categories : [])
+      } catch (e) {
+        console.error(e)
+      }
+    }
+    load()
+  }, [])
 
   // preload defaults if selecting an existing type
   useEffect(() => {
@@ -44,21 +64,85 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs, showToast }) {
     setExpenseCategories(cfg.defaultExpenseCategories || [])
   }, [branchType, businessConfigs])
 
-  const handleAddIncomeCategory = () => {
-    const trimmed = incomeInput.trim()
+  // ---------- CATEGORY SUGGESTIONS ----------
+
+  // semua nama kategori unik dari backend (income + expense)
+  const allCategoryNames = useMemo(() => {
+    const names = (existingCategories || []).map((c) => c.name || '')
+    return Array.from(new Set(names.filter(Boolean)))
+  }, [existingCategories])
+
+  const incomeSuggestions = useMemo(() => {
+    const q = incomeInput.trim().toLowerCase()
+    if (!q) return []
+    return allCategoryNames
+      .filter((name) => name.toLowerCase().includes(q))
+      .filter(
+        (name) =>
+          !incomeCategories.some(
+            (c) => c.toLowerCase() === name.toLowerCase(),
+          ),
+      )
+      .slice(0, 6)
+  }, [incomeInput, allCategoryNames, incomeCategories])
+
+  const expenseSuggestions = useMemo(() => {
+    const q = expenseInput.trim().toLowerCase()
+    if (!q) return []
+    return allCategoryNames
+      .filter((name) => name.toLowerCase().includes(q))
+      .filter(
+        (name) =>
+          !expenseCategories.some(
+            (c) => c.toLowerCase() === name.toLowerCase(),
+          ),
+      )
+      .slice(0, 6)
+  }, [expenseInput, allCategoryNames, expenseCategories])
+
+  const addIncomeCategory = (value) => {
+    const trimmed = value.trim()
     if (!trimmed) return
-    if (!incomeCategories.includes(trimmed)) {
-      setIncomeCategories([...incomeCategories, trimmed])
+    if (
+      incomeCategories.some(
+        (c) => c.toLowerCase() === trimmed.toLowerCase(),
+      )
+    ) {
+      return
     }
+    setIncomeCategories((prev) => [...prev, trimmed])
+  }
+
+  const addExpenseCategory = (value) => {
+    const trimmed = value.trim()
+    if (!trimmed) return
+    if (
+      expenseCategories.some(
+        (c) => c.toLowerCase() === trimmed.toLowerCase(),
+      )
+    ) {
+      return
+    }
+    setExpenseCategories((prev) => [...prev, trimmed])
+  }
+
+  const handleAddIncomeCategory = () => {
+    addIncomeCategory(incomeInput)
     setIncomeInput('')
   }
 
   const handleAddExpenseCategory = () => {
-    const trimmed = expenseInput.trim()
-    if (!trimmed) return
-    if (!expenseCategories.includes(trimmed)) {
-      setExpenseCategories([...expenseCategories, trimmed])
-    }
+    addExpenseCategory(expenseInput)
+    setExpenseInput('')
+  }
+
+  const handleIncomeSuggestionClick = (name) => {
+    addIncomeCategory(name)
+    setIncomeInput('')
+  }
+
+  const handleExpenseSuggestionClick = (name) => {
+    addExpenseCategory(name)
     setExpenseInput('')
   }
 
@@ -94,6 +178,9 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs, showToast }) {
       fetchBranches(),
       fetchCategories(),
     ])
+
+    setExistingBranches(Array.isArray(branches) ? branches : [])
+    setExistingCategories(Array.isArray(categories) ? categories : [])
 
     const byType = {}
 
@@ -140,18 +227,45 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs, showToast }) {
     setLoading(true)
 
     try {
+      // Cek duplikat nama cabang (case-insensitive)
+      const existsBranch = (existingBranches || []).some(
+        (b) =>
+          (b.name || '').toLowerCase() === branchName.trim().toLowerCase(),
+      )
+      if (existsBranch) {
+        showToast?.(
+          'Nama cabang/bisnis sudah ada. Gunakan nama lain.',
+          'error',
+        )
+        setLoading(false)
+        return
+      }
+
       const branchPayload = {
         name: branchName.trim(),
-        branch_type: branchType, // enum sesuai BranchType (LAUNDRY/CARWASH/..)
+        branch_type: branchType,
       }
       await createBranch(branchPayload)
 
+      // Buat kategori INCOME / EXPENSE; backend sebaiknya handle dedup,
+      // tapi di sini juga kita kirim sekali per nama unik.
+      const uniqueIncome = Array.from(
+        new Set(incomeCategories.map((c) => c.trim()).filter(Boolean)),
+      )
+      const uniqueExpense = Array.from(
+        new Set(expenseCategories.map((c) => c.trim()).filter(Boolean)),
+      )
+
       const promises = []
-      incomeCategories.forEach((name) => {
-        promises.push(createCategory({ name, transaction_type: 'INCOME' }))
+      uniqueIncome.forEach((name) => {
+        promises.push(
+          createCategory({ name, transaction_type: 'INCOME' }),
+        )
       })
-      expenseCategories.forEach((name) => {
-        promises.push(createCategory({ name, transaction_type: 'EXPENSE' }))
+      uniqueExpense.forEach((name) => {
+        promises.push(
+          createCategory({ name, transaction_type: 'EXPENSE' }),
+        )
       })
       await Promise.all(promises)
 
@@ -312,6 +426,23 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs, showToast }) {
                     outline: 'none',
                   }}
                 />
+                {/* opsional: tampilkan info kalau nama sudah ada */}
+                {branchName.trim() &&
+                  existingBranches.some(
+                    (b) =>
+                      (b.name || '').toLowerCase() ===
+                      branchName.trim().toLowerCase(),
+                  ) && (
+                    <p
+                      style={{
+                        marginTop: 4,
+                        fontSize: 11,
+                        color: '#f97373',
+                      }}
+                    >
+                      Nama ini sudah dipakai cabang lain.
+                    </p>
+                  )}
               </div>
 
               <div>
@@ -374,7 +505,7 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs, showToast }) {
                     style={{
                       display: 'flex',
                       gap: 8,
-                      marginBottom: 8,
+                      marginBottom: 4,
                     }}
                   >
                     <input
@@ -415,6 +546,40 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs, showToast }) {
                       Tambah
                     </button>
                   </div>
+                  {/* suggestions income */}
+                  {incomeSuggestions.length > 0 && (
+                    <div
+                      style={{
+                        backgroundColor: 'var(--bg)',
+                        borderRadius: 10,
+                        border: '1px solid var(--border)',
+                        marginBottom: 6,
+                        maxHeight: 140,
+                        overflowY: 'auto',
+                      }}
+                    >
+                      {incomeSuggestions.map((name) => (
+                        <button
+                          key={name}
+                          type="button"
+                          onClick={() => handleIncomeSuggestionClick(name)}
+                          style={{
+                            display: 'block',
+                            width: '100%',
+                            textAlign: 'left',
+                            padding: '0.4rem 0.7rem',
+                            border: 'none',
+                            background: 'transparent',
+                            color: 'var(--text)',
+                            fontSize: 12,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          {name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                   <div
                     style={{
                       display: 'flex',
@@ -482,7 +647,7 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs, showToast }) {
                     style={{
                       display: 'flex',
                       gap: 8,
-                      marginBottom: 8,
+                      marginBottom: 4,
                     }}
                   >
                     <input
@@ -523,6 +688,40 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs, showToast }) {
                       Tambah
                     </button>
                   </div>
+                  {/* suggestions expense */}
+                  {expenseSuggestions.length > 0 && (
+                    <div
+                      style={{
+                        backgroundColor: 'var(--bg)',
+                        borderRadius: 10,
+                        border: '1px solid var(--border)',
+                        marginBottom: 6,
+                        maxHeight: 140,
+                        overflowY: 'auto',
+                      }}
+                    >
+                      {expenseSuggestions.map((name) => (
+                        <button
+                          key={name}
+                          type="button"
+                          onClick={() => handleExpenseSuggestionClick(name)}
+                          style={{
+                            display: 'block',
+                            width: '100%',
+                            textAlign: 'left',
+                            padding: '0.4rem 0.7rem',
+                            border: 'none',
+                            background: 'transparent',
+                            color: 'var(--text)',
+                            fontSize: 12,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          {name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                   <div
                     style={{
                       display: 'flex',
