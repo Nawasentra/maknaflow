@@ -335,7 +335,9 @@ function ConfirmDialog({ title, description, onCancel, onConfirm }) {
           padding: '1.5rem',
         }}
       >
-        <h2 style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '0.5rem' }}>{title}</h2>
+        <h2 style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '0.5rem' }}>
+          {title}
+        </h2>
         <p style={{ fontSize: '0.9rem', color: 'var(--subtext)', marginBottom: '1.5rem' }}>
           {description}
         </p>
@@ -394,17 +396,14 @@ function AddTransactionModal({
     [businessConfigs, existingData],
   )
 
-  const [unitBusiness, setUnitBusiness] = useState(unitOptions[0] || '')
+  // Initial states as requested
+  const [unitBusiness, setUnitBusiness] = useState('')
+  const [branch, setBranch] = useState('')
+  const [date, setDate] = useState('')
+
   const configForUnit = useMemo(
     () => businessConfigs.find((b) => b.unitBusiness === unitBusiness && b.active),
     [businessConfigs, unitBusiness],
-  )
-
-  const [branch, setBranch] = useState('')
-  const [date, setDate] = useState(
-    appSettings.defaultDateMode === 'today'
-      ? new Date().toISOString().slice(0, 10)
-      : '',
   )
 
   const initialType =
@@ -448,28 +447,8 @@ function AddTransactionModal({
     return unique(existingData.map((t) => t.category))
   }, [configForUnit, branch, type, existingData, unitBusiness])
 
-  const pembayaranOptions = useMemo(
-    () => unique(existingData.map((t) => t.payment)),
-    [existingData],
-  )
-
-  React.useEffect(() => {
-    if (branchOptions.length && !branchOptions.includes(branch)) {
-      setBranch(branchOptions[0])
-    }
-  }, [branchOptions, branch])
-
-  React.useEffect(() => {
-    if (!payment && pembayaranOptions.length) {
-      setPayment(pembayaranOptions[0])
-    }
-  }, [pembayaranOptions, payment])
-
-  React.useEffect(() => {
-    if (kategoriOptions.length && !kategoriOptions.includes(category)) {
-      setCategory(kategoriOptions[0])
-    }
-  }, [kategoriOptions, category])
+  // Fixed pembayaran options
+  const pembayaranOptions = ['QRIS', 'Cash', 'Transfer']
 
   const formatAmountDisplay = (raw) => {
     const digits = raw.replace(/[^\d]/g, '')
@@ -571,6 +550,7 @@ function AddTransactionModal({
               }}
               style={inputStyle}
             >
+              <option value="">Pilih unit bisnis</option>
               {unitOptions.map((u) => (
                 <option key={u} value={u}>
                   {u}
@@ -585,6 +565,7 @@ function AddTransactionModal({
               onChange={(e) => setBranch(e.target.value)}
               style={inputStyle}
             >
+              <option value="">Pilih cabang</option>
               {branchOptions.map((b) => (
                 <option key={b} value={b}>
                   {b}
@@ -610,15 +591,12 @@ function AddTransactionModal({
               onChange={(e) => setCategory(e.target.value)}
               style={inputStyle}
             >
-              {kategoriOptions.length === 0 ? (
-                <option value="">Belum ada kategori untuk tipe ini</option>
-              ) : (
-                kategoriOptions.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))
-              )}
+              <option value="">Pilih kategori</option>
+              {kategoriOptions.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
             </select>
           </Field>
 
@@ -641,6 +619,7 @@ function AddTransactionModal({
               onChange={(e) => setPayment(e.target.value)}
               style={inputStyle}
             >
+              <option value="">Pilih pembayaran</option>
               {pembayaranOptions.map((p) => (
                 <option key={p} value={p}>
                   {p}
