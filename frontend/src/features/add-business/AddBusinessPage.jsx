@@ -25,14 +25,16 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs, showToast }) {
   const [expenseInput, setExpenseInput] = useState('')
   const [loading, setLoading] = useState(false)
 
-  // If user selects an existing type and you already have defaults, preload them
+  // preload defaults if selecting an existing type
   useEffect(() => {
     if (!branchType) {
       setIncomeCategories([])
       setExpenseCategories([])
       return
     }
-    const cfg = businessConfigs.find((b) => b.branch_type === branchType || b.id === branchType)
+    const cfg = (Array.isArray(businessConfigs) ? businessConfigs : []).find(
+      (b) => b.branch_type === branchType || b.id === branchType,
+    )
     if (!cfg) {
       setIncomeCategories([])
       setExpenseCategories([])
@@ -94,7 +96,9 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs, showToast }) {
     ])
 
     const byType = {}
-    branches.forEach((br) => {
+
+    const branchArray = Array.isArray(branches) ? branches : []
+    branchArray.forEach((br) => {
       if (!byType[br.branch_type]) {
         byType[br.branch_type] = {
           id: br.branch_type,
@@ -113,7 +117,8 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs, showToast }) {
       })
     })
 
-    categories.forEach((cat) => {
+    const catArray = Array.isArray(categories) ? categories : []
+    catArray.forEach((cat) => {
       Object.values(byType).forEach((cfg) => {
         if (cat.transaction_type === 'INCOME') {
           if (!cfg.defaultIncomeCategories.includes(cat.name)) {
@@ -135,14 +140,12 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs, showToast }) {
     setLoading(true)
 
     try {
-      // 1) Create branch
       const branchPayload = {
         name: branchName.trim(),
         branch_type: branchType,
       }
       await createBranch(branchPayload)
 
-      // 2) Create categories (global, not linked per-branch yet)
       const promises = []
       incomeCategories.forEach((name) => {
         promises.push(createCategory({ name, transaction_type: 'INCOME' }))
@@ -152,7 +155,6 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs, showToast }) {
       })
       await Promise.all(promises)
 
-      // 3) Sync local config with backend
       await rebuildBusinessConfigsFromApi()
 
       resetForm()

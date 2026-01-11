@@ -1,3 +1,4 @@
+// src/App.jsx
 import React, { useState, useEffect } from 'react'
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
 import LoginPage from './features/auth/LoginPage'
@@ -98,11 +99,27 @@ function parseJwt(token) {
 
 function App() {
   const [transactions, setTransactions] = useState([])
-  const [businessConfigs, setBusinessConfigs] = useState(initialBusinessConfigs)
+  // always keep businessConfigs as an array
+  const [businessConfigs, setBusinessConfigs] = useState(
+    Array.isArray(initialBusinessConfigs) ? initialBusinessConfigs : [],
+  )
   const [appSettings, setAppSettings] = useState(initialAppSettings)
   const [lastUsedType, setLastUsedType] = useState('Income')
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState('')
+
+  // wrapper to guarantee array for all callers
+  const safeSetBusinessConfigs = (next) => {
+    if (typeof next === 'function') {
+      setBusinessConfigs((prev) => {
+        const prevArray = Array.isArray(prev) ? prev : []
+        const computed = next(prevArray)
+        return Array.isArray(computed) ? computed : []
+      })
+    } else {
+      setBusinessConfigs(Array.isArray(next) ? next : [])
+    }
+  }
 
   // notification state (in-app bell)
   const [notifications, setNotifications] = useState([])
@@ -196,7 +213,6 @@ function App() {
   }
 
   // login that talks to backend
-  // googleAccessToken comes from useGoogleLogin in LoginPage
   const handleLoginSuccess = async (googleAccessToken) => {
     try {
       const res = await fetch(
@@ -230,7 +246,6 @@ function App() {
 
       localStorage.setItem('auth_token', backendToken)
 
-      // Optional: decode access token only if it is actually a JWT
       const payload = parseJwt(googleAccessToken)
       if (payload) {
         const u = {
@@ -263,7 +278,7 @@ function App() {
       transactions={transactions}
       setTransactions={setTransactions}
       businessConfigs={businessConfigs}
-      setBusinessConfigs={setBusinessConfigs}
+      setBusinessConfigs={safeSetBusinessConfigs}
       appSettings={appSettings}
       setAppSettings={setAppSettings}
       lastUsedType={lastUsedType}
@@ -341,14 +356,9 @@ function App() {
                   borderRadius: 12,
                   boxShadow: '0 10px 25px rgba(0,0,0,0.35)',
                   fontSize: '0.85rem',
-                  maxWidth: 320,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 8,
                 }}
               >
-                <span>{toast.type === 'error' ? '⚠️' : '✅'}</span>
-                <span>{toast.message}</span>
+                {toast.message}
               </div>
             ))}
           </div>
