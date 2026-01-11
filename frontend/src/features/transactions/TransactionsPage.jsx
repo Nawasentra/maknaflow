@@ -5,6 +5,7 @@ import {
   deleteTransaction,
   fetchBranches,
   fetchCategories,
+  fetchTransactions,
 } from '../../lib/api/transactions'
 
 const inputStyle = {
@@ -44,7 +45,6 @@ function TransactionsPage({
   lastUsedType,
   setLastUsedType,
   showToast,
-  onRefresh,
 }) {
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
@@ -69,14 +69,33 @@ function TransactionsPage({
   const setSafeBranches = (br) => setBranches(Array.isArray(br) ? br : [])
   const setSafeCategories = (cat) => setCategories(Array.isArray(cat) ? cat : [])
 
-  // --- Load branches & categories ---
+  // --- Load branches, categories, dan transaksi awal ---
+  const reloadTransactions = async () => {
+    try {
+      setLoading(true)
+      const data = await fetchTransactions()
+      setTransactions(Array.isArray(data) ? data : [])
+      showToast?.('Transaksi berhasil dimuat ulang.')
+    } catch (e) {
+      console.error(e)
+      showToast?.('Gagal memuat ulang transaksi.', 'error')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   useEffect(() => {
     const loadMeta = async () => {
       try {
         setLoading(true)
-        const [br, cat] = await Promise.all([fetchBranches(), fetchCategories()])
+        const [br, cat, tx] = await Promise.all([
+          fetchBranches(),
+          fetchCategories(),
+          fetchTransactions(),
+        ])
         setSafeBranches(br)
         setSafeCategories(cat)
+        setTransactions(Array.isArray(tx) ? tx : [])
       } catch (e) {
         console.error(e)
         showToast?.('Gagal memuat data referensi.', 'error')
@@ -322,7 +341,7 @@ function TransactionsPage({
                 }}
               />
               <button
-                onClick={onRefresh}
+                onClick={reloadTransactions}
                 style={{
                   backgroundColor: 'transparent',
                   color: 'var(--subtext)',
@@ -457,6 +476,10 @@ function TransactionsPage({
                 />
                 <ThSortable label="Tipe" onClick={() => handleSort('type')} />
                 <ThSortable label="Jumlah" onClick={() => handleSort('amount')} />
+                <ThSortable
+                  label="Pembayaran"
+                  onClick={() => handleSort('payment')}
+                />
                 <ThSortable label="Source" onClick={() => handleSort('source')} />
                 <th
                   style={{
@@ -476,7 +499,7 @@ function TransactionsPage({
               {paginatedTransactions.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={8}
+                    colSpan={9}
                     style={{
                       padding: '1.5rem',
                       textAlign: 'center',
@@ -731,7 +754,6 @@ function AddTransactionModal({
     ? businessConfigs
     : []
 
-  // Filter kategori berdasarkan cabang + tipe
   const filteredCategories = useMemo(() => {
     const txType = type === 'Income' ? 'INCOME' : 'EXPENSE'
     const pool = safeCategories.filter((c) => c.transaction_type === txType)
@@ -798,8 +820,6 @@ function AddTransactionModal({
       amount: numericAmount,
       payment,
       description,
-
-      // Khusus transaksi dari halaman ini (Manual)
       source: 'Manual',
       sourceIdentifier: `manual-entry-${Date.now()}`,
     }
@@ -821,11 +841,12 @@ function AddTransactionModal({
     >
       <div
         style={{
-          width: 420,
+          width: 640,
+          maxWidth: '95vw',
           backgroundColor: 'var(--bg-elevated)',
           borderRadius: 16,
           border: '1px solid var(--border)',
-          padding: '1.5rem',
+          padding: '1.5rem 1.75rem 1.25rem',
           boxSizing: 'border-box',
         }}
       >
@@ -856,110 +877,134 @@ function AddTransactionModal({
 
         <div
           style={{
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '0.75rem',
+            display: 'grid',
+            gridTemplateColumns: '1fr 1fr',
+            gap: '0.9rem 1.25rem',
             marginBottom: '1.25rem',
           }}
         >
-          <Field label="Tanggal">
-            <input
-              type="date"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-              style={{ ...inputStyle, width: '100%' }}
-            />
-          </Field>
-
-          <Field label="Cabang">
-            <select
-              value={branchId}
-              onChange={(e) => {
-                setBranchId(e.target.value)
-                setCategoryId('')
-              }}
-              style={inputStyle}
-            >
-              <option value="">Pilih cabang</option>
-              {safeBranches.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.name}
-                </option>
-              ))}
-            </select>
-          </Field>
-
-          <Field label="Tipe">
-            <select
-              value={type}
-              onChange={(e) => {
-                setType(e.target.value)
-                setCategoryId('')
-              }}
-              style={inputStyle}
-            >
-              <option value="Income">Income</option>
-              <option value="Expense">Expense</option>
-            </select>
-          </Field>
-
-          <Field label="Kategori">
-            <select
-              value={categoryId}
-              onChange={(e) => setCategoryId(e.target.value)}
-              style={inputStyle}
-            >
-              <option value="">Pilih kategori</option>
-              {filteredCategories.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </Field>
-
-          <Field label="Jumlah">
-            <div
-              style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}
-            >
-              <span
-                style={{ fontSize: '0.9rem', color: 'var(--subtext)' }}
-              >
-                Rp
-              </span>
+          <div>
+            <Field label="Tanggal">
               <input
-                type="text"
-                value={amountInput}
-                onChange={handleAmountChange}
-                placeholder="250000"
-                style={{ ...inputStyle, flex: 1 }}
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                style={{
+                  ...inputStyle,
+                  width: '100%',
+                  borderColor: 'rgba(148,163,184,0.8)',
+                  colorScheme: 'dark',
+                  cursor: 'pointer',
+                }}
               />
-            </div>
-          </Field>
+            </Field>
+          </div>
 
-          <Field label="Pembayaran">
-            <select
-              value={payment}
-              onChange={(e) => setPayment(e.target.value)}
-              style={inputStyle}
-            >
-              <option value="">Pilih pembayaran</option>
-              {pembayaranOptions.map((p) => (
-                <option key={p.value} value={p.value}>
-                  {p.label}
-                </option>
-              ))}
-            </select>
-          </Field>
+          <div>
+            <Field label="Cabang">
+              <select
+                value={branchId}
+                onChange={(e) => {
+                  setBranchId(e.target.value)
+                  setCategoryId('')
+                }}
+                style={inputStyle}
+              >
+                <option value="">Pilih cabang</option>
+                {safeBranches.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          </div>
 
-          <Field label="Deskripsi (opsional)">
-            <textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              rows={3}
-              style={{ ...inputStyle, resize: 'vertical' }}
-            />
-          </Field>
+          <div>
+            <Field label="Tipe">
+              <select
+                value={type}
+                onChange={(e) => {
+                  setType(e.target.value)
+                  setCategoryId('')
+                }}
+                style={inputStyle}
+              >
+                <option value="Income">Income</option>
+                <option value="Expense">Expense</option>
+              </select>
+            </Field>
+          </div>
+
+          <div>
+            <Field label="Kategori">
+              <select
+                value={categoryId}
+                onChange={(e) => setCategoryId(e.target.value)}
+                style={inputStyle}
+              >
+                <option value="">Pilih kategori</option>
+                {filteredCategories.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          </div>
+
+          <div>
+            <Field label="Jumlah">
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.4rem',
+                }}
+              >
+                <span
+                  style={{ fontSize: '0.9rem', color: 'var(--subtext)' }}
+                >
+                  Rp
+                </span>
+                <input
+                  type="text"
+                  value={amountInput}
+                  onChange={handleAmountChange}
+                  placeholder="250000"
+                  style={{ ...inputStyle, flex: 1 }}
+                />
+              </div>
+            </Field>
+          </div>
+
+          <div>
+            <Field label="Pembayaran">
+              <select
+                value={payment}
+                onChange={(e) => setPayment(e.target.value)}
+                style={inputStyle}
+              >
+                <option value="">Pilih pembayaran</option>
+                {pembayaranOptions.map((p) => (
+                  <option key={p.value} value={p.value}>
+                    {p.label}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          </div>
+
+          <div style={{ gridColumn: '1 / span 2' }}>
+            <Field label="Deskripsi (opsional)">
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                rows={3}
+                style={{ ...inputStyle, resize: 'vertical' }}
+              />
+            </Field>
+          </div>
         </div>
 
         <div
@@ -1006,17 +1051,17 @@ function TransactionRow({ transaction, onAskDelete }) {
 
   const sourceColor =
     source === 'Email'
-      ? '#60a5fa'
+      ? '#2563eb'
       : source === 'Whatsapp'
-      ? '#22c55e'
-      : '#e5e7eb'
+      ? '#059669'
+      : '#111827'
 
   const sourceBg =
     source === 'Email'
-      ? 'rgba(59, 130, 246, 0.15)'
+      ? 'rgba(37, 99, 235, 0.1)'
       : source === 'Whatsapp'
-      ? 'rgba(34, 197, 94, 0.15)'
-      : 'rgba(148, 163, 184, 0.12)'
+      ? 'rgba(5, 150, 105, 0.1)'
+      : 'rgba(17, 24, 39, 0.06)'
 
   return (
     <tr style={{ borderBottom: '1px solid var(--border)' }}>
@@ -1076,6 +1121,17 @@ function TransactionRow({ transaction, onAskDelete }) {
         }}
       >
         Rp {new Intl.NumberFormat('id-ID').format(transaction.amount)}
+      </td>
+      <td style={{ padding: '1rem 1.5rem', color: 'var(--text)' }}>
+        {transaction.source === 'Email'
+          ? '-'
+          : transaction.payment === 'CASH'
+          ? 'Cash'
+          : transaction.payment === 'QRIS'
+          ? 'QRIS'
+          : transaction.payment === 'TRANSFER'
+          ? 'Transfer'
+          : '-'}
       </td>
       <td style={{ padding: '1rem 1.5rem' }}>
         <span
