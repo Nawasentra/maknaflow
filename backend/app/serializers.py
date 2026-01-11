@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Branch, User, Category, Transaction, IngestionLog
+from .models import Branch, User, Category, Transaction, IngestionLog, DailySummary
 
 # ==============================================
 # 1. REFERENCE SERIALIZERS
@@ -155,3 +155,45 @@ class WhatsAppWebhookPayloadSerializer(serializers.Serializer):
     branch_id = serializers.IntegerField()
     phone_number = serializers.CharField(max_length=20)
     message = serializers.CharField(max_length=1000)
+
+# ==============================================
+# 5. DAILY SUMMARY SERIALIZER
+# ==============================================
+
+class DailySummarySerializer(serializers.ModelSerializer):
+    branch_name = serializers.CharField(source='branch.name', read_only=True)
+    branch_type = serializers.CharField(source='branch.branch_type', read_only=True)
+    
+    class Meta:
+        model = DailySummary
+        fields = [
+            'id',
+            'branch',
+            'branch_name',
+            'branch_type',
+            'date',
+            'source',
+            
+            # Summary totals
+            'gross_sales',
+            'total_discount',
+            'net_sales',
+            'total_tax',
+            'total_collected',
+            
+            # Payment breakdown
+            'cash_amount',
+            'qris_amount',
+            'transfer_amount',
+            
+            # Metadata
+            'created_at',
+            'updated_at',
+        ]
+        read_only_fields = [
+            'id',
+            'branch_name',
+            'branch_type',
+            'created_at',
+            'updated_at',
+        ]

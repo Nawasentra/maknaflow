@@ -220,3 +220,65 @@ class Transaction(TimeStampedModel):
         if not self.pk and self.reported_by and self.reported_by.is_verified:
             self.is_verified = True
         super().save(*args, **kwargs)
+
+class DailySummary(TimeStampedModel):
+    """
+    Aggregated daily sales summary from POS systems (Luna/Hitachi)
+    Stores totals with payment method breakdown
+    """
+    branch = models.ForeignKey(
+        'Branch',
+        on_delete=models.CASCADE,
+        related_name='daily_summaries'
+    )
+    date = models.DateField(help_text="Date of the sales summary")
+    source = models.CharField(
+        max_length=20,
+        choices=TransactionSource.choices,
+        help_text="Email source: Luna or Hitachi"
+    )
+    
+    # Summary totals
+    gross_sales = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    total_discount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    net_sales = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    total_tax = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    total_collected = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    
+    # Payment breakdown (for Luna)
+    cash_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    qris_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    transfer_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    
+    # Raw data for reference
+    raw_data = models.JSONField(
+        blank=True,
+        null=True,
+        help_text="Full parsed data from email (top products, categories, etc.)"
+    )
+    
+    # Link to ingestion log
+    ingestion_log = models.ForeignKey(
+        'IngestionLog',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='daily_summaries'
+    )
+
+    class Meta:
+        verbose_name_plural = "Daily Summaries"
+        ordering = ['-date', '-created_at']
+        indexes = [
+            models.Index(fields=['date', 'branch']),
+            models.Index(fields=['source', 'date']),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=['branch', 'date', 'source'],
+                name='unique_daily_summary'
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.date} - {self.branch.name} - {self.source} - Rp {self.total_collected:,}"

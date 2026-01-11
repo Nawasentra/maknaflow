@@ -8,6 +8,7 @@ from app.views import (
     TransactionViewSet,
     UserViewSet,
     IngestionLogViewSet,
+    DailySummaryViewSet,
     EmailIngestionWebhook,
     WhatsAppWebhookView,
 )
@@ -19,6 +20,7 @@ router.register(r'categories', CategoryViewSet, basename='category')
 router.register(r'transactions', TransactionViewSet, basename='transaction')
 router.register(r'users', UserViewSet, basename='user')
 router.register(r'ingestion-logs', IngestionLogViewSet, basename='ingestionlog')
+router.register(r'daily-summaries', DailySummaryViewSet, basename='dailysummary')
 
 urlpatterns = [
     path('', views.home, name='home'),

@@ -80,13 +80,14 @@ from decouple import config
 from django.conf import settings
 import logging
 
-from .models import Branch, Category, Transaction, User, IngestionLog, TransactionSource, IngestionStatus
+from .models import Branch, Category, Transaction, User, IngestionLog, DailySummary, TransactionSource, IngestionStatus
 from .serializers import (
     BranchSerializer,
     CategorySerializer,
     TransactionSerializer,
     UserSerializer,
     IngestionLogSerializer,
+    DailySummarySerializer,
     WhatsAppWebhookPayloadSerializer,
 )
 from .permissions import (
@@ -506,6 +507,75 @@ class IngestionLogViewSet(viewsets.ReadOnlyModelViewSet):
     filterset_fields = ['source', 'status']
     ordering_fields = ['created_at']
     ordering = ['-created_at']
+
+
+# ==========================================
+# DAILY SUMMARY VIEWSET
+# ==========================================
+
+class DailySummaryViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    ViewSet for viewing Daily Summaries from email ingestion
+    - Owner: See all summaries
+    - Staff: See only their branch summaries
+    """
+    queryset = DailySummary.objects.all()
+    serializer_class = DailySummarySerializer
+    permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    filterset_fields = ['branch', 'date', 'source']
+    ordering_fields = ['date', 'created_at']
+    ordering = ['-date', '-created_at']
+
+    def get_queryset(self):
+        """
+        Filter summaries based on user role
+        - Owner: sees all
+        - Staff: sees only their branch's summaries
+        """
+        if self.request.user.is_superuser:
+            return DailySummary.objects.all()
+        
+        if self.request.user.assigned_branch:
+            return DailySummary.objects.filter(branch=self.request.user.assigned_branch)
+        
+        return DailySummary.objects.none()
+
+    @action(detail=False, methods=['get'], permission_classes=[IsAuthenticated])
+    def payment_breakdown(self, request):
+        """
+        Get aggregated payment breakdown across all summaries
+        Useful for dashboard pie chart
+        """
+        queryset = self.filter_queryset(self.get_queryset())
+        
+        # Allow filtering by date range
+        start_date = request.query_params.get('start_date')
+        end_date = request.query_params.get('end_date')
+        
+        if start_date:
+            queryset = queryset.filter(date__gte=start_date)
+        if end_date:
+            queryset = queryset.filter(date__lte=end_date)
+        
+        # Aggregate payment methods
+        from django.db.models import Sum
+        aggregates = queryset.aggregate(
+            total_cash=Sum('cash_amount'),
+            total_qris=Sum('qris_amount'),
+            total_transfer=Sum('transfer_amount')
+        )
+        
+        return Response({
+            'cash': float(aggregates['total_cash'] or 0),
+            'qris': float(aggregates['total_qris'] or 0),
+            'transfer': float(aggregates['total_transfer'] or 0),
+            'total': float(
+                (aggregates['total_cash'] or 0) + 
+                (aggregates['total_qris'] or 0) + 
+                (aggregates['total_transfer'] or 0)
+            )
+        })
 
 
 # ==========================================

@@ -5,7 +5,7 @@ from datetime import date, datetime
 import logging
 import re
 from app.models import (
-    Transaction, Category, Branch, 
+    Transaction, Category, Branch, DailySummary,
     TransactionType, TransactionSource, BranchType
 )
 from .luna_parser import parse_luna_email
@@ -49,15 +49,17 @@ class EmailWebhookService:
         except Exception as e:
             logger.warning("Failed to find user by email '%s': %s", sender, e)
 
-        # Create transactions
+        # Create daily summary AND individual transactions
         if email_type == "LUNA":
-            transactions = self._create_transactions(branch, user, subject, parsed_data, TransactionType.INCOME, "top_products", "LUNA POS")
-            logger.info(f"Created {len(transactions)} transactions from Luna")
-            return f"Created {len(transactions)} transactions from Luna"
+            summary = self._create_luna_summary(branch, user, subject, parsed_data)
+            transactions = self._create_transactions(branch, user, subject, parsed_data, TransactionType.INCOME, "top_products", "Luna POS")
+            logger.info(f"Created Luna summary + {len(transactions)} transactions")
+            return f"Created Luna summary + {len(transactions)} transactions"
         elif email_type == "HITACHI":
+            summary = self._create_hitachi_summary(branch, user, subject, parsed_data)
             transactions = self._create_transactions(branch, user, subject, parsed_data, TransactionType.INCOME, "top_items", "Hitachi")
-            logger.info(f"Created {len(transactions)} transactions from Hitachi")
-            return f"Created {len(transactions)} transactions from Hitachi"
+            logger.info(f"Created Hitachi summary + {len(transactions)} transactions")
+            return f"Created Hitachi summary + {len(transactions)} transactions"
         else:
             logger.info(f"Unknown email type: {email_type}")
             return f"Processed email with unknown type: {email_type}"
@@ -159,83 +161,144 @@ class EmailWebhookService:
                 logger.warning(f"User with email {email_addr} not found")
         return None
 
-    def _create_transactions(self, branch, user, subject, parsed_data, trx_type, items_key, desc_prefix):
+    def _create_luna_summary(self, branch, user, subject, parsed_data):
         """
-        Create Transaction records from parsed data
+        Create DailySummary from Luna email
         """
-        logger.debug(f"Creating transactions - Branch: {branch.name}, Items key: {items_key}")
+        logger.debug(f"Creating Luna summary - Branch: {branch.name}")
         
+        transaction_date = self._parse_date(parsed_data.get("metadata", {}))
+        summary_data = parsed_data.get("summary", {})
+        payments = parsed_data.get("payments", {})
+        
+        try:
+            summary, created = DailySummary.objects.update_or_create(
+                branch=branch,
+                date=transaction_date,
+                source=TransactionSource.EMAIL,
+                defaults={
+                    'gross_sales': summary_data.get("gross_sales", 0),
+                    'total_discount': summary_data.get("total_discount", 0),
+                    'net_sales': summary_data.get("net_sales", 0),
+                    'total_tax': summary_data.get("total_tax", 0),
+                    'total_collected': summary_data.get("total_collected", 0),
+                    'cash_amount': payments.get("cash", 0),
+                    'qris_amount': payments.get("qris", 0),
+                    'transfer_amount': payments.get("transfer", 0),
+                    'raw_data': parsed_data,
+                }
+            )
+            
+            action = "Created" if created else "Updated"
+            logger.info(f"{action} Luna summary ID {summary.id} for {transaction_date}")
+            return summary
+            
+        except Exception as e:
+            logger.error(f"Failed to create Luna summary: {e}", exc_info=True)
+            raise
+
+    def _create_hitachi_summary(self, branch, user, subject, parsed_data):
+        """
+        Create DailySummary from Hitachi email
+        """
+        logger.debug(f"Creating Hitachi summary - Branch: {branch.name}")
+        
+        transaction_date = self._parse_date(parsed_data.get("metadata", {}))
+        summary_data = parsed_data.get("summary", {})
+        
+        try:
+            summary, created = DailySummary.objects.update_or_create(
+                branch=branch,
+                date=transaction_date,
+                source=TransactionSource.EMAIL,
+                defaults={
+                    'gross_sales': summary_data.get("gross_sales", 0),
+                    'total_discount': summary_data.get("total_discount", 0),
+                    'net_sales': summary_data.get("net_sales", 0),
+                    'total_tax': summary_data.get("total_tax", 0),
+                    'total_collected': summary_data.get("total_collected", 0),
+                    'cash_amount': 0,
+                    'qris_amount': 0,  # Hitachi doesn't provide payment breakdown
+                    'transfer_amount': 0,
+                    'raw_data': parsed_data,
+                }
+            )
+            
+            action = "Created" if created else "Updated"
+            logger.info(f"{action} Hitachi summary ID {summary.id} for {transaction_date}")
+            return summary
+            
+        except Exception as e:
+            logger.error(f"Failed to create Hitachi summary: {e}", exc_info=True)
+            raise
+
+    def _parse_date(self, metadata):
+        """
+        Extract and parse date from metadata
+        """
         transaction_date = date.today()
-        metadata = (parsed_data or {}).get("metadata", {})
-        
         if metadata.get("date"):
             try:
                 date_str = str(metadata["date"]).strip()
-                logger.debug(f"Parsing date: {date_str}")
                 date_formats = [
-                    "%A, %B %d, %Y",  # e.g. Tuesday, November 5, 2025
-                    "%B %d, %Y",      # e.g. November 5, 2025
-                    "%Y-%m-%d",       # e.g. 2025-11-05
-                    "%d %B %Y",       # e.g. 31 October 2025
+                    "%A, %B %d, %Y",
+                    "%B %d, %Y",
+                    "%Y-%m-%d",
+                    "%d %B %Y",
                 ]
                 for fmt in date_formats:
                     try:
                         transaction_date = datetime.strptime(date_str, fmt).date()
-                        logger.debug(f"Successfully parsed date with format {fmt}: {transaction_date}")
                         break
                     except ValueError:
                         continue
             except Exception as e:
-                logger.warning("Failed to parse date '%s': %s", metadata.get("date"), e)
+                logger.warning(f"Failed to parse date: {e}")
+        return transaction_date
+
+    def _create_transactions(self, branch, user, subject, parsed_data, transaction_type, items_key, source_prefix):
+        """
+        Create individual transactions from parsed data
+        """
+        logger.debug(f"Creating transactions - Branch: {branch.name}, Type: {transaction_type}")
         
         transactions = []
-        duplicates = 0
-        category_cache = {}
-        items = (parsed_data or {}).get(items_key, [])
-        logger.info(f"Processing {len(items)} items for transactions")
+        transaction_date = self._parse_date(parsed_data.get("metadata", {}))
+        items = parsed_data.get(items_key, [])
         
         for item in items:
-            name = item.get("name")
-            amount = int(item.get("amount", 0))
-            logger.debug(f"Processing item: {name}, Amount: {amount}")
-            
-            if not name or not amount:
-                logger.debug(f"Skipping item (missing name or zero amount): {item}")
-                continue
-            
             try:
-                cache_key = (name, trx_type)
-                category = category_cache.get(cache_key)
-                if category is None:
-                    category, cat_created = Category.objects.get_or_create(
-                        name=name,
-                        transaction_type=trx_type
-                    )
-                    category.branches.add(branch)
-                    category_cache[cache_key] = category
-                    if cat_created:
-                        logger.debug(f"Created new category: {name}")
-                    else:
-                        logger.debug(f"Found existing category: {name}")
+                # Extract item details
+                description = item.get("description") or item.get("item_name")
+                amount = item.get("amount") or item.get("total")
+                qty = item.get("quantity") or item.get("qty")
                 
-                trans = Transaction.objects.create(
+                # Fallback to description if no item code
+                item_code = item.get("item_code") or item.get("code") or ""
+                if not item_code and description:
+                    item_code = re.sub(r'\W+', '', description)[:10]  # Fallback to a sanitized version of the description
+                    logger.info(f"Fallback item code for '{description}': {item_code}")
+                
+                # Create transaction
+                transaction, created = Transaction.objects.get_or_create(
                     branch=branch,
-                    reported_by=user,
-                    amount=amount,
-                    transaction_type=trx_type,
-                    category=category,
                     date=transaction_date,
-                    description=f"{desc_prefix}: {name} ({subject})",
-                    source=TransactionSource.EMAIL,
+                    type=transaction_type,
+                    amount=amount,
+                    defaults={
+                        'user': user,
+                        'description': description,
+                        'quantity': qty,
+                        'item_code': item_code,
+                        'source': f"{source_prefix} - {branch.name}",
+                        'raw_data': item,
+                    }
                 )
-                transactions.append(trans)
-                logger.debug(f"Created transaction ID {trans.id} for {name}: Rp {amount:,}")
-            except IntegrityError:
-                duplicates += 1
-                logger.warning(f"Duplicate transaction skipped for {name}: Rp {amount:,} on {transaction_date}")
-                continue
+                
+                transactions.append(transaction)
+                logger.info(f"{'Created' if created else 'Found'} transaction ID {transaction.id} for {description}")
+            
             except Exception as e:
-                logger.error(f"Failed to create transaction for item {item}: {e}", exc_info=True)
+                logger.error(f"Failed to create transaction for {item}: {e}", exc_info=True)
         
-        logger.info(f"Successfully created {len(transactions)} transactions ({duplicates} duplicates skipped)")
         return transactions
