@@ -64,7 +64,7 @@ function TransactionsPage({
 
   // PAGINATION STATE
   const [currentPage, setCurrentPage] = useState(1)
-  const pageSize = 10 // ganti kalau mau 20/50 dll
+  const pageSize = 10
 
   const setSafeBranches = (br) => setBranches(Array.isArray(br) ? br : [])
   const setSafeCategories = (cat) => setCategories(Array.isArray(cat) ? cat : [])
@@ -118,7 +118,6 @@ function TransactionsPage({
 
   // --- Filter transaksi berdasarkan search + Unit + Cabang ---
   const filteredTransactions = safeTransactions.filter((t) => {
-    // Search term
     if (searchTerm) {
       const q = searchTerm.toLowerCase()
       const matchSearch =
@@ -131,12 +130,10 @@ function TransactionsPage({
       if (!matchSearch) return false
     }
 
-    // Unit filter
     if (filterUnit !== 'Semua Unit' && t.unitBusiness !== filterUnit) {
       return false
     }
 
-    // Branch filter
     if (filterBranch !== 'Semua Cabang' && t.branch !== filterBranch) {
       return false
     }

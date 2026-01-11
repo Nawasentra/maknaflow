@@ -16,6 +16,12 @@ import {
   ResponsiveContainer,
 } from 'recharts'
 
+function parseLocalDate(isoDateStr) {
+  if (!isoDateStr) return null
+  const [year, month, day] = isoDateStr.split('-').map(Number)
+  return new Date(year, month - 1, day)
+}
+
 function DashboardPage({ transactions, isLoading, error }) {
   const [filterDate, setFilterDate] = useState('7 Hari Terakhir')
   const [filterUnit, setFilterUnit] = useState('Semua Unit')
@@ -66,18 +72,20 @@ function DashboardPage({ transactions, isLoading, error }) {
   const filteredTransactions = useMemo(() => {
     return (transactions || []).filter((t) => {
       if (!t.date) return false
-      const txDate = new Date(t.date)
+      const txDate = parseLocalDate(t.date)
+      if (!txDate || isNaN(txDate.getTime())) return false
 
       let inRange = true
       if (filterDate === 'Hari Ini') {
         inRange = txDate.toDateString() === startOfToday.toDateString()
       } else if (filterDate === '7 Hari Terakhir') {
-        inRange = txDate >= sevenDaysAgo && txDate <= today
+        inRange = txDate >= sevenDaysAgo && txDate <= startOfToday
       } else if (filterDate === 'Bulan Ini') {
-        inRange = txDate >= startOfMonth && txDate <= today
+        inRange = txDate >= startOfMonth && txDate <= startOfToday
       } else if (filterDate === 'Custom' && customStart && customEnd) {
-        const start = new Date(customStart)
-        const end = new Date(customEnd)
+        const start = parseLocalDate(customStart)
+        const end = parseLocalDate(customEnd)
+        if (!start || !end) return false
         inRange = txDate >= start && txDate <= end
       }
 
@@ -97,7 +105,6 @@ function DashboardPage({ transactions, isLoading, error }) {
     filterBranch,
     startOfToday,
     sevenDaysAgo,
-    today,
     startOfMonth,
   ])
 
@@ -145,10 +152,14 @@ function DashboardPage({ transactions, isLoading, error }) {
 
   const incomeSources = Object.entries(incomeSourcesMap).map(
     ([name, value]) => ({
-      name: name === 'CASH' ? 'Tunai' : 
-            name === 'QRIS' ? 'QRIS' : 
-            name === 'TRANSFER' ? 'Transfer' : 
-            'Tidak Diketahui',
+      name:
+        name === 'CASH'
+          ? 'Tunai'
+          : name === 'QRIS'
+          ? 'QRIS'
+          : name === 'TRANSFER'
+          ? 'Transfer'
+          : 'Tidak Diketahui',
       value,
     }),
   )
@@ -536,13 +547,12 @@ function DashboardPage({ transactions, isLoading, error }) {
                     outerRadius={80}
                     paddingAngle={3}
                   >
-                    {incomeSources.map((entry, index) => {
-                      // Warna berdasarkan nama metode
+                    {incomeSources.map((entry) => {
                       let color = '#6b7280' // Unknown
                       if (entry.name === 'Tunai') color = '#22c55e'
                       if (entry.name === 'QRIS') color = '#3b82f6'
                       if (entry.name === 'Transfer') color = '#f59e0b'
-                      
+
                       return <Cell key={entry.name} fill={color} />
                     })}
                   </Pie>
