@@ -1,6 +1,6 @@
 // src/features/settings/SettingsPage.jsx
 import React, { useState, useEffect } from 'react'
-import { updateBranch } from '../../lib/api/branchesCategories'
+import { updateBranch, deleteBranch } from '../../lib/api/branchesCategories'
 
 const BRANCH_TYPES = [
   { value: 'LAUNDRY', label: 'Laundry' },
@@ -29,6 +29,9 @@ function SettingsPage({
   const [selectedBranchId, setSelectedBranchId] = useState(
     selectedUnit && selectedUnit.branches.length ? selectedUnit.branches[0].id : '',
   )
+
+  const [confirmModal, setConfirmModal] = useState(null)
+  // shape: { type: 'toggle' | 'delete', branch }
 
   useEffect(() => {
     if (!selectedUnit) {
@@ -74,8 +77,16 @@ function SettingsPage({
     }
   }
 
-  // Simple UI-only toggle (backend has no active flag)
-  const handleToggleBranchActive = () => {
+  // UI-only toggle active flag (with confirm)
+  const requestToggleBranchActive = () => {
+    if (!selectedBranch) return
+    setConfirmModal({
+      type: 'toggle',
+      branch: selectedBranch,
+    })
+  }
+
+  const performToggleBranchActive = () => {
     if (!selectedBranch) return
     const nowActive = selectedBranch.active === false ? true : false
     setBusinessConfigs((prev) =>
@@ -97,6 +108,46 @@ function SettingsPage({
         ? `Berhasil mengaktifkan cabang ${selectedBranch.name}.`
         : `Berhasil menonaktifkan cabang ${selectedBranch.name}.`,
     )
+  }
+
+  // Delete branch (backend + update state)
+  const requestDeleteBranch = () => {
+    if (!selectedBranch) return
+    setConfirmModal({
+      type: 'delete',
+      branch: selectedBranch,
+    })
+  }
+
+  const performDeleteBranch = async () => {
+    if (!selectedBranch) return
+    try {
+      await deleteBranch(selectedBranch.id)
+      setBusinessConfigs((prev) =>
+        prev.map((u) =>
+          u.id === selectedUnit.id
+            ? {
+                ...u,
+                branches: u.branches.filter(
+                  (br) => br.id !== selectedBranch.id,
+                ),
+              }
+            : u,
+        ),
+      )
+      showToast?.(`Cabang ${selectedBranch.name} berhasil dihapus.`)
+      setSelectedBranchId(
+        selectedUnit.branches.length
+          ? selectedUnit.branches[0].id
+          : '',
+      )
+    } catch (e) {
+      console.error(e)
+      showToast?.(
+        'Gagal menghapus cabang. Pastikan tidak ada transaksi terkait atau cek server.',
+        'error',
+      )
+    }
   }
 
   // Default categories (kept only in UI for now)
@@ -179,6 +230,114 @@ function SettingsPage({
         : b,
     )
     setBusinessConfigs(updated)
+  }
+
+  const renderConfirmModal = () => {
+    if (!confirmModal || !confirmModal.branch) return null
+    const { type, branch } = confirmModal
+    const isDelete = type === 'delete'
+    const title = isDelete
+      ? 'Hapus Cabang'
+      : branch.active === false
+      ? 'Aktifkan Cabang'
+      : 'Nonaktifkan Cabang'
+    const desc = isDelete
+      ? `Yakin ingin menghapus cabang "${branch.name}"? Tindakan ini tidak bisa dibatalkan.`
+      : branch.active === false
+      ? `Aktifkan kembali cabang "${branch.name}" di UI?`
+      : `Nonaktifkan cabang "${branch.name}" di UI?`
+
+    const onConfirm = async () => {
+      if (isDelete) {
+        await performDeleteBranch()
+      } else {
+        performToggleBranchActive()
+      }
+      setConfirmModal(null)
+    }
+
+    return (
+      <div
+        style={{
+          position: 'fixed',
+          inset: 0,
+          backgroundColor: 'rgba(0,0,0,0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 50,
+        }}
+      >
+        <div
+          style={{
+            backgroundColor: 'var(--bg-elevated)',
+            borderRadius: 12,
+            padding: '1.5rem',
+            width: '90%',
+            maxWidth: 400,
+            border: '1px solid var(--border)',
+          }}
+        >
+          <h3
+            style={{
+              fontSize: 16,
+              fontWeight: 700,
+              marginBottom: 8,
+            }}
+          >
+            {title}
+          </h3>
+          <p
+            style={{
+              fontSize: 13,
+              color: 'var(--subtext)',
+              marginBottom: 16,
+            }}
+          >
+            {desc}
+          </p>
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'flex-end',
+              gap: 8,
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => setConfirmModal(null)}
+              style={{
+                backgroundColor: 'transparent',
+                borderRadius: 9999,
+                border: '1px solid var(--border)',
+                color: 'var(--text)',
+                fontSize: 13,
+                padding: '0.4rem 0.9rem',
+                cursor: 'pointer',
+              }}
+            >
+              Batal
+            </button>
+            <button
+              type="button"
+              onClick={onConfirm}
+              style={{
+                backgroundColor: '#ef4444',
+                borderRadius: 9999,
+                border: 'none',
+                color: 'white',
+                fontSize: 13,
+                fontWeight: 600,
+                padding: '0.45rem 1rem',
+                cursor: 'pointer',
+              }}
+            >
+              {isDelete ? 'Hapus' : branch.active === false ? 'Aktifkan' : 'Nonaktifkan'}
+            </button>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -309,25 +468,43 @@ function SettingsPage({
                       }}
                     />
                   </div>
-                  <button
-                    type="button"
-                    onClick={handleToggleBranchActive}
-                    style={{
-                      backgroundColor:
-                        selectedBranch.active === false ? '#6b7280' : '#22c55e',
-                      borderRadius: 9999,
-                      border: 'none',
-                      color: 'var(--bg)',
-                      fontSize: 13,
-                      fontWeight: 600,
-                      padding: '0.45rem 1.1rem',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    {selectedBranch.active === false
-                      ? 'Aktifkan Cabang (hanya di UI)'
-                      : 'Nonaktifkan Cabang (hanya di UI)'}
-                  </button>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    <button
+                      type="button"
+                      onClick={requestToggleBranchActive}
+                      style={{
+                        backgroundColor:
+                          selectedBranch.active === false ? '#6b7280' : '#22c55e',
+                        borderRadius: 9999,
+                        border: 'none',
+                        color: 'var(--bg)',
+                        fontSize: 13,
+                        fontWeight: 600,
+                        padding: '0.45rem 1.1rem',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {selectedBranch.active === false
+                        ? 'Aktifkan Cabang (UI)'
+                        : 'Nonaktifkan Cabang (UI)'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={requestDeleteBranch}
+                      style={{
+                        backgroundColor: '#ef4444',
+                        borderRadius: 9999,
+                        border: 'none',
+                        color: 'white',
+                        fontSize: 13,
+                        fontWeight: 600,
+                        padding: '0.45rem 1.1rem',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Hapus Cabang
+                    </button>
+                  </div>
                 </>
               )}
             </>
@@ -686,6 +863,8 @@ function SettingsPage({
           </div>
         </div>
       </div>
+
+      {renderConfirmModal()}
     </main>
   )
 }
