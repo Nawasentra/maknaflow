@@ -18,23 +18,27 @@ const BRANCH_TYPES = [
   { value: 'OTHER', label: 'Other Business' },
 ]
 
-const branchTypeLabel = (id, businessConfigs) => {
-  const unit = businessConfigs.find((u) => u.id === id)
-  if (!unit) return ''
-  const found = BRANCH_TYPES.find((t) => t.value === unit.type)
-  return found?.label || unit.type || ''
+const branchTypeLabelByType = (type) => {
+  const found = BRANCH_TYPES.find((t) => t.value === type)
+  return found?.label || type || ''
 }
 
-// chip kategori (dipakai banyak tempat) – dibuat lebih kontras
+const branchTypeLabelById = (id, businessConfigs) => {
+  const unit = businessConfigs.find((u) => u.id === id)
+  if (!unit) return ''
+  return branchTypeLabelByType(unit.type)
+}
+
+// chip kategori (dipakai di banyak tempat) – kontras dan mudah dibaca
 const chipStyle = {
   display: 'inline-flex',
   alignItems: 'center',
   gap: 4,
   padding: '0.35rem 0.8rem',
   borderRadius: 9999,
-  backgroundColor: 'rgba(59,130,246,0.15)',
-  color: '#1d4ed8',
-  border: '1px solid rgba(59,130,246,0.4)',
+  backgroundColor: 'rgba(59,130,246,0.16)',
+  color: '#e5edff',
+  border: '1px solid rgba(59,130,246,0.55)',
   fontSize: 11,
 }
 
@@ -45,214 +49,7 @@ function SettingsPage({
   setAppSettings,
   showToast,
 }) {
-  // ---------- STATE CABANG (tanpa Struktur Bisnis card) ----------
-
-  const [selectedTypeId, setSelectedTypeId] = useState(
-    businessConfigs.length ? businessConfigs[0].id : '',
-  )
-
-  const selectedUnit =
-    businessConfigs.find((b) => b.id === selectedTypeId) || null
-
-  const [selectedBranchId, setSelectedBranchId] = useState(
-    selectedUnit && selectedUnit.branches.length ? selectedUnit.branches[0].id : null,
-  )
-
-  const [confirmModal, setConfirmModal] = useState(null) // {type: 'toggle'|'delete', branch}
-
-  useEffect(() => {
-    if (!selectedUnit) {
-      setSelectedBranchId(null)
-      return
-    }
-    if (!selectedUnit.branches.length) {
-      setSelectedBranchId(null)
-      return
-    }
-    if (!selectedUnit.branches.find((b) => b.id === selectedBranchId)) {
-      setSelectedBranchId(selectedUnit.branches[0].id)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedTypeId, businessConfigs])
-
-  const selectedBranch =
-    selectedUnit?.branches.find((b) => b.id === selectedBranchId) || null
-
-  // Rename branch
-  const handleRenameBranch = async (newName) => {
-    if (!selectedBranch) return
-    const trimmed = newName.trim()
-    if (!trimmed) return
-    try {
-      await updateBranch(selectedBranch.id, { name: trimmed })
-      setBusinessConfigs((prev) =>
-        prev.map((u) =>
-          u.id === selectedUnit.id
-            ? {
-                ...u,
-                branches: u.branches.map((br) =>
-                  br.id === selectedBranch.id ? { ...br, name: trimmed } : br,
-                ),
-              }
-            : u,
-        ),
-      )
-      showToast?.('Nama cabang berhasil diubah.')
-    } catch (e) {
-      console.error(e)
-      showToast?.('Gagal mengubah nama cabang.', 'error')
-    }
-  }
-
-  // toggle active
-  const requestToggleBranchActive = () => {
-    if (!selectedBranch) return
-    setConfirmModal({ type: 'toggle', branch: selectedBranch })
-  }
-
-  const performToggleBranchActive = () => {
-    if (!selectedBranch) return
-    const nowActive = selectedBranch.active ? false : true
-    setBusinessConfigs((prev) =>
-      prev.map((u) =>
-        u.id === selectedUnit.id
-          ? {
-              ...u,
-              branches: u.branches.map((br) =>
-                br.id === selectedBranch.id ? { ...br, active: nowActive } : br,
-              ),
-            }
-          : u,
-      ),
-    )
-    showToast?.(
-      nowActive
-        ? `Berhasil mengaktifkan cabang ${selectedBranch.name}.`
-        : `Berhasil menonaktifkan cabang ${selectedBranch.name}.`,
-    )
-  }
-
-  // delete branch
-  const requestDeleteBranch = () => {
-    if (!selectedBranch) return
-    setConfirmModal({ type: 'delete', branch: selectedBranch })
-  }
-
-  const performDeleteBranch = async () => {
-    if (!selectedBranch) return
-    try {
-      await deleteBranch(selectedBranch.id)
-      setBusinessConfigs((prev) =>
-        prev.map((u) =>
-          u.id === selectedUnit.id
-            ? {
-                ...u,
-                branches: u.branches.filter((br) => br.id !== selectedBranch.id),
-              }
-            : u,
-        ),
-      )
-      showToast?.(`Cabang ${selectedBranch.name} berhasil dihapus.`)
-      if (selectedUnit.branches.length) {
-        setSelectedBranchId(selectedUnit.branches[0].id)
-      } else {
-        setSelectedBranchId(null)
-      }
-    } catch (e) {
-      console.error(e)
-      showToast?.(
-        'Gagal menghapus cabang. Pastikan tidak ada transaksi terkait atau cek server.',
-        'error',
-      )
-    }
-  }
-
-  // ---------- STATE DEFAULT KATEGORI PER TIPE (UI only, tetap) ----------
-
-  const [editSelectedId, setEditSelectedId] = useState(
-    businessConfigs.length ? businessConfigs[0].id : '',
-  )
-  const editSelected =
-    businessConfigs.find((b) => b.id === editSelectedId) || null
-
-  const [incomeInput, setIncomeInput] = useState('')
-  const [expenseInput, setExpenseInput] = useState('')
-
-  const handleAddIncome = () => {
-    if (!editSelected) return
-    const trimmed = incomeInput.trim()
-    if (!trimmed) return
-    if (!editSelected.defaultIncomeCategories?.includes(trimmed)) {
-      const updated = businessConfigs.map((b) =>
-        b.id === editSelected.id
-          ? {
-              ...b,
-              defaultIncomeCategories: [
-                ...(b.defaultIncomeCategories || []),
-                trimmed,
-              ],
-            }
-          : b,
-      )
-      setBusinessConfigs(updated)
-      showToast?.('Berhasil menambah kategori pendapatan default.')
-    }
-    setIncomeInput('')
-  }
-
-  const handleAddExpense = () => {
-    if (!editSelected) return
-    const trimmed = expenseInput.trim()
-    if (!trimmed) return
-    if (!editSelected.defaultExpenseCategories?.includes(trimmed)) {
-      const updated = businessConfigs.map((b) =>
-        b.id === editSelected.id
-          ? {
-              ...b,
-              defaultExpenseCategories: [
-                ...(b.defaultExpenseCategories || []),
-                trimmed,
-              ],
-            }
-          : b,
-      )
-      setBusinessConfigs(updated)
-      showToast?.('Berhasil menambah kategori pengeluaran default.')
-    }
-    setExpenseInput('')
-  }
-
-  const handleRemoveIncome = (cat) => {
-    if (!editSelected) return
-    const updated = businessConfigs.map((b) =>
-      b.id === editSelected.id
-        ? {
-            ...b,
-            defaultIncomeCategories: (b.defaultIncomeCategories || []).filter(
-              (c) => c !== cat,
-            ),
-          }
-        : b,
-    )
-    setBusinessConfigs(updated)
-  }
-
-  const handleRemoveExpense = (cat) => {
-    if (!editSelected) return
-    const updated = businessConfigs.map((b) =>
-      b.id === editSelected.id
-        ? {
-            ...b,
-            defaultExpenseCategories: (b.defaultExpenseCategories || []).filter(
-              (c) => c !== cat,
-            ),
-          }
-        : b,
-    )
-    setBusinessConfigs(updated)
-  }
-
-  // ---------- STATE KATEGORI BACKEND (GLOBAL) ----------
+  // ---------- STATE KATEGORI GLOBAL (backend) ----------
 
   const [categories, setCategories] = useState([])
   const [categoriesLoading, setCategoriesLoading] = useState(false)
@@ -336,19 +133,16 @@ function SettingsPage({
     }
   }
 
-  // ---------- MAPPING KATEGORI PER CABANG (frontend only) ----------
+  // ---------- FLATTEN CABANG ----------
 
   const allBranchesFlat = useMemo(() => {
     const result = []
-    businessConfigs.forEach((unit) => {
+    ;(businessConfigs || []).forEach((unit) => {
       ;(unit.branches || []).forEach((br) => {
-        const branchUnitLabel =
-          BRANCH_TYPES.find((t) => t.value === unit.type)?.label ||
-          unit.type ||
-          ''
         result.push({
           unitId: unit.id,
-          unitLabel: branchUnitLabel,
+          unitType: unit.type,
+          unitLabel: branchTypeLabelByType(unit.type),
           id: br.id,
           name: br.name,
           active: br.active,
@@ -360,24 +154,53 @@ function SettingsPage({
     return result
   }, [businessConfigs])
 
-  const [selectedBranchForCategory, setSelectedBranchForCategory] = useState('')
-  const [branchCategoryTab, setBranchCategoryTab] = useState('INCOME') // INCOME | EXPENSE
+  const unitTypeOptions = useMemo(() => {
+    const types = new Set(
+      (businessConfigs || []).map((u) => u.type).filter(Boolean),
+    )
+    return Array.from(types)
+  }, [businessConfigs])
+
+  // ---------- KATEGORI PER CABANG (memiliki unit filter sendiri) ----------
+
+  const [branchUnitFilterForCategory, setBranchUnitFilterForCategory] =
+    useState('ALL')
+  const [selectedBranchForCategory, setSelectedBranchForCategory] =
+    useState('')
+  const [branchCategoryTab, setBranchCategoryTab] = useState('INCOME')
   const [branchCategorySearch, setBranchCategorySearch] = useState('')
   const [branchNewCategoryName, setBranchNewCategoryName] = useState('')
 
-  // auto pilih cabang pertama untuk kategori-per-cabang
+  const branchesForCategoryCard = useMemo(() => {
+    if (branchUnitFilterForCategory === 'ALL') return allBranchesFlat
+    return allBranchesFlat.filter(
+      (b) => b.unitType === branchUnitFilterForCategory,
+    )
+  }, [allBranchesFlat, branchUnitFilterForCategory])
+
   useEffect(() => {
-    if (!selectedBranchForCategory && allBranchesFlat.length > 0) {
-      setSelectedBranchForCategory(String(allBranchesFlat[0].id))
+    if (!selectedBranchForCategory && branchesForCategoryCard.length > 0) {
+      setSelectedBranchForCategory(String(branchesForCategoryCard[0].id))
+    } else if (
+      selectedBranchForCategory &&
+      !branchesForCategoryCard.find(
+        (b) => String(b.id) === String(selectedBranchForCategory),
+      )
+    ) {
+      if (branchesForCategoryCard.length > 0) {
+        setSelectedBranchForCategory(String(branchesForCategoryCard[0].id))
+      } else {
+        setSelectedBranchForCategory('')
+      }
     }
-  }, [selectedBranchForCategory, allBranchesFlat])
+  }, [branchesForCategoryCard, selectedBranchForCategory])
 
   const selectedBranchForCategoryObj = useMemo(
     () =>
-      allBranchesFlat.find(
+      branchesForCategoryCard.find(
         (b) => String(b.id) === String(selectedBranchForCategory),
       ) || null,
-    [allBranchesFlat, selectedBranchForCategory],
+    [branchesForCategoryCard, selectedBranchForCategory],
   )
 
   const assignedCategoryIdsForBranch = useMemo(() => {
@@ -474,7 +297,6 @@ function SettingsPage({
     if (!trimmed) return
     const txType = branchCategoryTab
 
-    // cek duplikat nama di kategori global (case-insensitive)
     const existing = categories.find(
       (c) =>
         c.transaction_type === txType &&
@@ -506,6 +328,229 @@ function SettingsPage({
       console.error(e)
       showToast?.('Gagal menambah kategori untuk cabang.', 'error')
     }
+  }
+
+  // ---------- CABANG (punya unit filter sendiri) ----------
+
+  const [branchUnitFilterForCabang, setBranchUnitFilterForCabang] =
+    useState('ALL')
+  const [selectedTypeId, setSelectedTypeId] = useState(
+    businessConfigs.length ? businessConfigs[0].id : '',
+  )
+
+  const unitsForCabangCard = useMemo(() => {
+    if (branchUnitFilterForCabang === 'ALL') return businessConfigs
+    return (businessConfigs || []).filter(
+      (u) => u.type === branchUnitFilterForCabang,
+    )
+  }, [businessConfigs, branchUnitFilterForCabang])
+
+  useEffect(() => {
+    if (!unitsForCabangCard.length) {
+      setSelectedTypeId('')
+      return
+    }
+    if (!unitsForCabangCard.find((u) => u.id === selectedTypeId)) {
+      setSelectedTypeId(unitsForCabangCard[0].id)
+    }
+  }, [unitsForCabangCard, selectedTypeId])
+
+  const selectedUnit =
+    unitsForCabangCard.find((b) => b.id === selectedTypeId) || null
+
+  const [selectedBranchId, setSelectedBranchId] = useState(
+    selectedUnit && selectedUnit.branches.length ? selectedUnit.branches[0].id : null,
+  )
+
+  useEffect(() => {
+    if (!selectedUnit) {
+      setSelectedBranchId(null)
+      return
+    }
+    if (!selectedUnit.branches.length) {
+      setSelectedBranchId(null)
+      return
+    }
+    if (!selectedUnit.branches.find((b) => b.id === selectedBranchId)) {
+      setSelectedBranchId(selectedUnit.branches[0].id)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedUnit?.id])
+
+  const selectedBranch =
+    selectedUnit?.branches.find((b) => b.id === selectedBranchId) || null
+
+  const [confirmModal, setConfirmModal] = useState(null) // {type, branch}
+
+  const handleRenameBranch = async (newName) => {
+    if (!selectedBranch) return
+    const trimmed = newName.trim()
+    if (!trimmed) return
+    try {
+      await updateBranch(selectedBranch.id, { name: trimmed })
+      setBusinessConfigs((prev) =>
+        prev.map((u) =>
+          u.id === selectedUnit.id
+            ? {
+                ...u,
+                branches: u.branches.map((br) =>
+                  br.id === selectedBranch.id ? { ...br, name: trimmed } : br,
+                ),
+              }
+            : u,
+        ),
+      )
+      showToast?.('Nama cabang berhasil diubah.')
+    } catch (e) {
+      console.error(e)
+      showToast?.('Gagal mengubah nama cabang.', 'error')
+    }
+  }
+
+  const requestToggleBranchActive = () => {
+    if (!selectedBranch) return
+    setConfirmModal({ type: 'toggle', branch: selectedBranch })
+  }
+
+  const performToggleBranchActive = () => {
+    if (!selectedBranch) return
+    const nowActive = !selectedBranch.active
+    setBusinessConfigs((prev) =>
+      prev.map((u) =>
+        u.id === selectedUnit.id
+          ? {
+              ...u,
+              branches: u.branches.map((br) =>
+                br.id === selectedBranch.id ? { ...br, active: nowActive } : br,
+              ),
+            }
+          : u,
+      ),
+    )
+    showToast?.(
+      nowActive
+        ? `Berhasil mengaktifkan cabang ${selectedBranch.name}.`
+        : `Berhasil menonaktifkan cabang ${selectedBranch.name}.`,
+    )
+  }
+
+  const requestDeleteBranch = () => {
+    if (!selectedBranch) return
+    setConfirmModal({ type: 'delete', branch: selectedBranch })
+  }
+
+  const performDeleteBranch = async () => {
+    if (!selectedBranch) return
+    try {
+      await deleteBranch(selectedBranch.id)
+      setBusinessConfigs((prev) =>
+        prev.map((u) =>
+          u.id === selectedUnit.id
+            ? {
+                ...u,
+                branches: u.branches.filter((br) => br.id !== selectedBranch.id),
+              }
+            : u,
+        ),
+      )
+      showToast?.(`Cabang ${selectedBranch.name} berhasil dihapus.`)
+      if (selectedUnit.branches.length) {
+        setSelectedBranchId(selectedUnit.branches[0].id)
+      } else {
+        setSelectedBranchId(null)
+      }
+    } catch (e) {
+      console.error(e)
+      showToast?.(
+        'Gagal menghapus cabang. Pastikan tidak ada transaksi terkait atau cek server.',
+        'error',
+      )
+    }
+  }
+
+  // ---------- DEFAULT KATEGORI PER TIPE (UI only) ----------
+
+  const [editSelectedId, setEditSelectedId] = useState(
+    businessConfigs.length ? businessConfigs[0].id : '',
+  )
+  const editSelected =
+    businessConfigs.find((b) => b.id === editSelectedId) || null
+
+  const [incomeInput, setIncomeInput] = useState('')
+  const [expenseInput, setExpenseInput] = useState('')
+
+  const handleAddIncome = () => {
+    if (!editSelected) return
+    const trimmed = incomeInput.trim()
+    if (!trimmed) return
+    if (!editSelected.defaultIncomeCategories?.includes(trimmed)) {
+      const updated = businessConfigs.map((b) =>
+        b.id === editSelected.id
+          ? {
+              ...b,
+              defaultIncomeCategories: [
+                ...(b.defaultIncomeCategories || []),
+                trimmed,
+              ],
+            }
+          : b,
+      )
+      setBusinessConfigs(updated)
+      showToast?.('Berhasil menambah kategori pendapatan default.')
+    }
+    setIncomeInput('')
+  }
+
+  const handleAddExpense = () => {
+    if (!editSelected) return
+    const trimmed = expenseInput.trim()
+    if (!trimmed) return
+    if (!editSelected.defaultExpenseCategories?.includes(trimmed)) {
+      const updated = businessConfigs.map((b) =>
+        b.id === editSelected.id
+          ? {
+              ...b,
+              defaultExpenseCategories: [
+                ...(b.defaultExpenseCategories || []),
+                trimmed,
+              ],
+            }
+          : b,
+      )
+      setBusinessConfigs(updated)
+      showToast?.('Berhasil menambah kategori pengeluaran default.')
+    }
+    setExpenseInput('')
+  }
+
+  const handleRemoveIncome = (cat) => {
+    if (!editSelected) return
+    const updated = businessConfigs.map((b) =>
+      b.id === editSelected.id
+        ? {
+            ...b,
+            defaultIncomeCategories: (b.defaultIncomeCategories || []).filter(
+              (c) => c !== cat,
+            ),
+          }
+        : b,
+    )
+    setBusinessConfigs(updated)
+  }
+
+  const handleRemoveExpense = (cat) => {
+    if (!editSelected) return
+    const updated = businessConfigs.map((b) =>
+      b.id === editSelected.id
+        ? {
+            ...b,
+            defaultExpenseCategories: (b.defaultExpenseCategories || []).filter(
+              (c) => c !== cat,
+            ),
+          }
+        : b,
+    )
+    setBusinessConfigs(updated)
   }
 
   // ---------- CONFIRM MODAL CABANG ----------
@@ -643,7 +688,7 @@ function SettingsPage({
           gap: '1.5rem',
         }}
       >
-        {/* (Struktur Bisnis card DIHAPUS) */}
+        {/* (Struktur Bisnis card dihapus) */}
 
         {/* Kategori Global */}
         <div
@@ -785,8 +830,9 @@ function SettingsPage({
                     gap: 6,
                     padding: '0.35rem 0.8rem',
                     borderRadius: 9999,
-                    backgroundColor: 'rgba(59,130,246,0.15)',
-                    color: '#bfdbfe',
+                    backgroundColor: 'rgba(59,130,246,0.16)',
+                    color: '#e5edff',
+                    border: '1px solid rgba(59,130,246,0.55)',
                     fontSize: 11,
                   }}
                 >
@@ -858,7 +904,7 @@ function SettingsPage({
           </div>
         </div>
 
-        {/* Kategori per Cabang (memiliki dropdown cabang sendiri) */}
+        {/* Kategori per Cabang */}
         <div
           style={{
             backgroundColor: 'var(--bg-elevated)',
@@ -894,6 +940,39 @@ function SettingsPage({
                   marginBottom: 6,
                 }}
               >
+                Tipe Unit Bisnis
+              </p>
+              <select
+                value={branchUnitFilterForCategory}
+                onChange={(e) => setBranchUnitFilterForCategory(e.target.value)}
+                style={{
+                  width: '100%',
+                  backgroundColor: 'var(--bg)',
+                  borderRadius: 12,
+                  border: '1px solid var(--border)',
+                  padding: '0.7rem 1rem',
+                  fontSize: 13,
+                  color: 'var(--text)',
+                  outline: 'none',
+                }}
+              >
+                <option value="ALL">Semua Unit</option>
+                {unitTypeOptions.map((t) => (
+                  <option key={t} value={t}>
+                    {branchTypeLabelByType(t)}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div style={{ minWidth: 220 }}>
+              <p
+                style={{
+                  fontSize: 12,
+                  color: 'var(--subtext)',
+                  marginBottom: 6,
+                }}
+              >
                 Pilih cabang
               </p>
               <select
@@ -910,7 +989,7 @@ function SettingsPage({
                   outline: 'none',
                 }}
               >
-                {allBranchesFlat.map((b) => (
+                {branchesForCategoryCard.map((b) => (
                   <option key={b.id} value={b.id}>
                     {b.name} ({b.unitLabel})
                   </option>
@@ -1152,6 +1231,40 @@ function SettingsPage({
             Cabang
           </h2>
 
+          <div style={{ marginBottom: '1rem' }}>
+            <p
+              style={{
+                fontSize: 12,
+                color: 'var(--subtext)',
+                marginBottom: 6,
+              }}
+            >
+              Tipe Unit Bisnis
+            </p>
+            <select
+              value={branchUnitFilterForCabang}
+              onChange={(e) => setBranchUnitFilterForCabang(e.target.value)}
+              style={{
+                width: '100%',
+                backgroundColor: 'var(--bg)',
+                borderRadius: 12,
+                border: '1px solid var(--border)',
+                padding: '0.7rem 1rem',
+                fontSize: 13,
+                color: 'var(--text)',
+                outline: 'none',
+                marginBottom: 8,
+              }}
+            >
+              <option value="ALL">Semua Unit</option>
+              {unitTypeOptions.map((t) => (
+                <option key={t} value={t}>
+                  {branchTypeLabelByType(t)}
+                </option>
+              ))}
+            </select>
+          </div>
+
           {selectedUnit ? (
             <>
               <div style={{ marginBottom: '1rem' }}>
@@ -1225,7 +1338,8 @@ function SettingsPage({
                       type="button"
                       onClick={requestToggleBranchActive}
                       style={{
-                        backgroundColor: selectedBranch.active === false ? '#6b7280' : '#22c55e',
+                        backgroundColor:
+                          selectedBranch.active === false ? '#6b7280' : '#22c55e',
                         borderRadius: 9999,
                         border: 'none',
                         color: 'var(--bg)',
@@ -1271,7 +1385,7 @@ function SettingsPage({
           )}
         </div>
 
-        {/* Default kategori per tipe (UI only) */}
+        {/* Default kategori per tipe */}
         <div
           style={{
             backgroundColor: 'var(--bg-elevated)',
@@ -1318,7 +1432,7 @@ function SettingsPage({
             >
               {businessConfigs.map((b) => (
                 <option key={b.id} value={b.id}>
-                  {branchTypeLabel(b.id, businessConfigs)}
+                  {branchTypeLabelById(b.id, businessConfigs)}
                 </option>
               ))}
             </select>

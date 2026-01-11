@@ -1,3 +1,4 @@
+// src/components/NavBar.jsx
 import React, { useState, useMemo } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 
@@ -31,6 +32,9 @@ function NavBar({
   return (
     <nav
       style={{
+        position: 'sticky',              // stay at top on scroll
+        top: 0,
+        zIndex: 50,
         backgroundColor: 'var(--bg-elevated)',
         borderBottom: '1px solid var(--border)',
         padding: '1rem 1.5rem',
@@ -56,7 +60,11 @@ function NavBar({
         </h1>
 
         <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'center' }}>
-          <NavLinkItem to="/dashboard" label="Dashboard" currentPath={location.pathname} />
+          <NavLinkItem
+            to="/dashboard"
+            label="Dashboard"
+            currentPath={location.pathname}
+          />
           <NavLinkItem
             to="/dashboard/transactions"
             label="Transactions"
@@ -89,7 +97,9 @@ function NavBar({
               cursor: 'pointer',
               fontSize: '0.9rem',
             }}
-            title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+            title={
+              theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'
+            }
           >
             {theme === 'dark' ? '☀️' : '🌙'}
           </button>
