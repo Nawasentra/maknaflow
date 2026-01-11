@@ -1,7 +1,7 @@
 // src/lib/api/transactions.js
 import api from '../axios'
 
-// Fallback sample data only for initial load error
+// fallback only if GET fails
 const mockTransactions = [
   {
     id: 1,
@@ -15,7 +15,7 @@ const mockTransactions = [
   },
 ]
 
-// Backend -> frontend mapper
+// backend → frontend
 function mapTransaction(t) {
   const type =
     t.transaction_type === 'INCOME'
@@ -48,7 +48,7 @@ function mapTransaction(t) {
   }
 }
 
-// Frontend -> backend mapper (branch/category optional for now)
+// frontend → backend (branch/category optional for now)
 function mapToBackendPayload(frontendTx) {
   return {
     date: frontendTx.date,

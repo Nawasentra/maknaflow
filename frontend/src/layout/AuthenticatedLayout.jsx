@@ -1,3 +1,4 @@
+// src/layout/AuthenticatedLayout.jsx
 import React from 'react'
 import { Routes, Route } from 'react-router-dom'
 import NavBar from '../components/layout/NavBar'
@@ -51,15 +52,20 @@ function AuthenticatedLayout({
         <Route
           path="/transactions"
           element={
-            <TransactionsPage
-              transactions={transactions}
-              setTransactions={setTransactions}
-              businessConfigs={businessConfigs}
-              appSettings={appSettings}
-              lastUsedType={lastUsedType}
-              setLastUsedType={setLastUsedType}
-              showToast={showToast}
-            />
+            <>
+              {console.log(
+                'AuthenticatedLayout: rendering TransactionsPage (features/transactions)',
+              )}
+              <TransactionsPage
+                transactions={transactions}
+                setTransactions={setTransactions}
+                businessConfigs={businessConfigs}
+                appSettings={appSettings}
+                lastUsedType={lastUsedType}
+                setLastUsedType={setLastUsedType}
+                showToast={showToast}
+              />
+            </>
           }
         />
         <Route

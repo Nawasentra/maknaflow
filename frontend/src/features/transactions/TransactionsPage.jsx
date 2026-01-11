@@ -1,10 +1,10 @@
-// src/pages/TransactionsPage.jsx
+// src/features/transactions/TransactionsPage.jsx
 import React, { useState, useMemo, useEffect } from 'react'
 import {
   fetchTransactions,
   createTransaction,
   deleteTransaction,
-} from '../lib/api/transactions'
+} from '../../lib/api/transactions'
 
 const inputStyle = {
   width: '100%',
@@ -36,13 +36,16 @@ function Field({ label, children }) {
 }
 
 function TransactionsPage({
+  transactions,
+  setTransactions,
   businessConfigs,
   appSettings,
   lastUsedType,
   setLastUsedType,
   showToast,
 }) {
-  const [transactions, setTransactions] = useState([])
+  console.log('TransactionsPage (features) RENDERED')
+
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
   const [confirmOpen, setConfirmOpen] = useState(false)
@@ -54,7 +57,7 @@ function TransactionsPage({
     direction: 'desc',
   })
 
-  // Load initial data
+  // reload from backend when page first used (App already loads, this is safe)
   useEffect(() => {
     const load = async () => {
       try {
@@ -68,7 +71,7 @@ function TransactionsPage({
       }
     }
     load()
-  }, [showToast])
+  }, [setTransactions, showToast])
 
   const filteredTransactions = transactions.filter((t) => {
     if (!searchTerm) return true
@@ -415,6 +418,8 @@ function AddTransactionModal({
   appSettings,
   lastUsedType,
 }) {
+  console.log('AddTransactionModal RENDERED')
+
   const unique = (arr) => Array.from(new Set(arr))
 
   const unitOptions = useMemo(
@@ -447,7 +452,7 @@ function AddTransactionModal({
   const [amountInput, setAmountInput] = useState('')
 
   const branchOptions = useMemo(() => {
-    if (configForUnit && configForUnit.branches.length) {
+    if (configForUnit && configForUnit.branches?.length) {
       return configForUnit.branches.filter((b) => b.active !== false).map((b) => b.name)
     }
     if (!unitBusiness) return []
@@ -460,7 +465,7 @@ function AddTransactionModal({
     if (!unitBusiness) return []
     if (configForUnit) {
       const branchConfig =
-        configForUnit.branches.find((b) => b.name === branch && b.active !== false) ||
+        configForUnit.branches?.find((b) => b.name === branch && b.active !== false) ||
         null
       const defaultIncome = configForUnit.defaultIncomeCategories || []
       const defaultExpense = configForUnit.defaultExpenseCategories || []
@@ -508,10 +513,6 @@ function AddTransactionModal({
       return
     }
 
-    // For now, IDs null – adjust later once you have them from backend configs
-    const branchId = null
-    const categoryId = null
-
     const payload = {
       date,
       unitBusiness,
@@ -520,8 +521,8 @@ function AddTransactionModal({
       type,
       amount: Number(digits),
       payment,
-      branchId,
-      categoryId,
+      branchId: null,
+      categoryId: null,
     }
 
     console.log('CALLING onSave with:', payload)
