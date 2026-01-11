@@ -1,3 +1,4 @@
+// src/features/add-business/AddBusinessPage.jsx
 import React, { useState, useEffect, useMemo } from 'react'
 import {
   createBranch,
@@ -24,11 +25,11 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs, showToast }) {
   const [expenseInput, setExpenseInput] = useState('')
   const [loading, setLoading] = useState(false)
 
-  // data referensi untuk suggestions + duplikat
+  // data referensi dari backend
   const [existingBranches, setExistingBranches] = useState([])
   const [existingCategories, setExistingCategories] = useState([])
 
-  // sekali di-mount: ambil semua cabang & kategori yang sudah ada
+  // sekali load: cabang + kategori yang sudah ada
   useEffect(() => {
     const load = async () => {
       try {
@@ -45,7 +46,7 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs, showToast }) {
     load()
   }, [])
 
-  // preload defaults if selecting an existing type
+  // preload default kategori ketika pilih tipe unit bisnis yg sudah ada di config
   useEffect(() => {
     if (!branchType) {
       setIncomeCategories([])
@@ -64,9 +65,9 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs, showToast }) {
     setExpenseCategories(cfg.defaultExpenseCategories || [])
   }, [branchType, businessConfigs])
 
-  // ---------- CATEGORY SUGGESTIONS ----------
+  // ---------- AUTOCOMPLETE KATEGORI ----------
 
-  // semua nama kategori unik dari backend (income + expense)
+  // semua nama kategori unik dari backend (sumber list autocomplete)
   const allCategoryNames = useMemo(() => {
     const names = (existingCategories || []).map((c) => c.name || '')
     return Array.from(new Set(names.filter(Boolean)))
@@ -172,7 +173,7 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs, showToast }) {
     setExpenseInput('')
   }
 
-  // After creating things in backend, rebuild businessConfigs from API
+  // rebuild businessConfigs setelah aktivasi
   const rebuildBusinessConfigsFromApi = async () => {
     const [branches, categories] = await Promise.all([
       fetchBranches(),
@@ -247,13 +248,16 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs, showToast }) {
       }
       await createBranch(branchPayload)
 
-      // Buat kategori INCOME / EXPENSE; backend sebaiknya handle dedup,
-      // tapi di sini juga kita kirim sekali per nama unik.
+      // Dedup kategori sebelum dikirim ke backend
       const uniqueIncome = Array.from(
-        new Set(incomeCategories.map((c) => c.trim()).filter(Boolean)),
+        new Set(
+          incomeCategories.map((c) => c.trim()).filter((c) => c.length > 0),
+        ),
       )
       const uniqueExpense = Array.from(
-        new Set(expenseCategories.map((c) => c.trim()).filter(Boolean)),
+        new Set(
+          expenseCategories.map((c) => c.trim()).filter((c) => c.length > 0),
+        ),
       )
 
       const promises = []
@@ -426,7 +430,6 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs, showToast }) {
                     outline: 'none',
                   }}
                 />
-                {/* opsional: tampilkan info kalau nama sudah ada */}
                 {branchName.trim() &&
                   existingBranches.some(
                     (b) =>
@@ -488,7 +491,7 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs, showToast }) {
                   gap: '1.25rem',
                 }}
               >
-                {/* Income categories */}
+                {/* Kategori Pendapatan */}
                 <div>
                   <label
                     style={{
@@ -546,7 +549,6 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs, showToast }) {
                       Tambah
                     </button>
                   </div>
-                  {/* suggestions income */}
                   {incomeSuggestions.length > 0 && (
                     <div
                       style={{
@@ -630,7 +632,7 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs, showToast }) {
                   </div>
                 </div>
 
-                {/* Expense categories */}
+                {/* Kategori Pengeluaran */}
                 <div>
                   <label
                     style={{
@@ -688,7 +690,6 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs, showToast }) {
                       Tambah
                     </button>
                   </div>
-                  {/* suggestions expense */}
                   {expenseSuggestions.length > 0 && (
                     <div
                       style={{
