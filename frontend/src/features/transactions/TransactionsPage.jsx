@@ -1,7 +1,6 @@
 // src/features/transactions/TransactionsPage.jsx
 import React, { useState, useMemo, useEffect } from 'react'
 import {
-  fetchTransactions,
   createTransaction,
   deleteTransaction,
   fetchBranches,
@@ -45,6 +44,7 @@ function TransactionsPage({
   lastUsedType,
   setLastUsedType,
   showToast,
+  onRefresh, // <-- baru: dipass dari AuthenticatedLayout
 }) {
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
@@ -60,37 +60,31 @@ function TransactionsPage({
     direction: 'desc',
   })
 
-  const setSafeTransactions = (tx) =>
-    setTransactions(Array.isArray(tx) ? tx : [])
-
   const setSafeBranches = (br) =>
     setBranches(Array.isArray(br) ? br : [])
 
   const setSafeCategories = (cat) =>
     setCategories(Array.isArray(cat) ? cat : [])
 
-  // loader bisa dipanggil ulang (tombol Refresh)
-  const loadAll = async () => {
-    try {
-      setLoading(true)
-      const [tx, br, cat] = await Promise.all([
-        fetchTransactions(),
-        fetchBranches(),
-        fetchCategories(),
-      ])
-      setSafeTransactions(tx)
-      setSafeBranches(br)
-      setSafeCategories(cat)
-    } catch (e) {
-      console.error(e)
-      showToast?.('Gagal memuat transaksi.', 'error')
-    } finally {
-      setLoading(false)
-    }
-  }
-
+  // --- Hanya load branches & categories di sini ---
   useEffect(() => {
-    loadAll()
+    const loadMeta = async () => {
+      try {
+        setLoading(true)
+        const [br, cat] = await Promise.all([
+          fetchBranches(),
+          fetchCategories(),
+        ])
+        setSafeBranches(br)
+        setSafeCategories(cat)
+      } catch (e) {
+        console.error(e)
+        showToast?.('Gagal memuat data referensi.', 'error')
+      } finally {
+        setLoading(false)
+      }
+    }
+    loadMeta()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -190,7 +184,13 @@ function TransactionsPage({
         color: 'var(--text)',
       }}
     >
-      <h1 style={{ fontSize: '1.875rem', fontWeight: '700', marginBottom: '1.5rem' }}>
+      <h1
+        style={{
+          fontSize: '1.875rem',
+          fontWeight: '700',
+          marginBottom: '1.5rem',
+        }}
+      >
         📋 Transaksi
       </h1>
 
@@ -219,7 +219,13 @@ function TransactionsPage({
             }}
           >
             <div>
-              <h3 style={{ fontSize: '1.125rem', fontWeight: '600', margin: 0 }}>
+              <h3
+                style={{
+                  fontSize: '1.125rem',
+                  fontWeight: '600',
+                  margin: 0,
+                }}
+              >
                 Tabel Transaksi
               </h3>
               <p
@@ -257,7 +263,7 @@ function TransactionsPage({
                 }}
               />
               <button
-                onClick={loadAll}
+                onClick={onRefresh} // <-- pakai fungsi dari App.jsx
                 style={{
                   backgroundColor: 'transparent',
                   color: 'var(--subtext)',
@@ -301,12 +307,17 @@ function TransactionsPage({
                 }}
               >
                 <ThSortable label="Tanggal" onClick={() => handleSort('date')} />
-                <ThSortable label="Unit Bisnis" onClick={() => handleSort('unitBusiness')} />
+                <ThSortable
+                  label="Unit Bisnis"
+                  onClick={() => handleSort('unitBusiness')}
+                />
                 <ThSortable label="Cabang" onClick={() => handleSort('branch')} />
-                <ThSortable label="Kategori" onClick={() => handleSort('category')} />
+                <ThSortable
+                  label="Kategori"
+                  onClick={() => handleSort('category')}
+                />
                 <ThSortable label="Tipe" onClick={() => handleSort('type')} />
                 <ThSortable label="Jumlah" onClick={() => handleSort('amount')} />
-                {/* kolom Pembayaran DIHAPUS dari tabel */}
                 <ThSortable label="Source" onClick={() => handleSort('source')} />
                 <th
                   style={{
@@ -325,7 +336,6 @@ function TransactionsPage({
             <tbody>
               {sortedTransactions.length === 0 ? (
                 <tr>
-                  {/* kolom berkurang 1 → colSpan 8 */}
                   <td
                     colSpan={8}
                     style={{
@@ -419,13 +429,27 @@ function ConfirmDialog({ title, description, onCancel, onConfirm }) {
           padding: '1.5rem',
         }}
       >
-        <h2 style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '0.5rem' }}>
+        <h2
+          style={{
+            fontSize: '1.1rem',
+            fontWeight: 600,
+            marginBottom: '0.5rem',
+          }}
+        >
           {title}
         </h2>
-        <p style={{ fontSize: '0.9rem', color: 'var(--subtext)', marginBottom: '1.5rem' }}>
+        <p
+          style={{
+            fontSize: '0.9rem',
+            color: 'var(--subtext)',
+            marginBottom: '1.5rem',
+          }}
+        >
           {description}
         </p>
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
+        <div
+          style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}
+        >
           <button
             onClick={onCancel}
             style={{
@@ -474,7 +498,7 @@ function AddTransactionModal({
   const [date, setDate] = useState('')
   const [type, setType] = useState(
     appSettings.defaultTransactionType === 'Income' ||
-    appSettings.defaultTransactionType === 'Expense'
+      appSettings.defaultTransactionType === 'Expense'
       ? appSettings.defaultTransactionType
       : lastUsedType || 'Income',
   )
@@ -557,7 +581,9 @@ function AddTransactionModal({
             marginBottom: '1rem',
           }}
         >
-          <h2 style={{ fontSize: '1.1rem', fontWeight: 600 }}>Tambah Transaksi</h2>
+          <h2 style={{ fontSize: '1.1rem', fontWeight: 600 }}>
+            Tambah Transaksi
+          </h2>
           <button
             onClick={onClose}
             style={{
@@ -631,8 +657,14 @@ function AddTransactionModal({
           </Field>
 
           <Field label="Jumlah">
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-              <span style={{ fontSize: '0.9rem', color: 'var(--subtext)' }}>Rp</span>
+            <div
+              style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+            >
+              <span
+                style={{ fontSize: '0.9rem', color: 'var(--subtext)' }}
+              >
+                Rp
+              </span>
               <input
                 type="text"
                 value={amountInput}
@@ -668,7 +700,9 @@ function AddTransactionModal({
           </Field>
         </div>
 
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
+        <div
+          style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}
+        >
           <button
             onClick={onClose}
             style={{
@@ -724,7 +758,13 @@ function TransactionRow({ transaction, onAskDelete }) {
 
   return (
     <tr style={{ borderBottom: '1px solid var(--border)' }}>
-      <td style={{ padding: '1rem 1.5rem', fontWeight: '500', color: 'var(--text)' }}>
+      <td
+        style={{
+          padding: '1rem 1.5rem',
+          fontWeight: '500',
+          color: 'var(--text)',
+        }}
+      >
         {new Date(transaction.date).toLocaleDateString('id-ID', {
           day: 'numeric',
           month: 'short',
@@ -775,7 +815,6 @@ function TransactionRow({ transaction, onAskDelete }) {
       >
         Rp {new Intl.NumberFormat('id-ID').format(transaction.amount)}
       </td>
-      {/* kolom Pembayaran di tabel dihapus */}
       <td style={{ padding: '1rem 1.5rem' }}>
         <span
           style={{

@@ -26,6 +26,7 @@ function AuthenticatedLayout({
   theme,
   onToggleTheme,
   showToast,
+  onReloadTransactions, // <- DITERIMA dari App.jsx
 }) {
   return (
     <>
@@ -52,20 +53,16 @@ function AuthenticatedLayout({
         <Route
           path="/transactions"
           element={
-            <>
-              {console.log(
-                'AuthenticatedLayout: rendering TransactionsPage (features/transactions)',
-              )}
-              <TransactionsPage
-                transactions={transactions}
-                setTransactions={setTransactions}
-                businessConfigs={businessConfigs}
-                appSettings={appSettings}
-                lastUsedType={lastUsedType}
-                setLastUsedType={setLastUsedType}
-                showToast={showToast}
-              />
-            </>
+            <TransactionsPage
+              transactions={transactions}
+              setTransactions={setTransactions}
+              businessConfigs={businessConfigs}
+              appSettings={appSettings}
+              lastUsedType={lastUsedType}
+              setLastUsedType={setLastUsedType}
+              showToast={showToast}
+              onRefresh={onReloadTransactions} // <- DIPASS ke TransactionsPage
+            />
           }
         />
         <Route
