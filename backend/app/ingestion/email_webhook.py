@@ -256,49 +256,62 @@ class EmailWebhookService:
                 logger.warning(f"Failed to parse date: {e}")
         return transaction_date
 
-    def _create_transactions(self, branch, user, subject, parsed_data, transaction_type, items_key, source_prefix):
+    def _create_transactions(self, branch, user, subject, parsed_data, trx_type, items_key, desc_prefix):
         """
-        Create individual transactions from parsed data
+        Create Transaction records from parsed data
         """
-        logger.debug(f"Creating transactions - Branch: {branch.name}, Type: {transaction_type}")
+        logger.debug(f"Creating transactions - Branch: {branch.name}, Items key: {items_key}")
+        
+        transaction_date = self._parse_date(parsed_data.get("metadata", {}))
         
         transactions = []
-        transaction_date = self._parse_date(parsed_data.get("metadata", {}))
-        items = parsed_data.get(items_key, [])
+        duplicates = 0
+        category_cache = {}
+        items = (parsed_data or {}).get(items_key, [])
+        logger.info(f"Processing {len(items)} items for transactions")
         
         for item in items:
-            try:
-                # Extract item details
-                description = item.get("description") or item.get("item_name")
-                amount = item.get("amount") or item.get("total")
-                qty = item.get("quantity") or item.get("qty")
-                
-                # Fallback to description if no item code
-                item_code = item.get("item_code") or item.get("code") or ""
-                if not item_code and description:
-                    item_code = re.sub(r'\W+', '', description)[:10]  # Fallback to a sanitized version of the description
-                    logger.info(f"Fallback item code for '{description}': {item_code}")
-                
-                # Create transaction
-                transaction, created = Transaction.objects.get_or_create(
-                    branch=branch,
-                    date=transaction_date,
-                    type=transaction_type,
-                    amount=amount,
-                    defaults={
-                        'user': user,
-                        'description': description,
-                        'quantity': qty,
-                        'item_code': item_code,
-                        'source': f"{source_prefix} - {branch.name}",
-                        'raw_data': item,
-                    }
-                )
-                
-                transactions.append(transaction)
-                logger.info(f"{'Created' if created else 'Found'} transaction ID {transaction.id} for {description}")
+            name = item.get("name")
+            amount = int(item.get("amount", 0))
+            logger.debug(f"Processing item: {name}, Amount: {amount}")
             
+            if not name or not amount:
+                logger.debug(f"Skipping item (missing name or zero amount): {item}")
+                continue
+            
+            try:
+                cache_key = (name, trx_type)
+                category = category_cache.get(cache_key)
+                if category is None:
+                    category, cat_created = Category.objects.get_or_create(
+                        name=name,
+                        transaction_type=trx_type
+                    )
+                    category.branches.add(branch)
+                    category_cache[cache_key] = category
+                    if cat_created:
+                        logger.debug(f"Created new category: {name}")
+                    else:
+                        logger.debug(f"Found existing category: {name}")
+                
+                trans = Transaction.objects.create(
+                    branch=branch,
+                    reported_by=user,
+                    amount=amount,
+                    transaction_type=trx_type,
+                    category=category,
+                    date=transaction_date,
+                    description=f"{desc_prefix}: {name} ({subject})",
+                    source=TransactionSource.EMAIL,
+                )
+                transactions.append(trans)
+                logger.debug(f"Created transaction ID {trans.id} for {name}: Rp {amount:,}")
+            except IntegrityError:
+                duplicates += 1
+                logger.warning(f"Duplicate transaction skipped for {name}: Rp {amount:,} on {transaction_date}")
+                continue
             except Exception as e:
-                logger.error(f"Failed to create transaction for {item}: {e}", exc_info=True)
+                logger.error(f"Failed to create transaction for item {item}: {e}", exc_info=True)
         
+        logger.info(f"Successfully created {len(transactions)} transactions ({duplicates} duplicates skipped)")
         return transactions
