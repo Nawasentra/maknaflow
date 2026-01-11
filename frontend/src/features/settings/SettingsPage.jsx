@@ -27,16 +27,16 @@ const branchTypeLabelById = (id, businessConfigs) => {
   return branchTypeLabelByType(unit.type)
 }
 
-// chip kategori – kontras di dark & light
+// chip kategori – biru gelap, kontras tinggi
 const chipStyle = {
   display: 'inline-flex',
   alignItems: 'center',
   gap: 4,
   padding: '0.35rem 0.8rem',
   borderRadius: 9999,
-  backgroundColor: 'rgba(59,130,246,0.16)',
-  color: '#e5edff',
-  border: '1px solid rgba(59,130,246,0.55)',
+  backgroundColor: '#2563eb',
+  color: '#f9fafb',
+  border: '1px solid #1d4ed8',
   fontSize: 11,
 }
 
@@ -155,7 +155,7 @@ function SettingsPage({
     return Array.from(types)
   }, [businessConfigs])
 
-  // ---------- KATEGORI PER CABANG (dengan unit filter sendiri) ----------
+  // ---------- KATEGORI PER CABANG ----------
   const [branchUnitFilterForCategory, setBranchUnitFilterForCategory] =
     useState('ALL')
   const [selectedBranchForCategory, setSelectedBranchForCategory] =
@@ -323,7 +323,7 @@ function SettingsPage({
     }
   }
 
-  // ---------- CABANG (dengan unit filter sendiri) ----------
+  // ---------- CABANG ----------
   const [branchUnitFilterForCabang, setBranchUnitFilterForCabang] =
     useState('ALL')
   const [selectedTypeId, setSelectedTypeId] = useState(
@@ -819,9 +819,9 @@ function SettingsPage({
                     gap: 6,
                     padding: '0.35rem 0.8rem',
                     borderRadius: 9999,
-                    backgroundColor: 'rgba(59,130,246,0.16)',
-                    color: '#e5edff',
-                    border: '1px solid rgba(59,130,246,0.55)',
+                    backgroundColor: '#2563eb',
+                    color: '#f9fafb',
+                    border: '1px solid #1d4ed8',
                     fontSize: 11,
                   }}
                 >
@@ -865,7 +865,7 @@ function SettingsPage({
                         style={{
                           border: 'none',
                           background: 'none',
-                          color: '#93c5fd',
+                          color: '#bfdbfe',
                           cursor: 'pointer',
                           fontSize: 11,
                         }}
@@ -1149,7 +1149,7 @@ function SettingsPage({
                       style={{
                         border: 'none',
                         background: 'none',
-                        color: '#f97316',
+                        color: '#fee2e2',
                         cursor: 'pointer',
                         fontSize: 12,
                       }}
@@ -1186,7 +1186,8 @@ function SettingsPage({
                   style={{
                     ...chipStyle,
                     backgroundColor: 'transparent',
-                    border: '1px dashed var(--border)',
+                    color: '#2563eb',
+                    border: '1px dashed #93c5fd',
                   }}
                 >
                   {cat.name}
