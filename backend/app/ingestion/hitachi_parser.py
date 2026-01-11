@@ -115,5 +115,5 @@ def parse_hitachi_email(email_body):
     return {
         'metadata': metadata,
         'summary': summary,
-        'top_items': top_items
+        'top_items': top_items,
     }
