@@ -196,7 +196,8 @@ function App() {
   }
 
   // login that talks to backend
-  const handleLoginSuccess = async (googleIdToken) => {
+  // googleAccessToken comes from useGoogleLogin in LoginPage
+  const handleLoginSuccess = async (googleAccessToken) => {
     try {
       const res = await fetch(
         'https://maknaflow-staging.onrender.com/api/auth/google/',
@@ -206,8 +207,7 @@ function App() {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            // important: dj-rest-auth SocialLoginView usually expects access_token
-            access_token: googleIdToken,
+            access_token: googleAccessToken,
           }),
         },
       )
@@ -230,7 +230,8 @@ function App() {
 
       localStorage.setItem('auth_token', backendToken)
 
-      const payload = parseJwt(googleIdToken)
+      // Optional: decode access token only if it is actually a JWT
+      const payload = parseJwt(googleAccessToken)
       if (payload) {
         const u = {
           name: payload.name || '',
