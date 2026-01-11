@@ -16,3 +16,7 @@ uv run python manage.py collectstatic --no-input
 # 3. Run Migrations
 echo "--- Running Migrations ---"
 uv run python manage.py migrate
+
+# 4. Create Superuser (if not exists)
+echo "--- Creating Superuser ---"
+uv run python manage.py create_superuser
