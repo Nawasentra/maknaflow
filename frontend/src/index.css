@@ -45,3 +45,17 @@ body {
   color: var(--text);
   font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
+
+/* ---- Date input icon visibility ---- */
+
+/* Sedikit background di belakang ikon tanggal (semua tema) */
+input[type='date']::-webkit-calendar-picker-indicator {
+  padding: 2px;
+  border-radius: 4px;
+  background-color: rgba(15, 23, 42, 0.12);
+}
+
+/* Di dark mode, invert ikon supaya terlihat putih di background gelap */
+html[data-theme='dark'] input[type='date']::-webkit-calendar-picker-indicator {
+  filter: invert(1);
+}
