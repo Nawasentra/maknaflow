@@ -109,7 +109,7 @@ function TransactionsPage({
 
   const safeTransactions = Array.isArray(transactions) ? transactions : []
 
-  // --- opsi Unit & Cabang ---
+  // --- opsi Unit & Cabang (berdasarkan transaksi historis) ---
   const unitOptions = useMemo(() => {
     const units = Array.from(
       new Set(safeTransactions.map((t) => t.unitBusiness).filter(Boolean)),
@@ -773,6 +773,17 @@ function AddTransactionModal({
     ? businessConfigs
     : []
 
+  // map branch.id -> active (true/false) dari businessConfigs
+  const branchActiveMap = useMemo(() => {
+    const map = new Map()
+    safeBusinessConfigs.forEach((unit) => {
+      ;(unit.branches || []).forEach((br) => {
+        map.set(br.id, br.active !== false)
+      })
+    })
+    return map
+  }, [safeBusinessConfigs])
+
   // filter + dedup + sort kategori
   const filteredCategories = useMemo(() => {
     const txType = type === 'Income' ? 'INCOME' : 'EXPENSE'
@@ -798,7 +809,6 @@ function AddTransactionModal({
       }
     }
 
-    // dedup case-insensitive
     const dedup = new Map()
     result.forEach((c) => {
       const key = c.name.trim().toLowerCase()
@@ -948,11 +958,19 @@ function AddTransactionModal({
                 style={inputStyle}
               >
                 <option value="">Pilih cabang</option>
-                {safeBranches.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.name}
-                  </option>
-                ))}
+                {safeBranches.map((b) => {
+                  const isActive = branchActiveMap.get(b.id) !== false
+                  const label = isActive ? b.name : `${b.name} (Nonaktif)`
+                  return (
+                    <option
+                      key={b.id}
+                      value={isActive ? b.id : ''}
+                      disabled={!isActive}
+                    >
+                      {label}
+                    </option>
+                  )
+                })}
               </select>
             </Field>
           </div>

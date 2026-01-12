@@ -161,7 +161,7 @@ function DashboardPage({ transactions, isLoading, error }) {
     ([name, value]) => ({
       name:
         name === 'CASH'
-          ? 'Tunai'
+          ? 'Cash'
           : name === 'QRIS'
           ? 'QRIS'
           : name === 'TRANSFER'
@@ -541,7 +541,7 @@ function DashboardPage({ transactions, isLoading, error }) {
                   >
                     {incomeSources.map((entry) => {
                       let color = '#6b7280'
-                      if (entry.name === 'Tunai') color = '#22c55e'
+                      if (entry.name === 'Cash') color = '#22c55e'
                       if (entry.name === 'QRIS') color = '#3b82f6'
                       if (entry.name === 'Transfer') color = '#f59e0b'
                       return <Cell key={entry.name} fill={color} />
