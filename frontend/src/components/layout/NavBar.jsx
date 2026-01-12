@@ -1,5 +1,5 @@
 // src/components/NavBar.jsx
-import React, { useState, useMemo } from 'react'
+import React, { useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 
 function NavBar({
@@ -14,16 +14,6 @@ function NavBar({
   const location = useLocation()
   const [menuOpen, setMenuOpen] = useState(false)
 
-  const initials = useMemo(() => {
-    if (!user?.name) return 'JD'
-    return user.name
-      .split(' ')
-      .filter(Boolean)
-      .map((n) => n[0])
-      .join('')
-      .toUpperCase()
-  }, [user])
-
   const handleLogoutClick = () => {
     setMenuOpen(false)
     onLogout?.()
@@ -32,7 +22,7 @@ function NavBar({
   return (
     <nav
       style={{
-        position: 'sticky',              // stay at top on scroll
+        position: 'sticky',          // stay at top on scroll
         top: 0,
         zIndex: 50,
         backgroundColor: 'var(--bg-elevated)',
@@ -133,10 +123,10 @@ function NavBar({
                   style={{
                     fontWeight: 600,
                     color: 'var(--text)',
-                    fontSize: '0.9rem',
+                    fontSize: '1.1rem',
                   }}
                 >
-                  {initials}
+                  👤
                 </span>
               )}
             </button>
