@@ -24,12 +24,6 @@ const shortLabel = (value) => {
   return value
 }
 
-const branchTypeLabelById = (id, businessConfigs) => {
-  const unit = (businessConfigs || []).find((u) => u.id === id)
-  if (!unit) return ''
-  return shortLabel(unit.branch_type || unit.type)
-}
-
 // chip kategori
 const chipStyle = {
   display: 'inline-flex',
@@ -70,12 +64,6 @@ function SettingsPage({
     loadCategories()
   }, [showToast])
 
-  // semua nama kategori unik dari backend (untuk autocomplete default)
-  const allGlobalCategoryNames = useMemo(() => {
-    const names = (categories || []).map((c) => c.name || '')
-    return Array.from(new Set(names.filter(Boolean)))
-  }, [categories])
-
   // ---------- FLATTEN CABANG ----------
   const allBranchesFlat = useMemo(() => {
     const result = []
@@ -105,7 +93,6 @@ function SettingsPage({
   const [branchCategorySearch, setBranchCategorySearch] = useState('')
   const [branchNewCategoryName, setBranchNewCategoryName] = useState('')
 
-  // konfirmasi hapus kategori global
   const [confirmCategory, setConfirmCategory] = useState(null)
 
   // filter cabang by tipe unit bisnis
@@ -259,7 +246,7 @@ function SettingsPage({
     }
   }
 
-  // hapus kategori global + bersihkan di semua cabang & default
+  // hapus kategori global + bersihkan di semua cabang
   const requestDeleteGlobalCategory = (cat) => {
     setConfirmCategory(cat)
   }
@@ -286,16 +273,6 @@ function SettingsPage({
               (id) => id !== confirmCategory.id,
             ),
           })),
-          defaultIncomeCategories: (unit.defaultIncomeCategories || []).filter(
-            (name) =>
-              name.trim().toLowerCase() !==
-              (confirmCategory.name || '').trim().toLowerCase(),
-          ),
-          defaultExpenseCategories: (unit.defaultExpenseCategories || []).filter(
-            (name) =>
-              name.trim().toLowerCase() !==
-              (confirmCategory.name || '').trim().toLowerCase(),
-          ),
         }))
       })
 
@@ -349,8 +326,7 @@ function SettingsPage({
             }}
           >
             Kategori “{confirmCategory.name}” akan dihapus secara global dari
-            semua cabang dan konfigurasi default. Tindakan ini tidak dapat
-            dibatalkan.
+            semua cabang. Tindakan ini tidak dapat dibatalkan.
           </p>
           <div
             style={{
@@ -551,151 +527,6 @@ function SettingsPage({
     }
   }
 
-  // ---------- DEFAULT KATEGORI PER TIPE ----------
-  const [editSelectedId, setEditSelectedId] = useState(
-    businessConfigs.length ? businessConfigs[0].id : '',
-  )
-  const editSelected =
-    businessConfigs.find((b) => b.id === editSelectedId) || null
-
-  const [incomeInput, setIncomeInput] = useState('')
-  const [expenseInput, setExpenseInput] = useState('')
-
-  const incomeDefaultSuggestions = useMemo(() => {
-    const q = incomeInput.trim().toLowerCase()
-    if (!q || !editSelected) return []
-    return allGlobalCategoryNames
-      .filter((name) => name.toLowerCase().includes(q))
-      .filter(
-        (name) =>
-          !(editSelected.defaultIncomeCategories || []).some(
-            (c) => c.trim().toLowerCase() === name.toLowerCase(),
-          ),
-      )
-      .slice(0, 6)
-  }, [incomeInput, allGlobalCategoryNames, editSelected])
-
-  const expenseDefaultSuggestions = useMemo(() => {
-    const q = expenseInput.trim().toLowerCase()
-    if (!q || !editSelected) return []
-    return allGlobalCategoryNames
-      .filter((name) => name.toLowerCase().includes(q))
-      .filter(
-        (name) =>
-          !(editSelected.defaultExpenseCategories || []).some(
-            (c) => c.trim().toLowerCase() === name.toLowerCase(),
-          ),
-      )
-      .slice(0, 6)
-  }, [expenseInput, allGlobalCategoryNames, editSelected])
-
-  const handleAddIncome = () => {
-    if (!editSelected) return
-    const trimmed = incomeInput.trim()
-    if (!trimmed) return
-
-    const exists = (editSelected.defaultIncomeCategories || []).some(
-      (c) => c.trim().toLowerCase() === trimmed.toLowerCase(),
-    )
-    if (exists) {
-      showToast?.(
-        'Kategori pendapatan default sudah ada untuk tipe unit ini.',
-        'error',
-      )
-      setIncomeInput('')
-      return
-    }
-
-    const updated = businessConfigs.map((b) =>
-      b.id === editSelected.id
-        ? {
-            ...b,
-            defaultIncomeCategories: [
-              ...(b.defaultIncomeCategories || []),
-              trimmed,
-            ],
-          }
-        : b,
-    )
-    setBusinessConfigs(updated)
-    showToast?.('Kategori pendapatan default berhasil ditambahkan.')
-    setIncomeInput('')
-  }
-
-  const handleAddIncomeFromSuggestion = (name) => {
-    setIncomeInput(name)
-    handleAddIncome()
-  }
-
-  const handleAddExpense = () => {
-    if (!editSelected) return
-    const trimmed = expenseInput.trim()
-    if (!trimmed) return
-
-    const exists = (editSelected.defaultExpenseCategories || []).some(
-      (c) => c.trim().toLowerCase() === trimmed.toLowerCase(),
-    )
-    if (exists) {
-      showToast?.(
-        'Kategori pengeluaran default sudah ada untuk tipe unit ini.',
-        'error',
-      )
-      setExpenseInput('')
-      return
-    }
-
-    const updated = businessConfigs.map((b) =>
-      b.id === editSelected.id
-        ? {
-            ...b,
-            defaultExpenseCategories: [
-              ...(b.defaultExpenseCategories || []),
-              trimmed,
-            ],
-          }
-        : b,
-    )
-    setBusinessConfigs(updated)
-    showToast?.('Kategori pengeluaran default berhasil ditambahkan.')
-    setExpenseInput('')
-  }
-
-  const handleAddExpenseFromSuggestion = (name) => {
-    setExpenseInput(name)
-    handleAddExpense()
-  }
-
-  const handleRemoveIncome = (cat) => {
-    if (!editSelected) return
-    const updated = businessConfigs.map((b) =>
-      b.id === editSelected.id
-        ? {
-            ...b,
-            defaultIncomeCategories: (b.defaultIncomeCategories || []).filter(
-              (c) => c !== cat,
-            ),
-          }
-        : b,
-    )
-    setBusinessConfigs(updated)
-  }
-
-  const handleRemoveExpense = (cat) => {
-    if (!editSelected) return
-    const updated = businessConfigs.map((b) =>
-      b.id === editSelected.id
-        ? {
-            ...b,
-            defaultExpenseCategories: (b.defaultExpenseCategories || []).filter(
-              (c) => c !== cat,
-            ),
-          }
-        : b,
-    )
-    setBusinessConfigs(updated)
-  }
-
-  // ---------- CONFIRM MODAL CABANG ----------
   const renderConfirmModal = () => {
     if (!confirmModal || !confirmModal.branch) return null
     const { type, branch } = confirmModal
@@ -1151,6 +982,7 @@ function SettingsPage({
                       color: '#fee2e2',
                       cursor: 'pointer',
                       fontSize: 12,
+                      marginLeft: 2,
                     }}
                   >
                     ✕
@@ -1338,319 +1170,6 @@ function SettingsPage({
             >
               Belum ada tipe unit bisnis yang dikonfigurasi.
             </p>
-          )}
-        </div>
-
-        {/* Default Kategori per Tipe */}
-        <div
-          style={{
-            backgroundColor: 'var(--bg-elevated)',
-            border: '1px solid var(--border)',
-            borderRadius: '12px',
-            padding: '1.5rem',
-          }}
-        >
-          <h2
-            style={{
-              fontSize: '1.1rem',
-              fontWeight: 600,
-              marginBottom: '1rem',
-            }}
-          >
-            Default Kategori per Tipe
-          </h2>
-
-          <div style={{ marginBottom: '1.25rem' }}>
-            <label
-              style={{
-                display: 'block',
-                fontSize: 12,
-                fontWeight: 500,
-                marginBottom: 6,
-                color: 'var(--text)',
-              }}
-            >
-              Pilih Tipe Unit Bisnis
-            </label>
-            <select
-              value={editSelectedId}
-              onChange={(e) => setEditSelectedId(e.target.value)}
-              style={{
-                width: '100%',
-                backgroundColor: 'var(--bg)',
-                borderRadius: 12,
-                border: '1px solid var(--border)',
-                padding: '0.7rem 1rem',
-                fontSize: 13,
-                color: 'var(--text)',
-                outline: 'none',
-              }}
-            >
-              {(businessConfigs || [])
-                .filter((b) =>
-                  ['LAUNDRY', 'CARWASH', 'KOS', 'OTHER'].includes(
-                    b.branch_type || b.type,
-                  ),
-                )
-                .map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {branchTypeLabelById(b.id, businessConfigs)}
-                  </option>
-                ))}
-            </select>
-          </div>
-
-          {editSelected && (
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: '1fr 1fr',
-                gap: '1.5rem',
-                marginTop: '1rem',
-              }}
-            >
-              {/* Income defaults */}
-              <div>
-                <h3
-                  style={{
-                    fontSize: 13,
-                    fontWeight: 600,
-                    marginBottom: 8,
-                    color: '#16a34a',
-                  }}
-                >
-                  Default Kategori Pendapatan
-                </h3>
-
-                <div
-                  style={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: 6,
-                    marginBottom: 8,
-                  }}
-                >
-                  <input
-                    placeholder="Cari / tambah kategori pendapatan"
-                    value={incomeInput}
-                    onChange={(e) => setIncomeInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault()
-                        handleAddIncome()
-                      }
-                    }}
-                    style={{
-                      flex: 1,
-                      backgroundColor: 'var(--bg)',
-                      borderRadius: 9999,
-                      border: '1px solid var(--border)',
-                      padding: '0.5rem 0.9rem',
-                      fontSize: 12,
-                      color: 'var(--text)',
-                      outline: 'none',
-                    }}
-                  />
-                  {incomeDefaultSuggestions.length > 0 && (
-                    <div
-                      style={{
-                        backgroundColor: 'var(--bg)',
-                        borderRadius: 10,
-                        border: '1px solid var(--border)',
-                        maxHeight: 140,
-                        overflowY: 'auto',
-                      }}
-                    >
-                      {incomeDefaultSuggestions.map((name) => (
-                        <button
-                          key={name}
-                          type="button"
-                          onClick={() => handleAddIncomeFromSuggestion(name)}
-                          style={{
-                            display: 'block',
-                            width: '100%',
-                            textAlign: 'left',
-                            padding: '0.4rem 0.7rem',
-                            border: 'none',
-                            background: 'transparent',
-                            color: 'var(--text)',
-                            fontSize: 12,
-                            cursor: 'pointer',
-                          }}
-                        >
-                          {name}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                <ul
-                  style={{
-                    listStyle: 'none',
-                    padding: 0,
-                    margin: 0,
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: 4,
-                  }}
-                >
-                  {(editSelected.defaultIncomeCategories || []).map((cat) => (
-                    <li
-                      key={cat}
-                      style={{
-                        fontSize: 11,
-                        color: 'var(--text)',
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                      }}
-                    >
-                      <span>• {cat}</span>
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveIncome(cat)}
-                        style={{
-                          border: 'none',
-                          background: 'none',
-                          color: '#6b7280',
-                          cursor: 'pointer',
-                          fontSize: 11,
-                        }}
-                      >
-                        Hapus
-                      </button>
-                    </li>
-                  ))}
-                  {!editSelected.defaultIncomeCategories?.length && (
-                    <li style={{ fontSize: 11, color: 'var(--subtext)' }}>
-                      Belum ada kategori pendapatan default.
-                    </li>
-                  )}
-                </ul>
-              </div>
-
-              {/* Expense defaults */}
-              <div>
-                <h3
-                  style={{
-                    fontSize: 13,
-                    fontWeight: 600,
-                    marginBottom: 8,
-                    color: '#dc2626',
-                  }}
-                >
-                  Default Kategori Pengeluaran
-                </h3>
-
-                <div
-                  style={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: 6,
-                    marginBottom: 8,
-                  }}
-                >
-                  <input
-                    placeholder="Cari / tambah kategori pengeluaran"
-                    value={expenseInput}
-                    onChange={(e) => setExpenseInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault()
-                        handleAddExpense()
-                      }
-                    }}
-                    style={{
-                      flex: 1,
-                      backgroundColor: 'var(--bg)',
-                      borderRadius: 9999,
-                      border: '1px solid var(--border)',
-                      padding: '0.5rem 0.9rem',
-                      fontSize: 12,
-                      color: 'var(--text)',
-                      outline: 'none',
-                    }}
-                  />
-                  {expenseDefaultSuggestions.length > 0 && (
-                    <div
-                      style={{
-                        backgroundColor: 'var(--bg)',
-                        borderRadius: 10,
-                        border: '1px solid var(--border)',
-                        maxHeight: 140,
-                        overflowY: 'auto',
-                      }}
-                    >
-                      {expenseDefaultSuggestions.map((name) => (
-                        <button
-                          key={name}
-                          type="button"
-                          onClick={() => handleAddExpenseFromSuggestion(name)}
-                          style={{
-                            display: 'block',
-                            width: '100%',
-                            textAlign: 'left',
-                            padding: '0.4rem 0.7rem',
-                            border: 'none',
-                            background: 'transparent',
-                            color: 'var(--text)',
-                            fontSize: 12,
-                            cursor: 'pointer',
-                          }}
-                        >
-                          {name}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                <ul
-                  style={{
-                    listStyle: 'none',
-                    padding: 0,
-                    margin: 0,
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: 4,
-                  }}
-                >
-                  {(editSelected.defaultExpenseCategories || []).map((cat) => (
-                    <li
-                      key={cat}
-                      style={{
-                        fontSize: 11,
-                        color: 'var(--text)',
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                      }}
-                    >
-                      <span>• {cat}</span>
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveExpense(cat)}
-                        style={{
-                          border: 'none',
-                          background: 'none',
-                          color: '#6b7280',
-                          cursor: 'pointer',
-                          fontSize: 11,
-                        }}
-                      >
-                        Hapus
-                      </button>
-                    </li>
-                  ))}
-                  {!editSelected.defaultExpenseCategories?.length && (
-                    <li style={{ fontSize: 11, color: 'var(--subtext)' }}>
-                      Belum ada kategori pengeluaran default.
-                    </li>
-                  )}
-                </ul>
-              </div>
-            </div>
           )}
         </div>
       </div>
