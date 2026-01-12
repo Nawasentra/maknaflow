@@ -2,12 +2,13 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from django.conf import settings
-from .models import IngestionLog, TransactionSource, IngestionStatus
+from .models import IngestionLog, TransactionSource, IngestionStatus, Transaction, Branch, Category, User
 from .serializers import EmailWebhookPayloadSerializer
 from .ingestion.email_webhook import EmailWebhookService
 from rest_framework.parsers import JSONParser, MultiPartParser, FormParser
 from rest_framework.views import APIView
 from rest_framework.permissions import AllowAny
+from django.shortcuts import get_object_or_404
 import logging
 import traceback
 
@@ -683,3 +684,51 @@ class WhatsAppWebhookView(APIView):
                 {'error': 'Failed to process webhook'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+class InternalWhatsAppIngestion(APIView):
+    # Endpoint ini akan dipanggil oleh Node.js Bot
+    parser_classes = [MultiPartParser, FormParser]
+    
+    def post(self, request):
+        data = request.data
+        
+        # 1. Identifikasi Staff berdasarkan No HP (sesuai screenshot Security)
+        # Pastikan format nomor HP di database konsisten (misal: 628xxx)
+        phone = data.get('phone_number')
+        staff_user = User.objects.filter(profile__phone_number=phone, is_staff=True).first()
+        
+        if not staff_user:
+            return Response({"error": "Nomor tidak terdaftar sebagai Staff"}, status=400)
+
+        # 2. Catat ke IngestionLog (Safety Net sesuai arsitektur)
+        log = IngestionLog.objects.create(
+            source="WHATSAPP_INTERNAL",
+            raw_data=str(data),
+            status="PENDING"
+        )
+
+        try:
+            # Ambil file gambar dari request (jika ada)
+            evidence_file = request.FILES.get('evidence') 
+
+            transaction = Transaction.objects.create(
+                user=staff_user,
+                branch=branch,
+                category=category,
+                amount=data.get('amount'),
+                description=data.get('notes', '-'),
+                payment_method="CASH",
+                is_verified=staff_user.is_verified_staff,
+                evidence=evidence_file # Simpan file ke database
+            )
+            
+            # Update Log sukses
+            log.status = "SUCCESS"
+            log.save()
+            
+            return Response({"message": "Transaksi berhasil disimpan", "id": transaction.id}, status=201)
+            
+        except Exception as e:
+            log.status = "FAILED"
+            log.save()
+            return Response({"error": str(e)}, status=400)

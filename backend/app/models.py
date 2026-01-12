@@ -142,7 +142,7 @@ class IngestionLog(TimeStampedModel):
     def __str__(self):
         return f"Log #{self.id} - {self.source} - {self.status}"
 
-class Transaction(TimeStampedModel):
+class Transaction(TimeStampedModel, models.Model):
     """
     Records for income and expenses with verifications
     """

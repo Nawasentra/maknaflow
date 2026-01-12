@@ -219,4 +219,28 @@ class DailySummaryAdmin(admin.ModelAdmin):
         qs = super().get_queryset(request)
         return qs.select_related('branch', 'ingestion_log')
 
-admin.site.register(User, UserAdmin)
+@admin.register(User)
+class CustomUserAdmin(UserAdmin):
+    # 1. Menampilkan kolom tambahan di tabel daftar user (List View)
+    list_display = UserAdmin.list_display + ('phone_number', 'assigned_branch', 'is_verified', 'is_staff')
+    
+    # 2. Menambahkan fitur filter di sidebar kanan
+    list_filter = UserAdmin.list_filter + ('assigned_branch', 'is_verified')
+    
+    # 3. Menambahkan kolom pencarian berdasarkan nomor HP
+    search_fields = UserAdmin.search_fields + ('phone_number',)
+    
+    # 4. Memunculkan form input di halaman Edit User
+    fieldsets = UserAdmin.fieldsets + (
+        ('Staff Information', {
+            'fields': ('phone_number', 'assigned_branch', 'is_verified'),
+            'description': 'Informasi khusus untuk Staff MaknaFlow (WhatsApp Bot & Cabang)'
+        }),
+    )
+    
+    # 5. Memunculkan form input saat membuat user baru (Add User Page)
+    add_fieldsets = UserAdmin.add_fieldsets + (
+        ('Staff Information', {
+            'fields': ('phone_number', 'assigned_branch', 'is_verified'),
+        }),
+    )
