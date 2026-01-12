@@ -44,7 +44,7 @@ function SettingsPage({
   setAppSettings,
   showToast,
 }) {
-  // ---------- KATEGORI GLOBAL (backend, TANPA UI) ----------
+  // ---------- KATEGORI GLOBAL ----------
   const [categories, setCategories] = useState([])
   const [categoriesLoading, setCategoriesLoading] = useState(false)
 
@@ -71,7 +71,7 @@ function SettingsPage({
       ;(unit.branches || []).forEach((br) => {
         result.push({
           unitId: unit.id,
-          unitType: unit.branch_type || unit.type, // enum LAUNDRY/CARWASH/KOS/OTHER
+          unitType: unit.branch_type || unit.type,
           unitLabel: shortLabel(unit.branch_type || unit.type),
           id: br.id,
           name: br.name,
@@ -92,10 +92,8 @@ function SettingsPage({
   const [branchCategoryTab, setBranchCategoryTab] = useState('INCOME')
   const [branchCategorySearch, setBranchCategorySearch] = useState('')
   const [branchNewCategoryName, setBranchNewCategoryName] = useState('')
-
   const [confirmCategory, setConfirmCategory] = useState(null)
 
-  // filter cabang by tipe unit bisnis
   const branchesForCategoryCard = useMemo(() => {
     if (branchUnitFilterForCategory === 'ALL') return allBranchesFlat
     return allBranchesFlat.filter(
@@ -103,7 +101,6 @@ function SettingsPage({
     )
   }, [allBranchesFlat, branchUnitFilterForCategory])
 
-  // auto pilih cabang pertama sesuai filter
   useEffect(() => {
     if (!branchesForCategoryCard.length) {
       setSelectedBranchForCategory('')
@@ -137,7 +134,6 @@ function SettingsPage({
     return Array.isArray(ids) ? ids : []
   }, [selectedBranchForCategoryObj, branchCategoryTab])
 
-  // kategori global yang match transaction_type + search
   const filteredGlobalByTxType = useMemo(() => {
     const list = categories.filter(
       (c) => c.transaction_type === branchCategoryTab,
@@ -246,7 +242,6 @@ function SettingsPage({
     }
   }
 
-  // hapus kategori global + bersihkan di semua cabang
   const requestDeleteGlobalCategory = (cat) => {
     setConfirmCategory(cat)
   }
@@ -457,7 +452,7 @@ function SettingsPage({
             : u,
         ),
       )
-      showToast?.('Nama cabang berhasil diubah.')
+      // tidak ada toast sukses; rename silent
     } catch (e) {
       console.error(e)
       showToast?.('Gagal mengubah nama cabang.', 'error')
