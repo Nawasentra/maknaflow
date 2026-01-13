@@ -185,15 +185,15 @@ function DashboardPage({ transactions, isLoading, error }) {
   }, [filterDate, customStart, customEnd, filterBranch, startOfToday, sevenDaysAgo, startOfMonth])
 
   // ---------- INCOME SOURCES (PIE) ----------
-  // Gabungkan: DailySummary (email) + transaksi (manual/WA)
+  // Email (DailySummary) + manual/WA; Lainnya hanya unknown dari manual/WA
 
   const incomeSources = useMemo(() => {
-    // 1) Kontribusi dari DailySummary (email)
+    // 1) Email (DailySummary)
     const emailCash = paymentBreakdown?.cash || 0
     const emailQris = paymentBreakdown?.qris || 0
     const emailTransfer = paymentBreakdown?.transfer || 0
 
-    // 2) Kontribusi dari transaksi yang punya payment_method (manual / WA)
+    // 2) Manual / WhatsApp (yang punya payment_method)
     const manualAgg = filteredTransactions
       .filter((t) => t.type === 'Income')
       .reduce(
@@ -211,7 +211,6 @@ function DashboardPage({ transactions, isLoading, error }) {
     const totalCash = emailCash + manualAgg.cash
     const totalQris = emailQris + manualAgg.qris
     const totalTransfer = emailTransfer + manualAgg.transfer
-    const totalKnown = totalCash + totalQris + totalTransfer
     const totalUnknown = manualAgg.unknown
 
     const result = []
@@ -220,14 +219,9 @@ function DashboardPage({ transactions, isLoading, error }) {
     if (totalQris > 0) result.push({ name: 'QRIS', value: totalQris })
     if (totalTransfer > 0) result.push({ name: 'Transfer', value: totalTransfer })
 
-    // Jika ada income tanpa payment_method, tampilkan sebagai Lainnya
-    if (totalUnknown > 0 && (totalKnown > 0 || paymentBreakdown?.total > 0)) {
+    // Lainnya = hanya income manual/WA yang tidak punya metode
+    if (totalUnknown > 0) {
       result.push({ name: 'Lainnya', value: totalUnknown })
-    }
-
-    // Kalau benar‑benar tidak ada breakdown sama sekali, kosongkan chart
-    if (result.length === 0 && totalUnknown > 0) {
-      return [{ name: 'Lainnya', value: totalUnknown }]
     }
 
     return result
