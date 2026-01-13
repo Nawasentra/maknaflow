@@ -571,7 +571,7 @@ function DashboardPage({ transactions, isLoading, error }) {
             <ResponsiveContainer width="100%" height="100%">
               <LineChart
                 data={trendData}
-                margin={{ top: 20, right: 20, left: 0, bottom: 0 }}
+                margin={{ top: 20, right: 20, left: 60, bottom: 0 }}
               >
                 <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" />
                 <XAxis dataKey="date" stroke="#9ca3af" />
