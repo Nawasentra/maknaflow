@@ -173,9 +173,6 @@ function DashboardPage({ transactions, isLoading, error }) {
           params.end_date = customEnd
         }
 
-        // Cabang filter (future: kirim branch_id kalau sudah ada)
-        // For now, backend sudah filter by user/branch di get_queryset
-
         const data = await fetchPaymentBreakdown(params)
         setPaymentBreakdown(data)
       } catch (err) {
@@ -188,49 +185,52 @@ function DashboardPage({ transactions, isLoading, error }) {
   }, [filterDate, customStart, customEnd, filterBranch, startOfToday, sevenDaysAgo, startOfMonth])
 
   // ---------- INCOME SOURCES (PIE) ----------
+  // Gabungkan: DailySummary (email) + transaksi (manual/WA)
 
   const incomeSources = useMemo(() => {
-    // 1) Pakai DailySummary kalau ada data
-    if (paymentBreakdown && paymentBreakdown.total > 0) {
-      return [
-        { name: 'Cash', value: paymentBreakdown.cash },
-        { name: 'QRIS', value: paymentBreakdown.qris },
-        { name: 'Transfer', value: paymentBreakdown.transfer },
-      ].filter((item) => item.value > 0)
-    }
+    // 1) Kontribusi dari DailySummary (email)
+    const emailCash = paymentBreakdown?.cash || 0
+    const emailQris = paymentBreakdown?.qris || 0
+    const emailTransfer = paymentBreakdown?.transfer || 0
 
-    // 2) Fallback: hitung dari transaksi (manual / tanpa email breakdown)
-    const incomeSourcesMap = filteredTransactions
+    // 2) Kontribusi dari transaksi yang punya payment_method (manual / WA)
+    const manualAgg = filteredTransactions
       .filter((t) => t.type === 'Income')
-      .reduce((acc, t) => {
-        const method = t.payment || 'Unknown'
-        acc[method] = (acc[method] || 0) + (t.amount || 0)
-        return acc
-      }, {})
+      .reduce(
+        (acc, t) => {
+          const method = (t.payment || '').toUpperCase()
+          if (method === 'CASH') acc.cash += t.amount || 0
+          else if (method === 'QRIS') acc.qris += t.amount || 0
+          else if (method === 'TRANSFER') acc.transfer += t.amount || 0
+          else acc.unknown += t.amount || 0
+          return acc
+        },
+        { cash: 0, qris: 0, transfer: 0, unknown: 0 },
+      )
 
-    const entries = Object.entries(incomeSourcesMap)
-    if (entries.length === 0) return []
+    const totalCash = emailCash + manualAgg.cash
+    const totalQris = emailQris + manualAgg.qris
+    const totalTransfer = emailTransfer + manualAgg.transfer
+    const totalKnown = totalCash + totalQris + totalTransfer
+    const totalUnknown = manualAgg.unknown
 
-    // Jika semua income tidak punya payment_method (Unknown),
-    // tampilkan sebagai satu slice "Lainnya" agar chart tidak kosong.
-    if (entries.length === 1 && entries[0][0] === 'Unknown') {
-      return [{ name: 'Lainnya', value: entries[0][1] }]
+    const result = []
+
+    if (totalCash > 0) result.push({ name: 'Cash', value: totalCash })
+    if (totalQris > 0) result.push({ name: 'QRIS', value: totalQris })
+    if (totalTransfer > 0) result.push({ name: 'Transfer', value: totalTransfer })
+
+    // Jika ada income tanpa payment_method, tampilkan sebagai Lainnya
+    if (totalUnknown > 0 && (totalKnown > 0 || paymentBreakdown?.total > 0)) {
+      result.push({ name: 'Lainnya', value: totalUnknown })
     }
 
-    // Kalau campuran, buang Unknown tapi pertahankan metode yang jelas.
-    return entries
-      .filter(([name]) => name !== 'Unknown')
-      .map(([name, value]) => ({
-        name:
-          name === 'CASH'
-            ? 'Cash'
-            : name === 'QRIS'
-            ? 'QRIS'
-            : name === 'TRANSFER'
-            ? 'Transfer'
-            : name,
-        value,
-      }))
+    // Kalau benar‑benar tidak ada breakdown sama sekali, kosongkan chart
+    if (result.length === 0 && totalUnknown > 0) {
+      return [{ name: 'Lainnya', value: totalUnknown }]
+    }
+
+    return result
   }, [paymentBreakdown, filteredTransactions])
 
   // ---------- EXPENSE BY CATEGORY ----------
