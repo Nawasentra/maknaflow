@@ -42,6 +42,7 @@ function DashboardPage({ transactions, isLoading, error }) {
   const [customStart, setCustomStart] = useState('')
   const [customEnd, setCustomEnd] = useState('')
   const [paymentBreakdown, setPaymentBreakdown] = useState(null)
+  const [lastPbCall, setLastPbCall] = useState(0) // rate-limit 500ms
 
   const today = new Date()
   const startOfToday = new Date(
@@ -152,8 +153,15 @@ function DashboardPage({ transactions, isLoading, error }) {
   )
 
   // ---------- PAYMENT BREAKDOWN (DailySummary) ----------
+  // Hanya tergantung rentang tanggal + rate-limit 500ms
 
   useEffect(() => {
+    const now = Date.now()
+    if (now - lastPbCall < 500) {
+      return
+    }
+    setLastPbCall(now)
+
     const loadPaymentBreakdown = async () => {
       try {
         const params = {}
@@ -182,26 +190,16 @@ function DashboardPage({ transactions, isLoading, error }) {
     }
 
     loadPaymentBreakdown()
-  }, [
-    filterDate,
-    customStart,
-    customEnd,
-    filterBranch,
-    startOfToday,
-    sevenDaysAgo,
-    startOfMonth,
-  ])
+  }, [filterDate, customStart, customEnd, lastPbCall])
 
   // ---------- INCOME SOURCES (PIE) ----------
-  // Email (DailySummary) + manual/WA; abaikan income manual/WA yang tidak punya metode
+  // Email (DailySummary) + manual/WA; abaikan income manual/WA tanpa metode
 
   const incomeSources = useMemo(() => {
-    // 1) Email (DailySummary)
     const emailCash = paymentBreakdown?.cash || 0
     const emailQris = paymentBreakdown?.qris || 0
     const emailTransfer = paymentBreakdown?.transfer || 0
 
-    // 2) Manual / WhatsApp (hanya CASH/QRIS/TRANSFER)
     const manualAgg =
       filteredTransactions
         .filter((t) => t.type === 'Income')
@@ -212,7 +210,6 @@ function DashboardPage({ transactions, isLoading, error }) {
             if (method === 'CASH') acc.cash += amount
             else if (method === 'QRIS') acc.qris += amount
             else if (method === 'TRANSFER') acc.transfer += amount
-            // lainnya di-skip
             return acc
           },
           { cash: 0, qris: 0, transfer: 0 },
@@ -255,7 +252,7 @@ function DashboardPage({ transactions, isLoading, error }) {
     })
       .format(amount)
       .replace('Rp', '')
-      .trim() 
+      .trim()
 
   // ---------- RENDER STATES ----------
 
