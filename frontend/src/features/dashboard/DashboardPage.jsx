@@ -1,5 +1,5 @@
 // src/features/dashboard/DashboardPage.jsx
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useEffect } from 'react'
 import {
   LineChart,
   Line,
@@ -15,11 +15,21 @@ import {
   Bar,
   ResponsiveContainer,
 } from 'recharts'
+import { fetchPaymentBreakdown } from '../../lib/api/dailySummaries'
+
+// --- helpers --------------------------------------------------
 
 function parseLocalDate(isoDateStr) {
   if (!isoDateStr) return null
   const [year, month, day] = isoDateStr.split('-').map(Number)
   return new Date(year, month - 1, day)
+}
+
+function formatLocalDate(d) {
+  const year = d.getFullYear()
+  const month = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
 }
 
 const UNIT_LABELS = ['Laundry', 'Carwash', 'Kos', 'Other']
@@ -34,12 +44,16 @@ function normalizeUnit(unit) {
   return unit
 }
 
+// --- main component -------------------------------------------
+
 function DashboardPage({ transactions, isLoading, error }) {
   const [filterDate, setFilterDate] = useState('7 Hari Terakhir')
   const [filterUnit, setFilterUnit] = useState('Semua Unit')
   const [filterBranch, setFilterBranch] = useState('Semua Cabang')
   const [customStart, setCustomStart] = useState('')
   const [customEnd, setCustomEnd] = useState('')
+  const [paymentBreakdown, setPaymentBreakdown] = useState(null)
+  const [lastPbCall, setLastPbCall] = useState(0) // rate-limit 500ms
 
   const today = new Date()
   const startOfToday = new Date(
@@ -149,27 +163,108 @@ function DashboardPage({ transactions, isLoading, error }) {
     (a, b) => new Date(a.date) - new Date(b.date),
   )
 
-  const incomeSourcesMap = filteredTransactions
-    .filter((t) => t.type === 'Income')
-    .reduce((acc, t) => {
-      const method = t.payment || 'Unknown'
-      acc[method] = (acc[method] || 0) + (t.amount || 0)
-      return acc
-    }, {})
+  // ---------- PAYMENT BREAKDOWN (DailySummary) ----------
 
-  const incomeSources = Object.entries(incomeSourcesMap).map(
-    ([name, value]) => ({
-      name:
-        name === 'CASH'
-          ? 'Cash'
-          : name === 'QRIS'
-          ? 'QRIS'
-          : name === 'TRANSFER'
-          ? 'Transfer'
-          : 'Tidak Diketahui',
-      value,
-    }),
-  )
+  // Clear stale paymentBreakdown whenever filters change
+  useEffect(() => {
+    setPaymentBreakdown(null)
+  }, [filterDate, filterUnit, filterBranch, customStart, customEnd])
+
+  useEffect(() => {
+    const now = Date.now()
+    if (now - lastPbCall < 500) {
+      return
+    }
+    setLastPbCall(now)
+
+    const loadPaymentBreakdown = async () => {
+      try {
+        const params = {}
+
+        if (filterDate === 'Hari Ini') {
+          const d = formatLocalDate(startOfToday)
+          params.start_date = d
+          params.end_date = d
+        } else if (filterDate === '7 Hari Terakhir') {
+          params.start_date = formatLocalDate(sevenDaysAgo)
+          params.end_date = formatLocalDate(startOfToday)
+        } else if (filterDate === 'Bulan Ini') {
+          params.start_date = formatLocalDate(startOfMonth)
+          params.end_date = formatLocalDate(startOfToday)
+        } else if (filterDate === 'Custom' && customStart && customEnd) {
+          params.start_date = customStart
+          params.end_date = customEnd
+        }
+
+        if (filterBranch !== 'Semua Cabang') {
+          params.branch = filterBranch
+        }
+        if (filterUnit !== 'Semua Unit') {
+          // kirim nama unit → backend map ke enum
+          params.unit = filterUnit
+        }
+
+        const data = await fetchPaymentBreakdown(params)
+        setPaymentBreakdown(data)
+      } catch (err) {
+        console.error('Failed to load payment breakdown:', err)
+        setPaymentBreakdown(null)
+      }
+    }
+
+    loadPaymentBreakdown()
+  }, [
+    filterDate,
+    customStart,
+    customEnd,
+    filterUnit,
+    filterBranch,
+    lastPbCall,
+    startOfToday,
+    sevenDaysAgo,
+    startOfMonth,
+  ])
+
+  // ---------- INCOME SOURCES (PIE) ----------
+
+  const incomeSources = useMemo(() => {
+    const hasEmailData =
+      paymentBreakdown && typeof paymentBreakdown.count === 'number'
+        ? paymentBreakdown.count > 0
+        : false
+
+    const emailCash = hasEmailData ? paymentBreakdown.cash || 0 : 0
+    const emailQris = hasEmailData ? paymentBreakdown.qris || 0 : 0
+    const emailTransfer = hasEmailData ? paymentBreakdown.transfer || 0 : 0
+
+    const manualAgg =
+      filteredTransactions
+        .filter((t) => t.type === 'Income')
+        .reduce(
+          (acc, t) => {
+            const method = (t.payment || '').toUpperCase()
+            const amount = t.amount || 0
+            if (method === 'CASH') acc.cash += amount
+            else if (method === 'QRIS') acc.qris += amount
+            else if (method === 'TRANSFER') acc.transfer += amount
+            return acc
+          },
+          { cash: 0, qris: 0, transfer: 0 },
+        ) || { cash: 0, qris: 0, transfer: 0 }
+
+    const totalCash = emailCash + manualAgg.cash
+    const totalQris = emailQris + manualAgg.qris
+    const totalTransfer = emailTransfer + manualAgg.transfer
+
+    const result = []
+    if (totalCash > 0) result.push({ name: 'Cash', value: totalCash })
+    if (totalQris > 0) result.push({ name: 'QRIS', value: totalQris })
+    if (totalTransfer > 0) result.push({ name: 'Transfer', value: totalTransfer })
+
+    return result
+  }, [paymentBreakdown, filteredTransactions])
+
+  // ---------- EXPENSE BY CATEGORY ----------
 
   const expenseCatMap = filteredTransactions
     .filter((t) => t.type === 'Expense')
@@ -476,11 +571,18 @@ function DashboardPage({ transactions, isLoading, error }) {
             <ResponsiveContainer width="100%" height="100%">
               <LineChart
                 data={trendData}
-                margin={{ top: 20, right: 20, left: 0, bottom: 0 }}
+                margin={{ top: 20, right: 20, left: 60, bottom: 0 }}
               >
                 <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" />
                 <XAxis dataKey="date" stroke="#9ca3af" />
-                <YAxis stroke="#9ca3af" />
+                <YAxis
+                  stroke="#9ca3af"
+                  domain={[0, (dataMax) => dataMax * 1.1]}
+                  allowDecimals={false}
+                  tickFormatter={(v) =>
+                    new Intl.NumberFormat('id-ID').format(v)
+                  }
+                />
                 <Tooltip />
                 <Legend />
                 <Line
@@ -585,6 +687,8 @@ function DashboardPage({ transactions, isLoading, error }) {
     </main>
   )
 }
+
+// --- KPI card -------------------------------------------------
 
 function KpiCard({ title, value, icon, color }) {
   return (
