@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
 from .models import (
-    User, Branch, Category, Transaction, IngestionLog
+    User, Branch, Category, Transaction, IngestionLog, DailySummary
 )
 
 @admin.register(Branch)
@@ -44,10 +44,10 @@ link_categories_to_branches.short_description = "Link selected categories to bra
 class TransactionAdmin(admin.ModelAdmin):
     list_display = [
         'id', 'date', 'branch_name', 'amount', 'transaction_type', 
-        'category_name', 'reported_by', 'is_verified', 'source', 'created_at'
+        'category_name', 'payment_method', 'reported_by', 'is_verified', 'source', 'created_at'
     ]
     list_filter = [
-        'transaction_type', 'source', 'is_verified', 'is_valid',
+        'transaction_type', 'payment_method', 'source', 'is_verified', 'is_valid',
         'date', 'created_at', 'branch'
     ]
     search_fields = [
@@ -61,7 +61,7 @@ class TransactionAdmin(admin.ModelAdmin):
         ('Transaction Details', {
             'fields': (
                 'branch', 'date', 'amount', 'transaction_type', 
-                'category', 'description'
+                'category', 'payment_method', 'description'
             )
         }),
         ('Tracking', {
@@ -172,5 +172,51 @@ class IngestionLogAdmin(admin.ModelAdmin):
     def get_queryset(self, request):
         qs = super().get_queryset(request)
         return qs.select_related('created_transaction')
+
+@admin.register(DailySummary)
+class DailySummaryAdmin(admin.ModelAdmin):
+    list_display = [
+        'id', 'date', 'branch', 'source', 'total_collected',
+        'cash_amount', 'qris_amount', 'transfer_amount', 'created_at'
+    ]
+    list_filter = ['source', 'date', 'branch', 'created_at']
+    search_fields = ['branch__name']
+    readonly_fields = ['created_at', 'updated_at', 'raw_data_display']
+    date_hierarchy = 'date'
+    
+    fieldsets = (
+        ('Summary Information', {
+            'fields': ('branch', 'date', 'source')
+        }),
+        ('Sales Totals', {
+            'fields': (
+                'gross_sales', 'total_discount', 'net_sales',
+                'total_tax', 'total_collected'
+            )
+        }),
+        ('Payment Breakdown', {
+            'fields': ('cash_amount', 'qris_amount', 'transfer_amount')
+        }),
+        ('Raw Data', {
+            'fields': ('raw_data_display',),
+            'classes': ('collapse',)
+        }),
+        ('Metadata', {
+            'fields': ('ingestion_log', 'created_at', 'updated_at'),
+            'classes': ('collapse',)
+        }),
+    )
+    
+    def raw_data_display(self, obj):
+        """Display raw data as formatted JSON."""
+        import json
+        if obj.raw_data:
+            return json.dumps(obj.raw_data, indent=2, ensure_ascii=False)
+        return "No data"
+    raw_data_display.short_description = 'Raw Data (JSON)'
+    
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+        return qs.select_related('branch', 'ingestion_log')
 
 admin.site.register(User, UserAdmin)
