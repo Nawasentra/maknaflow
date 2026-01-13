@@ -17,10 +17,19 @@ import {
 } from 'recharts'
 import { fetchPaymentBreakdown } from '../../lib/api/dailySummaries'
 
+// --- helpers --------------------------------------------------
+
 function parseLocalDate(isoDateStr) {
   if (!isoDateStr) return null
   const [year, month, day] = isoDateStr.split('-').map(Number)
   return new Date(year, month - 1, day)
+}
+
+function formatLocalDate(d) {
+  const year = d.getFullYear()
+  const month = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
 }
 
 const UNIT_LABELS = ['Laundry', 'Carwash', 'Kos', 'Other']
@@ -34,6 +43,8 @@ function normalizeUnit(unit) {
   if (u === 'OTHER') return 'Other'
   return unit
 }
+
+// --- main component -------------------------------------------
 
 function DashboardPage({ transactions, isLoading, error }) {
   const [filterDate, setFilterDate] = useState('7 Hari Terakhir')
@@ -154,6 +165,11 @@ function DashboardPage({ transactions, isLoading, error }) {
 
   // ---------- PAYMENT BREAKDOWN (DailySummary) ----------
 
+  // Clear stale paymentBreakdown whenever filters change
+  useEffect(() => {
+    setPaymentBreakdown(null)
+  }, [filterDate, filterUnit, filterBranch, customStart, customEnd])
+
   useEffect(() => {
     const now = Date.now()
     if (now - lastPbCall < 500) {
@@ -166,15 +182,15 @@ function DashboardPage({ transactions, isLoading, error }) {
         const params = {}
 
         if (filterDate === 'Hari Ini') {
-          const d = startOfToday.toISOString().split('T')[0]
+          const d = formatLocalDate(startOfToday)
           params.start_date = d
           params.end_date = d
         } else if (filterDate === '7 Hari Terakhir') {
-          params.start_date = sevenDaysAgo.toISOString().split('T')[0]
-          params.end_date = startOfToday.toISOString().split('T')[0]
+          params.start_date = formatLocalDate(sevenDaysAgo)
+          params.end_date = formatLocalDate(startOfToday)
         } else if (filterDate === 'Bulan Ini') {
-          params.start_date = startOfMonth.toISOString().split('T')[0]
-          params.end_date = startOfToday.toISOString().split('T')[0]
+          params.start_date = formatLocalDate(startOfMonth)
+          params.end_date = formatLocalDate(startOfToday)
         } else if (filterDate === 'Custom' && customStart && customEnd) {
           params.start_date = customStart
           params.end_date = customEnd
@@ -212,9 +228,14 @@ function DashboardPage({ transactions, isLoading, error }) {
   // ---------- INCOME SOURCES (PIE) ----------
 
   const incomeSources = useMemo(() => {
-    const emailCash = paymentBreakdown?.cash || 0
-    const emailQris = paymentBreakdown?.qris || 0
-    const emailTransfer = paymentBreakdown?.transfer || 0
+    const hasEmailData =
+      paymentBreakdown && typeof paymentBreakdown.count === 'number'
+        ? paymentBreakdown.count > 0
+        : false
+
+    const emailCash = hasEmailData ? paymentBreakdown.cash || 0 : 0
+    const emailQris = hasEmailData ? paymentBreakdown.qris || 0 : 0
+    const emailTransfer = hasEmailData ? paymentBreakdown.transfer || 0 : 0
 
     const manualAgg =
       filteredTransactions
@@ -666,6 +687,8 @@ function DashboardPage({ transactions, isLoading, error }) {
     </main>
   )
 }
+
+// --- KPI card -------------------------------------------------
 
 function KpiCard({ title, value, icon, color }) {
   return (
