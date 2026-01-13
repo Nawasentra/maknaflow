@@ -130,13 +130,15 @@ class EmailWebhookService:
             try:
                 date_str = str(metadata["date"]).strip()
                 date_formats = [
-                    "%A, %B %d, %Y",  # e.g. Tuesday, November 5, 2025
-                    "%B %d, %Y",      # e.g. November 5, 2025
-                    "%Y-%m-%d",       # e.g. 2025-11-05
+                    "%A, %B %d, %Y",      # Monday, January 12, 2026
+                    "%B %d, %Y",          # January 12, 2026
+                    "%Y-%m-%d",           # 2026-01-12
+                    "%d %B %Y",           # 12 January 2026
                 ]
                 for fmt in date_formats:
                     try:
                         transaction_date = datetime.strptime(date_str, fmt).date()
+                        logger.debug(f"Parsed date with format '{fmt}': {transaction_date}")
                         break
                     except ValueError:
                         continue
