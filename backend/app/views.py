@@ -534,12 +534,15 @@ class DailySummaryViewSet(viewsets.ReadOnlyModelViewSet):
         - Owner: sees all
         - Staff: sees only their branch's summaries
         """
-        if self.request.user.is_superuser:
+        request = self.request
+        user = getattr(request, 'user', None)
+
+        if user and user.is_superuser:
             return DailySummary.objects.all()
-        
-        if self.request.user.assigned_branch:
-            return DailySummary.objects.filter(branch=self.request.user.assigned_branch)
-        
+
+        if user and getattr(user, 'assigned_branch', None):
+            return DailySummary.objects.filter(branch=user.assigned_branch)
+
         return DailySummary.objects.none()
 
     @action(detail=False, methods=['get'], permission_classes=[IsAuthenticated])
@@ -549,64 +552,66 @@ class DailySummaryViewSet(viewsets.ReadOnlyModelViewSet):
         Useful for dashboard pie chart
         Supports filtering by: date range, branch name, and branch type (unit)
         """
-        queryset = self.filter_queryset(self.get_queryset())
-        
-        # 1. Date range filters
+        # Don't use filter_queryset to avoid validating 'branch'/'unit' as filterset choices
+        queryset = self.get_queryset()
+
+        # 1. Date range filters (from Dashboard: start_date / end_date)
         start_date = request.query_params.get('start_date')
         end_date = request.query_params.get('end_date')
-        
+
         if start_date:
             queryset = queryset.filter(date__gte=start_date)
             logger.debug(f"Filtering by start_date >= {start_date}")
         if end_date:
             queryset = queryset.filter(date__lte=end_date)
             logger.debug(f"Filtering by end_date <= {end_date}")
-        
-        # 2. Branch name filter
+
+        # 2. Branch name filter (string branch name, e.g. 'Testing')
         branch_name = request.query_params.get('branch')
         if branch_name and branch_name != 'Semua Cabang':
             queryset = queryset.filter(branch__name=branch_name)
             logger.debug(f"Filtering by branch name: {branch_name}")
-        
+
         # 3. Branch type (unit) filter
+        # Dashboard sends ?unit=Laundry/Carwash/Kos/Other
         branch_type = request.query_params.get('unit')
         if branch_type and branch_type != 'Semua Unit':
-            # Map frontend unit names to model choices
             unit_map = {
                 'Laundry': 'LAUNDRY',
                 'Carwash': 'CARWASH',
                 'Kos': 'KOS',
-                'Other': 'OTHER'
+                'Other': 'OTHER',
             }
             db_branch_type = unit_map.get(branch_type, branch_type.upper())
             queryset = queryset.filter(branch__branch_type=db_branch_type)
             logger.debug(f"Filtering by branch type: {db_branch_type}")
-        
-        # Log final queryset count
+
         count = queryset.count()
-        logger.info(f"Payment breakdown - Filters applied: start={start_date}, end={end_date}, branch={branch_name}, unit={branch_type}")
-        logger.info(f"DailySummary records matching filters: {count}")
-        
-        # Aggregate payment methods
-        from django.db.models import Sum
-        aggregates = queryset.aggregate(
-            total_cash=Sum('cash_amount'),
-            total_qris=Sum('qris_amount'),
-            total_transfer=Sum('transfer_amount')
+        logger.info(
+            f"Payment breakdown - Filters applied: "
+            f"start={start_date}, end={end_date}, "
+            f"branch={branch_name}, unit={branch_type}"
         )
-        
+        logger.info(f"DailySummary records matching filters: {count}")
+
+        aggregates = queryset.aggregate(
+            total_cash=sum('cash_amount'),
+            total_qris=sum('qris_amount'),
+            total_transfer=sum('transfer_amount'),
+        )
+
         result = {
             'cash': float(aggregates['total_cash'] or 0),
             'qris': float(aggregates['total_qris'] or 0),
             'transfer': float(aggregates['total_transfer'] or 0),
             'total': float(
-                (aggregates['total_cash'] or 0) + 
-                (aggregates['total_qris'] or 0) + 
-                (aggregates['total_transfer'] or 0)
+                (aggregates['total_cash'] or 0)
+                + (aggregates['total_qris'] or 0)
+                + (aggregates['total_transfer'] or 0)
             ),
-            'count': count  # Add count for debugging
+            'count': count,
         }
-        
+
         logger.info(f"Payment breakdown result: {result}")
         return Response(result)
         
