@@ -8,7 +8,7 @@ from app.models import (
     Transaction, Category, Branch, DailySummary,
     TransactionType, TransactionSource, BranchType
 )
-from .luna_parser import parse_luna_email
+from .luna_parser_sendgrid import parse_luna_email_refined
 from .hitachi_parser import parse_hitachi_email
 
 logger = logging.getLogger(__name__)
@@ -24,15 +24,18 @@ class EmailWebhookService:
         subject = payload.get('subject', '')
         sender = payload.get('sender', '')
         text_body = payload.get('text_body', '')
+        html_body = payload.get('html_body', '')  # Add HTML body support
 
         logger.info(f"Processing email - Subject: {subject}, Sender: {sender}")
 
-        if not text_body:
-            logger.error("Payload missing 'text_body'")
-            raise ValidationError("Payload missing 'text_body'")
+        if not text_body and not html_body:
+            logger.error("Payload missing 'text_body' and 'html_body'")
+            raise ValidationError("Payload missing both 'text_body' and 'html_body'")
 
         # Detect and parse email type
-        email_type, parsed_data = self._detect_and_parse_email(subject, sender, text_body)
+        email_type, parsed_data = self._detect_and_parse_email(subject, sender, text_body, html_body)
+        logger.info(f"Detected email type: {email_type}")
+        logger.debug(f"Parsed data: {parsed_data}")
 
         # Find branch
         branch = self._find_branch_from_metadata(parsed_data, email_type, subject)
@@ -62,21 +65,28 @@ class EmailWebhookService:
             logger.info(f"Unknown email type: {email_type}")
             return f"Processed email with unknown type: {email_type}"
 
-    def _detect_and_parse_email(self, subject, sender, body):
+    def _detect_and_parse_email(self, subject, sender, text_body, html_body):
         """
         Detect email type and parse accordingly
         """
-        body_upper = body.upper()
+        body_upper = (text_body or html_body or "").upper()
         subject_upper = subject.upper()
         sender_upper = (sender or "").upper()
 
         logger.debug(f"Checking email patterns - Subject: {subject_upper}, Sender: {sender_upper}")
 
-        # LUNA detection
-        if "LUNA POS" in body_upper or "Fwd: Daily Summary Report" in subject_upper:
+        # LUNA detection - Use HTML if available, fallback to text
+        if "LUNA POS" in body_upper or "Fwd: Daily Summary Report" in subject_upper or "LAUNDRY BOSKU" in body_upper:
             logger.info("Detected LUNA email pattern")
             try:
-                parsed = parse_luna_email(body)
+                # Prefer HTML parsing for SendGrid emails
+                if html_body:
+                    logger.debug("Using HTML body for Luna parsing")
+                    parsed = parse_luna_email_refined(html_body, is_html=True)
+                else:
+                    logger.debug("Using text body for Luna parsing")
+                    parsed = parse_luna_email_refined(text_body, is_html=False)
+                
                 logger.debug(f"LUNA parse successful: {parsed}")
                 return "LUNA", parsed
             except Exception as e:
@@ -84,10 +94,10 @@ class EmailWebhookService:
                 return "LUNA_ERROR", {}
 
         # HITACHI detection
-        if "Fwd: Daily Summary" in subject_upper or "MERCHANT STATEMENT" in body_upper:
+        if "Fwd: Daily Summary" in subject_upper or "MERCHANT STATEMENT" in body_upper or "DAILY SALES SUMMARY" in body_upper:
             logger.info("Detected HITACHI email pattern")
             try:
-                parsed = parse_hitachi_email(body)
+                parsed = parse_hitachi_email(text_body or html_body)
                 logger.debug(f"HITACHI parse successful: {parsed}")
                 return "HITACHI", parsed
             except Exception as e:
@@ -175,11 +185,11 @@ class EmailWebhookService:
                 date=transaction_date,
                 source=TransactionSource.EMAIL,
                 defaults={
-                    'gross_sales': summary_data.get("gross_sales", 0),
+                    'gross_sales': summary_data.get("total_sales", 0),
                     'total_discount': summary_data.get("total_discount", 0),
-                    'net_sales': summary_data.get("net_sales", 0),
+                    'net_sales': summary_data.get("grand_total", 0),
                     'total_tax': summary_data.get("total_tax", 0),
-                    'total_collected': summary_data.get("total_collected", 0),
+                    'total_collected': summary_data.get("grand_total", 0),
                     'cash_amount': payments.get("cash", 0),
                     'qris_amount': payments.get("qris", 0),
                     'transfer_amount': payments.get("transfer", 0),
