@@ -153,7 +153,6 @@ function DashboardPage({ transactions, isLoading, error }) {
   )
 
   // ---------- PAYMENT BREAKDOWN (DailySummary) ----------
-  // Tergantung tanggal + unit + cabang + rate-limit 500ms
 
   useEffect(() => {
     const now = Date.now()
@@ -185,7 +184,7 @@ function DashboardPage({ transactions, isLoading, error }) {
           params.branch = filterBranch
         }
         if (filterUnit !== 'Semua Unit') {
-          // kirim 'unit' → views.py yang mapping ke LAUNDRY/CARWASH/KOS/OTHER
+          // kirim nama unit → backend map ke enum
           params.unit = filterUnit
         }
 
@@ -211,7 +210,6 @@ function DashboardPage({ transactions, isLoading, error }) {
   ])
 
   // ---------- INCOME SOURCES (PIE) ----------
-  // Email (DailySummary) + manual/WA; abaikan income manual/WA tanpa metode
 
   const incomeSources = useMemo(() => {
     const emailCash = paymentBreakdown?.cash || 0
@@ -556,7 +554,14 @@ function DashboardPage({ transactions, isLoading, error }) {
               >
                 <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" />
                 <XAxis dataKey="date" stroke="#9ca3af" />
-                <YAxis stroke="#9ca3af" />
+                <YAxis
+                  stroke="#9ca3af"
+                  domain={[0, (dataMax) => dataMax * 1.1]}
+                  allowDecimals={false}
+                  tickFormatter={(v) =>
+                    new Intl.NumberFormat('id-ID').format(v)
+                  }
+                />
                 <Tooltip />
                 <Legend />
                 <Line
