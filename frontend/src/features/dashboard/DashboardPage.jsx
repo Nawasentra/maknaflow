@@ -15,7 +15,7 @@ import {
   Bar,
   ResponsiveContainer,
 } from 'recharts'
-import { fetchPaymentBreakdown } from '../../lib/api/dailySummaries' // Add this import
+import { fetchPaymentBreakdown } from '../../lib/api/dailySummaries'
 
 function parseLocalDate(isoDateStr) {
   if (!isoDateStr) return null
@@ -41,7 +41,7 @@ function DashboardPage({ transactions, isLoading, error }) {
   const [filterBranch, setFilterBranch] = useState('Semua Cabang')
   const [customStart, setCustomStart] = useState('')
   const [customEnd, setCustomEnd] = useState('')
-  const [paymentBreakdown, setPaymentBreakdown] = useState(null) // Add this state
+  const [paymentBreakdown, setPaymentBreakdown] = useState(null)
 
   const today = new Date()
   const startOfToday = new Date(
@@ -151,16 +151,17 @@ function DashboardPage({ transactions, isLoading, error }) {
     (a, b) => new Date(a.date) - new Date(b.date),
   )
 
-  // Fetch payment breakdown from DailySummary
+  // ---------- PAYMENT BREAKDOWN (DailySummary) ----------
+
   useEffect(() => {
     const loadPaymentBreakdown = async () => {
       try {
         const params = {}
 
-        // Add date filters
         if (filterDate === 'Hari Ini') {
-          params.start_date = startOfToday.toISOString().split('T')[0]
-          params.end_date = startOfToday.toISOString().split('T')[0]
+          const d = startOfToday.toISOString().split('T')[0]
+          params.start_date = d
+          params.end_date = d
         } else if (filterDate === '7 Hari Terakhir') {
           params.start_date = sevenDaysAgo.toISOString().split('T')[0]
           params.end_date = startOfToday.toISOString().split('T')[0]
@@ -172,11 +173,8 @@ function DashboardPage({ transactions, isLoading, error }) {
           params.end_date = customEnd
         }
 
-        // Add branch filter if not "Semua Cabang"
-        if (filterBranch !== 'Semua Cabang') {
-          // You'll need to get branch ID from branch name
-          // For now, we'll fetch all and filter client-side
-        }
+        // Cabang filter (future: kirim branch_id kalau sudah ada)
+        // For now, backend sudah filter by user/branch di get_queryset
 
         const data = await fetchPaymentBreakdown(params)
         setPaymentBreakdown(data)
@@ -187,42 +185,55 @@ function DashboardPage({ transactions, isLoading, error }) {
     }
 
     loadPaymentBreakdown()
-  }, [filterDate, customStart, customEnd, filterBranch])
+  }, [filterDate, customStart, customEnd, filterBranch, startOfToday, sevenDaysAgo, startOfMonth])
 
-  // Use DailySummary payment breakdown if available, otherwise fallback to transactions
+  // ---------- INCOME SOURCES (PIE) ----------
+
   const incomeSources = useMemo(() => {
+    // 1) Pakai DailySummary kalau ada data
     if (paymentBreakdown && paymentBreakdown.total > 0) {
-      // Use DailySummary data (from email ingestion)
       return [
         { name: 'Cash', value: paymentBreakdown.cash },
         { name: 'QRIS', value: paymentBreakdown.qris },
         { name: 'Transfer', value: paymentBreakdown.transfer },
       ].filter((item) => item.value > 0)
-    } else {
-      // Fallback to Transaction.payment_method (for manual entries)
-      const incomeSourcesMap = filteredTransactions
-        .filter((t) => t.type === 'Income')
-        .reduce((acc, t) => {
-          const method = t.payment || 'Unknown'
-          acc[method] = (acc[method] || 0) + (t.amount || 0)
-          return acc
-        }, {})
-
-      return Object.entries(incomeSourcesMap)
-        .filter(([name]) => name !== 'Unknown') // Filter out Unknown
-        .map(([name, value]) => ({
-          name:
-            name === 'CASH'
-              ? 'Cash'
-              : name === 'QRIS'
-              ? 'QRIS'
-              : name === 'TRANSFER'
-              ? 'Transfer'
-              : name,
-          value,
-        }))
     }
+
+    // 2) Fallback: hitung dari transaksi (manual / tanpa email breakdown)
+    const incomeSourcesMap = filteredTransactions
+      .filter((t) => t.type === 'Income')
+      .reduce((acc, t) => {
+        const method = t.payment || 'Unknown'
+        acc[method] = (acc[method] || 0) + (t.amount || 0)
+        return acc
+      }, {})
+
+    const entries = Object.entries(incomeSourcesMap)
+    if (entries.length === 0) return []
+
+    // Jika semua income tidak punya payment_method (Unknown),
+    // tampilkan sebagai satu slice "Lainnya" agar chart tidak kosong.
+    if (entries.length === 1 && entries[0][0] === 'Unknown') {
+      return [{ name: 'Lainnya', value: entries[0][1] }]
+    }
+
+    // Kalau campuran, buang Unknown tapi pertahankan metode yang jelas.
+    return entries
+      .filter(([name]) => name !== 'Unknown')
+      .map(([name, value]) => ({
+        name:
+          name === 'CASH'
+            ? 'Cash'
+            : name === 'QRIS'
+            ? 'QRIS'
+            : name === 'TRANSFER'
+            ? 'Transfer'
+            : name,
+        value,
+      }))
   }, [paymentBreakdown, filteredTransactions])
+
+  // ---------- EXPENSE BY CATEGORY ----------
 
   const expenseCatMap = filteredTransactions
     .filter((t) => t.type === 'Expense')
@@ -597,6 +608,7 @@ function DashboardPage({ transactions, isLoading, error }) {
                       if (entry.name === 'Cash') color = '#22c55e'
                       if (entry.name === 'QRIS') color = '#3b82f6'
                       if (entry.name === 'Transfer') color = '#f59e0b'
+                      if (entry.name === 'Lainnya') color = '#94a3b8'
                       return <Cell key={entry.name} fill={color} />
                     })}
                   </Pie>
