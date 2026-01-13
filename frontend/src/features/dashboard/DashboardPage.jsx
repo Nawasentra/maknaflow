@@ -1,5 +1,5 @@
 // src/features/dashboard/DashboardPage.jsx
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useEffect } from 'react'
 import {
   LineChart,
   Line,
@@ -15,6 +15,7 @@ import {
   Bar,
   ResponsiveContainer,
 } from 'recharts'
+import { fetchPaymentBreakdown } from '../../lib/api/dailySummaries' // Add this import
 
 function parseLocalDate(isoDateStr) {
   if (!isoDateStr) return null
@@ -40,6 +41,7 @@ function DashboardPage({ transactions, isLoading, error }) {
   const [filterBranch, setFilterBranch] = useState('Semua Cabang')
   const [customStart, setCustomStart] = useState('')
   const [customEnd, setCustomEnd] = useState('')
+  const [paymentBreakdown, setPaymentBreakdown] = useState(null) // Add this state
 
   const today = new Date()
   const startOfToday = new Date(
@@ -149,27 +151,78 @@ function DashboardPage({ transactions, isLoading, error }) {
     (a, b) => new Date(a.date) - new Date(b.date),
   )
 
-  const incomeSourcesMap = filteredTransactions
-    .filter((t) => t.type === 'Income')
-    .reduce((acc, t) => {
-      const method = t.payment || 'Unknown'
-      acc[method] = (acc[method] || 0) + (t.amount || 0)
-      return acc
-    }, {})
+  // Fetch payment breakdown from DailySummary
+  useEffect(() => {
+    const loadPaymentBreakdown = async () => {
+      try {
+        const params = {}
 
-  const incomeSources = Object.entries(incomeSourcesMap).map(
-    ([name, value]) => ({
-      name:
-        name === 'CASH'
-          ? 'Cash'
-          : name === 'QRIS'
-          ? 'QRIS'
-          : name === 'TRANSFER'
-          ? 'Transfer'
-          : 'Tidak Diketahui',
-      value,
-    }),
-  )
+        // Add date filters
+        if (filterDate === 'Hari Ini') {
+          params.start_date = startOfToday.toISOString().split('T')[0]
+          params.end_date = startOfToday.toISOString().split('T')[0]
+        } else if (filterDate === '7 Hari Terakhir') {
+          params.start_date = sevenDaysAgo.toISOString().split('T')[0]
+          params.end_date = startOfToday.toISOString().split('T')[0]
+        } else if (filterDate === 'Bulan Ini') {
+          params.start_date = startOfMonth.toISOString().split('T')[0]
+          params.end_date = startOfToday.toISOString().split('T')[0]
+        } else if (filterDate === 'Custom' && customStart && customEnd) {
+          params.start_date = customStart
+          params.end_date = customEnd
+        }
+
+        // Add branch filter if not "Semua Cabang"
+        if (filterBranch !== 'Semua Cabang') {
+          // You'll need to get branch ID from branch name
+          // For now, we'll fetch all and filter client-side
+        }
+
+        const data = await fetchPaymentBreakdown(params)
+        setPaymentBreakdown(data)
+      } catch (err) {
+        console.error('Failed to load payment breakdown:', err)
+        setPaymentBreakdown(null)
+      }
+    }
+
+    loadPaymentBreakdown()
+  }, [filterDate, customStart, customEnd, filterBranch])
+
+  // Use DailySummary payment breakdown if available, otherwise fallback to transactions
+  const incomeSources = useMemo(() => {
+    if (paymentBreakdown && paymentBreakdown.total > 0) {
+      // Use DailySummary data (from email ingestion)
+      return [
+        { name: 'Cash', value: paymentBreakdown.cash },
+        { name: 'QRIS', value: paymentBreakdown.qris },
+        { name: 'Transfer', value: paymentBreakdown.transfer },
+      ].filter((item) => item.value > 0)
+    } else {
+      // Fallback to Transaction.payment_method (for manual entries)
+      const incomeSourcesMap = filteredTransactions
+        .filter((t) => t.type === 'Income')
+        .reduce((acc, t) => {
+          const method = t.payment || 'Unknown'
+          acc[method] = (acc[method] || 0) + (t.amount || 0)
+          return acc
+        }, {})
+
+      return Object.entries(incomeSourcesMap)
+        .filter(([name]) => name !== 'Unknown') // Filter out Unknown
+        .map(([name, value]) => ({
+          name:
+            name === 'CASH'
+              ? 'Cash'
+              : name === 'QRIS'
+              ? 'QRIS'
+              : name === 'TRANSFER'
+              ? 'Transfer'
+              : name,
+          value,
+        }))
+    }
+  }, [paymentBreakdown, filteredTransactions])
 
   const expenseCatMap = filteredTransactions
     .filter((t) => t.type === 'Expense')
