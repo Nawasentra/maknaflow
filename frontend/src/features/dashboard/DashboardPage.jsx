@@ -153,7 +153,7 @@ function DashboardPage({ transactions, isLoading, error }) {
   )
 
   // ---------- PAYMENT BREAKDOWN (DailySummary) ----------
-  // Hanya tergantung rentang tanggal + rate-limit 500ms
+  // Tergantung tanggal + unit + cabang + rate-limit 500ms
 
   useEffect(() => {
     const now = Date.now()
@@ -181,6 +181,14 @@ function DashboardPage({ transactions, isLoading, error }) {
           params.end_date = customEnd
         }
 
+        if (filterBranch !== 'Semua Cabang') {
+          params.branch = filterBranch
+        }
+        if (filterUnit !== 'Semua Unit') {
+          // kirim 'unit' → views.py yang mapping ke LAUNDRY/CARWASH/KOS/OTHER
+          params.unit = filterUnit
+        }
+
         const data = await fetchPaymentBreakdown(params)
         setPaymentBreakdown(data)
       } catch (err) {
@@ -190,7 +198,17 @@ function DashboardPage({ transactions, isLoading, error }) {
     }
 
     loadPaymentBreakdown()
-  }, [filterDate, customStart, customEnd, lastPbCall])
+  }, [
+    filterDate,
+    customStart,
+    customEnd,
+    filterUnit,
+    filterBranch,
+    lastPbCall,
+    startOfToday,
+    sevenDaysAgo,
+    startOfMonth,
+  ])
 
   // ---------- INCOME SOURCES (PIE) ----------
   // Email (DailySummary) + manual/WA; abaikan income manual/WA tanpa metode
