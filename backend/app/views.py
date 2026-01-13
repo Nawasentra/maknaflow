@@ -547,17 +547,45 @@ class DailySummaryViewSet(viewsets.ReadOnlyModelViewSet):
         """
         Get aggregated payment breakdown across all summaries
         Useful for dashboard pie chart
+        Supports filtering by: date range, branch name, and branch type (unit)
         """
         queryset = self.filter_queryset(self.get_queryset())
         
-        # Allow filtering by date range
+        # 1. Date range filters
         start_date = request.query_params.get('start_date')
         end_date = request.query_params.get('end_date')
         
         if start_date:
             queryset = queryset.filter(date__gte=start_date)
+            logger.debug(f"Filtering by start_date >= {start_date}")
         if end_date:
             queryset = queryset.filter(date__lte=end_date)
+            logger.debug(f"Filtering by end_date <= {end_date}")
+        
+        # 2. Branch name filter
+        branch_name = request.query_params.get('branch')
+        if branch_name and branch_name != 'Semua Cabang':
+            queryset = queryset.filter(branch__name=branch_name)
+            logger.debug(f"Filtering by branch name: {branch_name}")
+        
+        # 3. Branch type (unit) filter
+        branch_type = request.query_params.get('unit')
+        if branch_type and branch_type != 'Semua Unit':
+            # Map frontend unit names to model choices
+            unit_map = {
+                'Laundry': 'LAUNDRY',
+                'Carwash': 'CARWASH',
+                'Kos': 'KOS',
+                'Other': 'OTHER'
+            }
+            db_branch_type = unit_map.get(branch_type, branch_type.upper())
+            queryset = queryset.filter(branch__branch_type=db_branch_type)
+            logger.debug(f"Filtering by branch type: {db_branch_type}")
+        
+        # Log final queryset count
+        count = queryset.count()
+        logger.info(f"Payment breakdown - Filters applied: start={start_date}, end={end_date}, branch={branch_name}, unit={branch_type}")
+        logger.info(f"DailySummary records matching filters: {count}")
         
         # Aggregate payment methods
         from django.db.models import Sum
@@ -567,7 +595,7 @@ class DailySummaryViewSet(viewsets.ReadOnlyModelViewSet):
             total_transfer=Sum('transfer_amount')
         )
         
-        return Response({
+        result = {
             'cash': float(aggregates['total_cash'] or 0),
             'qris': float(aggregates['total_qris'] or 0),
             'transfer': float(aggregates['total_transfer'] or 0),
@@ -575,8 +603,13 @@ class DailySummaryViewSet(viewsets.ReadOnlyModelViewSet):
                 (aggregates['total_cash'] or 0) + 
                 (aggregates['total_qris'] or 0) + 
                 (aggregates['total_transfer'] or 0)
-            )
-        })
+            ),
+            'count': count  # Add count for debugging
+        }
+        
+        logger.info(f"Payment breakdown result: {result}")
+        return Response(result)
+        
 
 
 # ==========================================
@@ -711,24 +744,44 @@ class InternalWhatsAppIngestion(APIView):
             # Ambil file gambar dari request (jika ada)
             evidence_file = request.FILES.get('evidence') 
 
+            # Parse branch and category from data
+            branch_id = data.get('branch_id')
+            category_id = data.get('category_id')
+            
+            if not branch_id:
+                branch = staff_user.assigned_branch
+                if not branch:
+                    raise ValueError("Staff has no assigned branch")
+            else:
+                branch = get_object_or_404(Branch, id=branch_id)
+            
+            if not category_id:
+                raise ValueError("Category is required")
+            
+            category = get_object_or_404(Category, id=category_id)
+
             transaction = Transaction.objects.create(
-                user=staff_user,
+                reported_by=staff_user,
                 branch=branch,
                 category=category,
                 amount=data.get('amount'),
                 description=data.get('notes', '-'),
-                payment_method="CASH",
-                is_verified=staff_user.is_verified_staff,
-                evidence=evidence_file # Simpan file ke database
+                payment_method=data.get('payment_method', 'CASH'),
+                transaction_type=category.transaction_type,  # Use category's transaction type
+                source=TransactionSource.WHATSAPP,
+                is_verified=staff_user.is_verified,
+                evidence_image=evidence_file  # Correct field name
             )
             
             # Update Log sukses
-            log.status = "SUCCESS"
+            log.status = IngestionStatus.SUCCESS
             log.save()
             
             return Response({"message": "Transaksi berhasil disimpan", "id": transaction.id}, status=201)
             
         except Exception as e:
-            log.status = "FAILED"
+            log.status = IngestionStatus.FAILED
+            log.error_message = str(e)
             log.save()
+            logger.error(f"WhatsApp internal ingestion failed: {e}", exc_info=True)
             return Response({"error": str(e)}, status=400)
