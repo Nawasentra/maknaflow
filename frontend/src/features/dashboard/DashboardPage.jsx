@@ -182,10 +182,18 @@ function DashboardPage({ transactions, isLoading, error }) {
     }
 
     loadPaymentBreakdown()
-  }, [filterDate, customStart, customEnd, filterBranch, startOfToday, sevenDaysAgo, startOfMonth])
+  }, [
+    filterDate,
+    customStart,
+    customEnd,
+    filterBranch,
+    startOfToday,
+    sevenDaysAgo,
+    startOfMonth,
+  ])
 
   // ---------- INCOME SOURCES (PIE) ----------
-  // Email (DailySummary) + manual/WA; Lainnya hanya unknown dari manual/WA
+  // Email (DailySummary) + manual/WA; abaikan income manual/WA yang tidak punya metode
 
   const incomeSources = useMemo(() => {
     // 1) Email (DailySummary)
@@ -193,36 +201,31 @@ function DashboardPage({ transactions, isLoading, error }) {
     const emailQris = paymentBreakdown?.qris || 0
     const emailTransfer = paymentBreakdown?.transfer || 0
 
-    // 2) Manual / WhatsApp (yang punya payment_method)
-    const manualAgg = filteredTransactions
-      .filter((t) => t.type === 'Income')
-      .reduce(
-        (acc, t) => {
-          const method = (t.payment || '').toUpperCase()
-          if (method === 'CASH') acc.cash += t.amount || 0
-          else if (method === 'QRIS') acc.qris += t.amount || 0
-          else if (method === 'TRANSFER') acc.transfer += t.amount || 0
-          else acc.unknown += t.amount || 0
-          return acc
-        },
-        { cash: 0, qris: 0, transfer: 0, unknown: 0 },
-      )
+    // 2) Manual / WhatsApp (hanya CASH/QRIS/TRANSFER)
+    const manualAgg =
+      filteredTransactions
+        .filter((t) => t.type === 'Income')
+        .reduce(
+          (acc, t) => {
+            const method = (t.payment || '').toUpperCase()
+            const amount = t.amount || 0
+            if (method === 'CASH') acc.cash += amount
+            else if (method === 'QRIS') acc.qris += amount
+            else if (method === 'TRANSFER') acc.transfer += amount
+            // lainnya di-skip
+            return acc
+          },
+          { cash: 0, qris: 0, transfer: 0 },
+        ) || { cash: 0, qris: 0, transfer: 0 }
 
     const totalCash = emailCash + manualAgg.cash
     const totalQris = emailQris + manualAgg.qris
     const totalTransfer = emailTransfer + manualAgg.transfer
-    const totalUnknown = manualAgg.unknown
 
     const result = []
-
     if (totalCash > 0) result.push({ name: 'Cash', value: totalCash })
     if (totalQris > 0) result.push({ name: 'QRIS', value: totalQris })
     if (totalTransfer > 0) result.push({ name: 'Transfer', value: totalTransfer })
-
-    // Lainnya = hanya income manual/WA yang tidak punya metode
-    if (totalUnknown > 0) {
-      result.push({ name: 'Lainnya', value: totalUnknown })
-    }
 
     return result
   }, [paymentBreakdown, filteredTransactions])
@@ -252,7 +255,7 @@ function DashboardPage({ transactions, isLoading, error }) {
     })
       .format(amount)
       .replace('Rp', '')
-      .trim()
+      .trim() 
 
   // ---------- RENDER STATES ----------
 
@@ -602,7 +605,6 @@ function DashboardPage({ transactions, isLoading, error }) {
                       if (entry.name === 'Cash') color = '#22c55e'
                       if (entry.name === 'QRIS') color = '#3b82f6'
                       if (entry.name === 'Transfer') color = '#f59e0b'
-                      if (entry.name === 'Lainnya') color = '#94a3b8'
                       return <Cell key={entry.name} fill={color} />
                     })}
                   </Pie>
