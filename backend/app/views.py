@@ -20,9 +20,6 @@ from decouple import config
 from django.db.models import Sum
 import logging
 import traceback
-from rest_framework.views import APIView
-from rest_framework.response import Response
-from .models import Branch, Category, User
 from rest_framework.authentication import SessionAuthentication, BasicAuthentication
 
 from .serializers import (
