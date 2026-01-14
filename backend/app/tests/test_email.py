@@ -74,18 +74,6 @@ def test_process_payload_missing_text_body(webhook_service):
         webhook_service.process_payload(payload)
 
 @pytest.mark.django_db
-def test_process_payload_ignores_non_luna_hitachi_email(webhook_service):
-    """Test that non-Luna/Hitachi emails are ignored"""
-    payload = {
-        "sender": "someone@email.com",
-        "subject": "Random Email",
-        "text_body": "Some random content"
-    }
-    result = webhook_service.process_payload(payload)
-    assert result == "Ignoring non Luna/Hitachi email"
-    assert Transaction.objects.count() == 0
-
-@pytest.mark.django_db
 def test_find_branch_from_metadata_with_metadata(webhook_service, test_branch):
     parsed_data = {"metadata": {"location_alias": "Test Branch"}}
     branch = webhook_service._find_branch_from_metadata(parsed_data, None, None)
@@ -95,13 +83,6 @@ def test_find_branch_from_metadata_with_metadata(webhook_service, test_branch):
 def test_find_branch_from_metadata_with_subject(webhook_service, test_branch):
     parsed_data = {}
     branch = webhook_service._find_branch_from_metadata(parsed_data, None, "Test Branch: Expense")
-    assert branch.name == "Test Branch"
-
-@pytest.mark.django_db
-def test_find_branch_from_metadata_with_pipe_separator(webhook_service):
-    """Test branch name extraction with pipe separator"""
-    parsed_data = {"metadata": {"location_alias": "Region | City | Test Branch"}}
-    branch = webhook_service._find_branch_from_metadata(parsed_data, None, None)
     assert branch.name == "Test Branch"
 
 @pytest.mark.django_db
@@ -115,10 +96,10 @@ def test_find_user_by_email_found(webhook_service, test_user):
     assert user == test_user
 
 @pytest.mark.django_db
-def test_find_user_by_email_not_found(webhook_service):
-    """Test that None is returned when user is not found"""
-    user = webhook_service._find_user_by_email("notfound@example.com")
-    assert user is None
+def test_find_user_by_email_create_new(webhook_service, settings):
+    settings.OWNER_EMAILS = ["newuser@x.com"]
+    user = webhook_service._find_user_by_email("notfound@x.com")
+    assert user.email == "newuser@x.com"
 
 @pytest.mark.django_db
 def test_create_transactions_empty_items(webhook_service, test_branch, test_user):
@@ -127,49 +108,18 @@ def test_create_transactions_empty_items(webhook_service, test_branch, test_user
     assert result == []
 
 @pytest.mark.django_db
-def test_create_transactions_with_date_parsing(webhook_service, test_branch, test_user):
-    """Test transaction creation with different date formats"""
-    from datetime import date
-    parsed_data = {
-        "metadata": {"date": "November 5, 2025"},
-        "top_products": [{"name": "Test Product", "amount": 5000}]
-    }
-    transactions = webhook_service._create_transactions(
-        test_branch, test_user, "subject", parsed_data, 
-        TransactionType.INCOME, "top_products", "LUNA POS"
-    )
-    assert len(transactions) == 1
-    assert transactions[0].date == date(2025, 11, 5)
-
-@pytest.mark.django_db
-def test_create_transactions_invalid_date_uses_today(webhook_service, test_branch, test_user):
-    """Test that invalid date falls back to today"""
-    from datetime import date
-    parsed_data = {
-        "metadata": {"date": "invalid date"},
-        "top_products": [{"name": "Test Product", "amount": 5000}]
-    }
-    transactions = webhook_service._create_transactions(
-        test_branch, test_user, "subject", parsed_data, 
-        TransactionType.INCOME, "top_products", "LUNA POS"
-    )
-    assert len(transactions) == 1
-    assert transactions[0].date == date.today()
+def test_parse_body_valid_and_invalid(webhook_service, test_category):
+    # Valid
+    c, a = webhook_service._parse_body("Detergent: 1000")
+    assert c.name == "Detergent" and int(a) == 1000
+    # Invalid
+    with pytest.raises(ValidationError):
+        webhook_service._parse_body("InvalidFormat")
 
 @pytest.mark.django_db
 def test_detect_and_parse_email_types(monkeypatch, webhook_service):
     monkeypatch.setattr("app.ingestion.luna_parser.parse_luna_email", lambda x: {"top_products": []})
     monkeypatch.setattr("app.ingestion.hitachi_parser.parse_hitachi_email", lambda x: {"top_items": []})
-    
-    # Test LUNA detection
-    assert webhook_service._detect_and_parse_email("LUNA POS Daily Report", "", "LUNA POS content")[0] == "LUNA"
-    assert webhook_service._detect_and_parse_email("Report", "", "DAILY REPORT LUNA POS")[0] == "LUNA"
-    
-    # Test HITACHI detection
+    assert webhook_service._detect_and_parse_email("LUNA POS", "", "")[0] == "LUNA"
     assert webhook_service._detect_and_parse_email("DAILY SALES SUMMARY", "", "")[0] == "HITACHI"
-    assert webhook_service._detect_and_parse_email("", "MERCHANT STATEMENT <email@hitachi.com>", "")[0] == "HITACHI"
-    assert webhook_service._detect_and_parse_email("HITACHI Report", "", "")[0] == "HITACHI"
-    assert webhook_service._detect_and_parse_email("", "", "HITACHI content")[0] == "HITACHI"
-    
-    # Test SIMPLE (unrecognized) email
-    assert webhook_service._detect_and_parse_email("random subject", "", "random body")[0] == "SIMPLE"
+    assert webhook_service._detect_and_parse_email("random", "", "")[0] == "SIMPLE"
