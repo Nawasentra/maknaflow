@@ -8,7 +8,7 @@ from .ingestion.email_webhook import EmailWebhookService
 from rest_framework.parsers import JSONParser, MultiPartParser, FormParser
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from django.shortcuts import get_object_or_404
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse
 from django.utils import timezone
 from rest_framework import viewsets, filters
 from rest_framework.decorators import action
@@ -20,7 +20,9 @@ from decouple import config
 from django.db.models import Sum
 import logging
 import traceback
-from rest_framework.authentication import SessionAuthentication, BasicAuthentication
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from .models import Branch, Category, User
 
 from .serializers import (
     BranchSerializer,
@@ -33,7 +35,6 @@ from .serializers import (
 )
 from .permissions import (
     IsOwner,
-    IsStaffOrOwner,
     IsOwnerOrReadOnly,
     CanVerifyTransaction,
 )
