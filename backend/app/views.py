@@ -8,7 +8,7 @@ from .ingestion.email_webhook import EmailWebhookService
 from rest_framework.parsers import JSONParser, MultiPartParser, FormParser
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from django.shortcuts import get_object_or_404
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse
 from django.utils import timezone
 from rest_framework import viewsets, filters
 from rest_framework.decorators import action
@@ -35,7 +35,6 @@ from .serializers import (
 )
 from .permissions import (
     IsOwner,
-    IsStaffOrOwner,
     IsOwnerOrReadOnly,
     CanVerifyTransaction,
 )
@@ -845,3 +844,17 @@ class InternalWhatsAppIngestion(APIView):
                 f"WhatsApp internal ingestion failed: {e}", exc_info=True
             )
             return Response({"error": str(e)}, status=400)
+
+# ==========================================
+# HEALTH CHECK VIEW
+# ==========================================
+
+class HealthCheckView(APIView):
+    """
+    Simple endpoint to keep the server awake
+    """
+    authentication_classes = []
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        return JsonResponse({"status": "ok", "service": "MaknaFlow Backend"}, status=200)

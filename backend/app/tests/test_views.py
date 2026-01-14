@@ -416,3 +416,40 @@ class IngestionLogViewSetTestCase(APITestCase):
         self.client.force_authenticate(user=self.owner)
         data = {'source': TransactionSource.EMAIL, 'raw_payload': {}, 'status': IngestionStatus.PENDING}
         self.assertEqual(self.client.post(self.url, data, format='json').status_code, 405)
+
+
+# ==========================================
+# HEALTH CHECK TESTS
+# ==========================================
+
+class HealthCheckTestCase(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.url = reverse('health-check')
+
+    def test_health_check_returns_ok(self):
+        """Test that health check returns 200 OK"""
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['status'], 'ok')
+        self.assertEqual(response.json()['service'], 'MaknaFlow Backend')
+
+    def test_health_check_no_authentication_required(self):
+        """Test that health check doesn't require authentication"""
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('status', response.json())
+
+    def test_health_check_only_get_method(self):
+        """Test that only GET method is allowed"""
+        response = self.client.post(self.url)
+        self.assertEqual(response.status_code, 405)  # Method Not Allowed
+
+    def test_health_check_response_structure(self):
+        """Test that response has correct structure"""
+        response = self.client.get(self.url)
+        data = response.json()
+        
+        self.assertIn('status', data)
+        self.assertIn('service', data)
+        self.assertEqual(len(data.keys()), 2)
