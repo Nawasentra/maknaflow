@@ -12,6 +12,7 @@ from app.views import (
     EmailIngestionWebhook,
     WhatsAppWebhookView,
     InternalWhatsAppIngestion,
+    HealthCheckView,
 )
 
 # Create router for ViewSets
@@ -37,8 +38,13 @@ urlpatterns = [
         path('', include(router.urls)),
     ])),
     
-    # Webhook endpoints (NOT under /api/)
+    # Email Webhook endpoint
     path('webhooks/make/', EmailIngestionWebhook.as_view(), name='email-webhook'),
+    
+    # WhatsApp Webhook endpoint
     path('webhooks/whatsapp/', WhatsAppWebhookView.as_view(), name='whatsapp-webhook'),
-    path('api/ingestion/internal-wa/', InternalWhatsAppIngestion.as_view())
+    path('api/ingestion/internal-wa/', InternalWhatsAppIngestion.as_view()),
+
+    # Health Check endpoint
+    path('health/', HealthCheckView.as_view(), name='health-check'),
 ]
