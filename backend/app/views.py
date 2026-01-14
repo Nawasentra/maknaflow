@@ -780,15 +780,23 @@ class InternalWhatsAppIngestion(APIView):
         data = request.data
         print(f"Payload diterima dari Bot: {data}")
 
-        # 1. Identifikasi Staff
+        # 1. Identifikasi Staff (PERBAIKAN DISINI)
+        # Kita cari langsung ke User model, tanpa lewat 'profile'
         phone = data.get('phone_number')
-        staff_user = User.objects.filter(profile__phone_number=phone, is_staff=True).first()
         
-        if not staff_user:
-             staff_user = User.objects.filter(phone_number=phone, is_staff=True).first()
+        if not phone:
+             return Response({"error": "No Phone Number"}, status=400)
+
+        # Cari user yang is_staff=True DAN punya nomor HP tersebut
+        staff_user = User.objects.filter(phone_number=phone, is_staff=True).first()
+
+        # Fallback: Coba format nomor tanpa '62' atau sebaliknya jika perlu (Opsional)
+        if not staff_user and phone.startswith('62'):
+             local_phone = '0' + phone[2:]
+             staff_user = User.objects.filter(phone_number=local_phone, is_staff=True).first()
 
         if not staff_user:
-            return Response({"error": "Nomor WhatsApp tidak terdaftar sebagai Staff"}, status=400)
+            return Response({"error": f"Nomor {phone} tidak terdaftar sebagai Staff"}, status=400)
 
         # 2. Catat Log
         log = IngestionLog.objects.create(
@@ -798,18 +806,24 @@ class InternalWhatsAppIngestion(APIView):
         )
 
         try:
-            # Terima ID (Angka), bukan Nama
+            # Terima ID (Angka)
             branch_id = data.get('branch_id')
+            if not branch_id:
+                raise Exception("Branch ID tidak dikirim oleh Bot")
+                
             try:
                 branch = Branch.objects.get(pk=branch_id)
             except Branch.DoesNotExist:
-                raise Exception(f"Branch ID {branch_id} tidak ditemukan.")
+                raise Exception(f"Branch ID {branch_id} tidak ditemukan di Database Render.")
 
             category_id = data.get('category_id')
+            if not category_id:
+                raise Exception("Category ID tidak dikirim oleh Bot")
+
             try:
                 category = Category.objects.get(pk=category_id)
             except Category.DoesNotExist:
-                raise Exception(f"Category ID {category_id} tidak ditemukan.")
+                raise Exception(f"Category ID {category_id} tidak ditemukan di Database Render.")
 
             # 3. Buat Transaksi
             transaction = Transaction.objects.create(
@@ -831,6 +845,10 @@ class InternalWhatsAppIngestion(APIView):
             return Response({"message": "Sukses", "id": transaction.id}, status=201)
             
         except Exception as e:
+            # Print error ke Logs Render agar kita bisa baca
+            print(f"❌ ERROR SAAT SAVE: {str(e)}")
+            traceback.print_exc() # Ini penting untuk debug 500
+            
             log.status = "FAILED"
             log.error_message = str(e)
             log.save()
