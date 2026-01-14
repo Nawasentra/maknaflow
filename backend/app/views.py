@@ -23,6 +23,7 @@ import traceback
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from .models import Branch, Category, User
+from rest_framework.authentication import SessionAuthentication, BasicAuthentication
 
 from .serializers import (
     BranchSerializer,
@@ -651,6 +652,7 @@ class BotMasterData(APIView):
     API khusus untuk Bot WhatsApp mengambil daftar Cabang & Kategori terbaru
     """
     permission_classes = [AllowAny]
+    authentication_classes = []
     
     def get(self, request):
         # Ambil semua cabang aktif
@@ -779,6 +781,8 @@ class WhatsAppWebhookView(APIView):
 class InternalWhatsAppIngestion(APIView):
     # Endpoint ini akan dipanggil oleh Node.js Bot
     parser_classes = [MultiPartParser, FormParser]
+    permission_classes = [AllowAny]
+    authentication_classes = []
 
     def post(self, request):
         data = request.data

@@ -2,135 +2,192 @@ const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
 const axios = require('axios');
 
-// Konfigurasi Client
 const client = new Client({
     authStrategy: new LocalAuth(),
     puppeteer: { args: ['--no-sandbox'] }
 });
 
-// URL Backend Django Anda (Pastikan server Django jalan)
-const DJANGO_API_URL = 'http://127.0.0.1:8000/api/ingestion/internal-wa/';
+// URL API Django
+const BASE_URL = 'https://maknaflow-staging.onrender.com/api';
 
 // State Management
 const userSessions = {};
 
+// Cache sederhana agar tidak nembak API terus menerus (Opsional)
+let MASTER_DATA = null;
+
+// Fungsi untuk update data terbaru dari Django
+async function fetchMasterData() {
+    try {
+        console.log("🔄 Mengambil data terbaru dari Django...");
+        const response = await axios.get(`${BASE_URL}/bot/master-data/`);
+        MASTER_DATA = response.data;
+        console.log("✅ Data Master Terupdate:", MASTER_DATA.branches.length, "Cabang,", MASTER_DATA.categories.length, "Kategori.");
+    } catch (error) {
+        console.error("❌ Gagal ambil data master:", error.message);
+    }
+}
+
 client.on('qr', (qr) => qrcode.generate(qr, { small: true }));
 
-client.on('ready', () => console.log('MaknaFlow Bot Siap (Mode Tanpa Gambar & Multi-Cabang)!'));
+client.on('ready', async () => {
+    console.log('Bot Siap!');
+    // Ambil data saat bot nyala pertama kali
+    await fetchMasterData();
+});
 
 client.on('message', async msg => {
-    // Format nomor pengirim (hilangkan @c.us)
-    const senderPhone = msg.from.replace('@c.us', '');
+    const sender = msg.from.replace('@c.us', '');
     const text = msg.body.trim();
 
-    // 1. Cek Sesi User
-    if (!userSessions[senderPhone]) {
-        // Pemicu awal
+    // Refresh data manual jika Owner mengetik /refresh (untuk update tanpa restart bot)
+    if (text === '/refresh') {
+        await fetchMasterData();
+        msg.reply('✅ Data Cabang & Kategori berhasil diperbarui dari Database!');
+        return;
+    }
+
+    if (!userSessions[sender]) {
         if (text.toLowerCase() === '/lapor') {
-            userSessions[senderPhone] = { step: 1, data: { phone_number: senderPhone } };
+            // Pastikan data ada
+            if (!MASTER_DATA) await fetchMasterData();
+
+            userSessions[sender] = { step: 1, data: { phone_number: sender } };
             
-            // PERUBAHAN 1: Tanya Tipe Bisnis dulu
+            // Generate Menu Tipe Bisnis Dinamis? 
+            // Atau tetap statis karena tipe bisnis jarang berubah. 
+            // Di sini kita buat statis dulu biar simpel, tapi cabangnya nanti dinamis.
             msg.reply('Halo Staff! Pilih Unit Bisnis:\n1. Laundry\n2. Carwash\n3. Kos');
         }
     } else {
-        const session = userSessions[senderPhone];
+        const session = userSessions[sender];
 
         switch (session.step) {
-            case 1: // Input Tipe Bisnis
-                if (text === '1') {
-                    // Jika Laundry, tanya cabang spesifik
-                    session.step = 2; 
-                    // TENTUKAN NAMA CABANG LAUNDRY ANDA DISINI
-                    msg.reply('Pilih Cabang Laundry:\n1. Laundry Bosku Babelan\n2. Laundry Bosku Kedaung');
-                } else if (text === '2') {
-                    // Carwash (langsung set nama cabang, sesuaikan dengan database)
-                    session.data.branch_name = 'CARWASH'; 
-                    session.step = 3; // Langsung lompat ke Tipe Transaksi
-                    msg.reply('Unit CARWASH terpilih.\n\nMasukan Tipe:\n1. INCOME (Pemasukan)\n2. EXPENSE (Pengeluaran)');
-                } else if (text === '3') {
-                    // Kos (langsung set nama cabang)
-                    session.data.branch_name = 'KOS';
-                    session.step = 3; // Langsung lompat ke Tipe Transaksi
-                    msg.reply('Unit KOS terpilih.\n\nMasukan Tipe:\n1. INCOME (Pemasukan)\n2. EXPENSE (Pengeluaran)');
-                } else {
+            case 1: // User pilih Tipe Bisnis (Laundry/Carwash/dll)
+                let selectedType = '';
+                if (text === '1') selectedType = 'LAUNDRY';
+                if (text === '2') selectedType = 'CARWASH';
+                if (text === '3') selectedType = 'KOS';
+
+                if (!selectedType) {
                     msg.reply('Pilihan salah. Ketik 1, 2, atau 3.');
+                    return;
                 }
+
+                // FILTER CABANG OTOMATIS BERDASARKAN TIPE
+                // Cari cabang di MASTER_DATA yang tipenya sesuai pilihan user
+                const filteredBranches = MASTER_DATA.branches.filter(b => b.branch_type === selectedType);
+
+                if (filteredBranches.length === 0) {
+                    msg.reply(`❌ Belum ada cabang bertipe ${selectedType} di Database Django. Tambahkan dulu di Admin.`);
+                    delete userSessions[sender];
+                    return;
+                }
+
+                // SIMPAN DAFTAR CABANG SEMENTARA DI SESI USER
+                // Agar nanti pas user ketik "1", kita tahu "1" itu cabang ID berapa
+                session.temp_branches = filteredBranches; 
+
+                // Buat Teks Menu Dinamis
+                let menuText = `Pilih Cabang ${selectedType}:\n`;
+                filteredBranches.forEach((branch, index) => {
+                    menuText += `${index + 1}. ${branch.name}\n`;
+                });
+
+                session.step = 2;
+                msg.reply(menuText);
                 break;
 
-            case 2: // Input Spesifik Cabang Laundry (Hanya muncul jika pilih no 1 di step sebelumnya)
-                // PERUBAHAN 2: Mapping Nama Cabang Laundry
-                // Pastikan nama ini SAMA PERSIS dengan yang ada di Django Admin > Branches
-                if (text === '1') {
-                    session.data.branch_name = 'LAUNDRY PUSAT'; // Sesuaikan nama DB
+            case 2: // User pilih Nomor Cabang
+                const branchIndex = parseInt(text) - 1; // Karena array mulai dari 0
+                const branchList = session.temp_branches;
+
+                if (branchList && branchList[branchIndex]) {
+                    // KITA DAPAT ID CABANGNYA LANGSUNG DARI SINI!
+                    session.data.branch_id = branchList[branchIndex].id;
+                    session.data.branch_name = branchList[branchIndex].name; // Just for display/log
+                    
                     session.step = 3;
-                    msg.reply('Cabang LAUNDRY PUSAT terpilih.\n\nMasukan Tipe:\n1. INCOME (Pemasukan)\n2. EXPENSE (Pengeluaran)');
-                } else if (text === '2') {
-                    session.data.branch_name = 'LAUNDRY CABANG 2'; // Sesuaikan nama DB
-                    session.step = 3;
-                    msg.reply('Cabang LAUNDRY CABANG 2 terpilih.\n\nMasukan Tipe:\n1. INCOME (Pemasukan)\n2. EXPENSE (Pengeluaran)');
+                    msg.reply(`Cabang *${session.data.branch_name}* terpilih.\n\nMasukan Tipe Transaksi:\n1. INCOME\n2. EXPENSE`);
                 } else {
-                    msg.reply('Pilihan salah. Ketik 1 atau 2.');
+                    msg.reply('Nomor cabang tidak valid. Ulangi pilih nomor.');
                 }
                 break;
 
-            case 3: // Input Tipe Transaksi (Income/Expense)
+            case 3: // Tipe Income/Expense
                 const types = { '1': 'INCOME', '2': 'EXPENSE' };
                 if (types[text]) {
                     session.data.type = types[text];
                     session.step = 4;
-                    msg.reply('Masukkan Kategori (contoh: Detergent, Listrik, Cuci Kiloan):');
+                    
+                    // Tampilkan Kategori yang sesuai tipe transaksi (Income vs Expense)
+                    // Filter kategori dari MASTER_DATA
+                    const filteredCats = MASTER_DATA.categories.filter(c => c.transaction_type === types[text]);
+                    
+                    // Simpan mapping kategori sementara
+                    session.temp_cats = filteredCats;
+
+                    let catMenu = `Pilih Kategori (Ketik Nomor):\n`;
+                    filteredCats.forEach((cat, index) => {
+                        catMenu += `${index + 1}. ${cat.name}\n`;
+                    });
+                    // Opsi manual
+                    catMenu += `${filteredCats.length + 1}. Lainnya (Ketik Manual)`;
+
+                    msg.reply(catMenu);
                 } else {
                     msg.reply('Pilihan salah. Ketik 1 atau 2.');
                 }
                 break;
 
-            case 4: // Input Kategori
-                session.data.category = text;
-                session.step = 5;
-                msg.reply('Masukkan Nominal (Angka saja, tanpa titik/koma):');
+            case 4: // Pilih Kategori (Nomor)
+                const catIndex = parseInt(text) - 1;
+                const catList = session.temp_cats;
+                
+                // Opsi "Lainnya" atau Manual input logika bisa ditambahkan disini
+                // Untuk sekarang kita asumsikan user memilih dari list angka
+                if (catList && catList[catIndex]) {
+                    session.data.category_id = catList[catIndex].id;
+                    session.step = 5;
+                    msg.reply('Masukkan Nominal (Angka saja):');
+                } else {
+                     msg.reply('Nomor kategori tidak valid.');
+                }
                 break;
 
-            case 5: // Input Nominal
-                // Validasi angka sederhana
+            case 5: // Nominal
                 if (!isNaN(text) && /^\d+$/.test(text)) {
                     session.data.amount = parseInt(text);
                     session.step = 6;
                     msg.reply('Ada catatan tambahan? (Ketik "-" jika tidak ada)');
                 } else {
-                    msg.reply('Harap masukkan angka yang valid (contoh: 50000).');
+                    msg.reply('Harap masukkan angka valid.');
                 }
                 break;
 
-            case 6: // Input Catatan & LANGSUNG KIRIM (Tanpa Gambar)
+            case 6: // Notes & Submit
                 session.data.notes = text;
-                
-                msg.reply('⏳ Sedang menyimpan data ke MaknaFlow...');
+                msg.reply('⏳ Mengirim data...');
 
-                // PERUBAHAN 3: Langsung kirim JSON biasa (bukan FormData)
-                // Karena tidak ada file gambar yang dikirim
                 try {
-                    const response = await axios.post(DJANGO_API_URL, session.data);
-                    msg.reply(`✅ Sukses! Transaksi ID: ${response.data.id} berhasil disimpan.`);
-                } catch (error) {
-                    console.error("Gagal kirim ke Django:", error);
-                    
-                    let errMsg = '❌ Gagal menyimpan data.';
-                    if (error.response) {
-                        // Error dari server Django (misal: Kategori tidak ditemukan)
-                        errMsg += `\nServer Error: ${error.response.status}`;
-                        if (error.response.data && error.response.data.error) {
-                            errMsg += `\nPenyebab: ${error.response.data.error}`;
-                        }
-                    } else if (error.request) {
-                        errMsg += '\nServer Django tidak merespon (Mati/Offline).';
-                    } else {
-                        errMsg += `\n${error.message}`;
-                    }
-                    msg.reply(errMsg);
-                }
+                    // Payload sudah berisi ID (branch_id, category_id)
+                    // Jadi tidak perlu mapping manual lagi!
+                    const payload = {
+                        phone_number: session.data.phone_number,
+                        branch_id: session.data.branch_id,
+                        category_id: session.data.category_id,
+                        type: session.data.type,
+                        amount: session.data.amount,
+                        notes: session.data.notes
+                    };
 
-                // Hapus sesi agar bisa input baru lagi
-                delete userSessions[senderPhone];
+                    const response = await axios.post(`${BASE_URL}/ingestion/internal-wa/`, payload);
+                    msg.reply(`✅ Sukses! Transaksi ID: ${response.data.id}`);
+                } catch (error) {
+                    console.error(error);
+                    msg.reply('❌ Gagal kirim ke server.');
+                }
+                delete userSessions[sender];
                 break;
         }
     }
