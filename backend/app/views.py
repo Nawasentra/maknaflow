@@ -835,4 +835,14 @@ class InternalWhatsAppIngestion(APIView):
             log.error_message = str(e)
             log.save()
             return Response({"error": str(e)}, status=400)
+    
+class HealthCheckView(APIView):
+    """
+    Cek kesehatan server untuk Render
+    """
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def get(self, request):
+        return Response({"status": "ok", "message": "Server is running"})
         
