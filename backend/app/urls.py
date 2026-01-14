@@ -12,6 +12,7 @@ from app.views import (
     EmailIngestionWebhook,
     WhatsAppWebhookView,
     InternalWhatsAppIngestion,
+    BotMasterData,
 )
 
 # Create router for ViewSets
