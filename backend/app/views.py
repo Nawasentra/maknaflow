@@ -847,7 +847,7 @@ class HealthCheckView(APIView):
     Simple endpoint to keep the server awake
     """
     authentication_classes = []
-    permission_classes = []
+    permission_classes = [AllowAny]
 
     def get(self, request):
         return JsonResponse({"status": "ok", "service": "MaknaFlow Backend"}, status=200)
