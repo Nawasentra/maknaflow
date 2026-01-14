@@ -7,6 +7,7 @@ import {
   fetchCategories,
   fetchTransactions,
 } from '../../lib/api/transactions'
+import { fetchDailySummaries } from '../../lib/api/dailySummaries'
 
 const inputStyle = {
   width: '100%',
@@ -56,6 +57,7 @@ function TransactionsPage({
 
   const [branches, setBranches] = useState([])
   const [categories, setCategories] = useState([])
+  const [dailySummaries, setDailySummaries] = useState([])
 
   const [sortConfig, setSortConfig] = useState({
     key: 'date',
@@ -83,19 +85,21 @@ function TransactionsPage({
     }
   }
 
-  // --- initial load (branches, categories, transactions) ---
+  // --- initial load (branches, categories, transactions, daily summaries) ---
   useEffect(() => {
     const loadMeta = async () => {
       try {
         setLoading(true)
-        const [br, cat, tx] = await Promise.all([
+        const [br, cat, tx, ds] = await Promise.all([
           fetchBranches(),
           fetchCategories(),
           fetchTransactions(),
+          fetchDailySummaries(),
         ])
         setSafeBranches(br)
         setSafeCategories(cat)
         setTransactions(Array.isArray(tx) ? tx : [])
+        setDailySummaries(Array.isArray(ds) ? ds : ds.results || [])
       } catch (e) {
         console.error(e)
         showToast?.('Gagal memuat data referensi.', 'error')
@@ -108,17 +112,63 @@ function TransactionsPage({
   }, [])
 
   const safeTransactions = Array.isArray(transactions) ? transactions : []
+  const safeDailySummaries = Array.isArray(dailySummaries)
+    ? dailySummaries
+    : []
 
-  // --- opsi Unit & Cabang (berdasarkan transaksi historis) ---
+  // --- synthesize one Email POS row per DailySummary ---
+  const emailSummaryRows = safeDailySummaries.map((s) => ({
+    id: `email-summary-${s.id}`,
+    date: s.date,
+    unitBusiness: s.branch_type || 'Unknown', // serializer should expose branch_type
+    branch: s.branch_name || 'Unknown', // serializer should expose branch_name
+    category: 'Penjualan via POS',
+    type: 'Income',
+    amount: Number(s.total_collected ?? 0),
+    payment: '-', // POS summary, no specific payment method
+    source: 'Email',
+    description: 'Ringkasan harian LUNA POS',
+    createdAt: s.created_at,
+    branchId: s.branch || null,
+    categoryId: null,
+    sourceIdentifier: s.source_identifier || `luna-summary-${s.id}`,
+  }))
+
+  // --- merge real transactions + email rows, dedupe by sourceIdentifier if present ---
+  const mergedTransactions = useMemo(() => {
+    const byKey = new Map()
+
+    // real transactions first
+    safeTransactions.forEach((t) => {
+      const key = t.sourceIdentifier
+        ? `${t.source}-${t.sourceIdentifier}`
+        : `tx-${t.id}`
+      byKey.set(key, t)
+    })
+
+    // add email summary rows only if not already present
+    emailSummaryRows.forEach((t) => {
+      const key = t.sourceIdentifier
+        ? `${t.source}-${t.sourceIdentifier}`
+        : t.id
+      if (!byKey.has(key)) {
+        byKey.set(key, t)
+      }
+    })
+
+    return Array.from(byKey.values())
+  }, [safeTransactions, emailSummaryRows])
+
+  // --- opsi Unit & Cabang ---
   const unitOptions = useMemo(() => {
     const units = Array.from(
-      new Set(safeTransactions.map((t) => t.unitBusiness).filter(Boolean)),
+      new Set(mergedTransactions.map((t) => t.unitBusiness).filter(Boolean)),
     )
     return ['Semua Unit', ...units]
-  }, [safeTransactions])
+  }, [mergedTransactions])
 
   const branchOptions = useMemo(() => {
-    let source = safeTransactions
+    let source = mergedTransactions
     if (filterUnit !== 'Semua Unit') {
       source = source.filter((t) => t.unitBusiness === filterUnit)
     }
@@ -126,7 +176,7 @@ function TransactionsPage({
       new Set(source.map((t) => t.branch).filter(Boolean)),
     )
     return ['Semua Cabang', ...names]
-  }, [safeTransactions, filterUnit])
+  }, [mergedTransactions, filterUnit])
 
   useEffect(() => {
     if (!branchOptions.includes(filterBranch)) {
@@ -135,7 +185,7 @@ function TransactionsPage({
   }, [branchOptions, filterBranch])
 
   // --- filter transaksi ---
-  const filteredTransactions = safeTransactions.filter((t) => {
+  const filteredTransactions = mergedTransactions.filter((t) => {
     if (searchTerm) {
       const q = searchTerm.toLowerCase()
       const matchSearch =
@@ -196,7 +246,7 @@ function TransactionsPage({
   }
 
   const handleConfirmDelete = async () => {
-    if (transactionToDelete) {
+    if (transactionToDelete && typeof transactionToDelete.id === 'number') {
       try {
         await deleteTransaction(transactionToDelete.id)
         setTransactions((prev) =>
@@ -665,6 +715,9 @@ function ThSortable({ label, onClick }) {
   )
 }
 
+// ConfirmDialog, AddTransactionModal, TransactionRow
+// keep your existing implementations unchanged.
+
 function ConfirmDialog({ title, description, onCancel, onConfirm }) {
   return (
     <div
@@ -773,7 +826,6 @@ function AddTransactionModal({
     ? businessConfigs
     : []
 
-  // map branch.id -> active (true/false) dari businessConfigs
   const branchActiveMap = useMemo(() => {
     const map = new Map()
     safeBusinessConfigs.forEach((unit) => {
@@ -784,7 +836,6 @@ function AddTransactionModal({
     return map
   }, [safeBusinessConfigs])
 
-  // filter + dedup + sort kategori
   const filteredCategories = useMemo(() => {
     const txType = type === 'Income' ? 'INCOME' : 'EXPENSE'
     const pool = safeCategories.filter((c) => c.transaction_type === txType)
@@ -1196,7 +1247,7 @@ function TransactionRow({ transaction, onAskDelete }) {
       </td>
       <td style={{ padding: '1rem 1.5rem', color: 'var(--text)' }}>
         {transaction.source === 'Email'
-          ? '-'
+          ? '-' // email summary has no explicit payment method
           : transaction.payment === 'CASH'
           ? 'Cash'
           : transaction.payment === 'QRIS'
