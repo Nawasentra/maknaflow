@@ -13,6 +13,7 @@ from app.views import (
     WhatsAppWebhookView,
     InternalWhatsAppIngestion,
     HealthCheckView,
+    BotMasterData,
 )
 
 # Create router for ViewSets
@@ -44,6 +45,7 @@ urlpatterns = [
     # WhatsApp Webhook endpoint
     path('webhooks/whatsapp/', WhatsAppWebhookView.as_view(), name='whatsapp-webhook'),
     path('api/ingestion/internal-wa/', InternalWhatsAppIngestion.as_view()),
+    path('api/bot/master-data/', BotMasterData.as_view()),
 
     # Health Check endpoint
     path('health/', HealthCheckView.as_view(), name='health-check'),

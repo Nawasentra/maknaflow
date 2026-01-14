@@ -20,6 +20,9 @@ from decouple import config
 from django.db.models import Sum
 import logging
 import traceback
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from .models import Branch, Category, User
 
 from .serializers import (
     BranchSerializer,
@@ -642,6 +645,24 @@ class DailySummaryViewSet(viewsets.ReadOnlyModelViewSet):
 # WEBHOOK VIEWS (API Key Protected)
 # ==========================================
 
+class BotMasterData(APIView):
+    """
+    API khusus untuk Bot WhatsApp mengambil daftar Cabang & Kategori terbaru
+    """
+    permission_classes = [AllowAny]
+    
+    def get(self, request):
+        # Ambil semua cabang aktif
+        # Kita pakai .values() agar datanya ringan (hanya ID, Nama, dan Tipe)
+        branches = list(Branch.objects.values('id', 'name', 'branch_type'))
+        
+        # Ambil semua kategori aktif
+        categories = list(Category.objects.values('id', 'name', 'transaction_type'))
+        
+        return Response({
+            "branches": branches,
+            "categories": categories
+        })
 
 class WhatsAppWebhookView(APIView):
     """
@@ -766,7 +787,7 @@ class InternalWhatsAppIngestion(APIView):
         phone = data.get("phone_number")
         staff_user = (
             User.objects.filter(
-                profile__phone_number=phone,
+                phone_number=phone,
                 is_staff=True,
             ).first()
         )
@@ -785,24 +806,11 @@ class InternalWhatsAppIngestion(APIView):
         )
 
         try:
-            # Ambil file gambar dari request (jika ada)
-            evidence_file = request.FILES.get("evidence")
+            branch_id = data.get('branch_id') # Menerima ID
+            branch = Branch.objects.get(pk=branch_id)
 
-            # Parse branch and category from data
-            branch_id = data.get("branch_id")
-            category_id = data.get("category_id")
-
-            if not branch_id:
-                branch = staff_user.assigned_branch
-                if not branch:
-                    raise ValueError("Staff has no assigned branch")
-            else:
-                branch = get_object_or_404(Branch, id=branch_id)
-
-            if not category_id:
-                raise ValueError("Category is required")
-
-            category = get_object_or_404(Category, id=category_id)
+            category_id = data.get('category_id') # Menerima ID
+            category = Category.objects.get(pk=category_id)
 
             transaction = Transaction.objects.create(
                 reported_by=staff_user,
@@ -814,7 +822,6 @@ class InternalWhatsAppIngestion(APIView):
                 transaction_type=category.transaction_type,  # Use category's transaction type
                 source=TransactionSource.WHATSAPP,
                 is_verified=staff_user.is_verified,
-                evidence_image=evidence_file,  # Correct field name
             )
 
             # Update Log sukses
