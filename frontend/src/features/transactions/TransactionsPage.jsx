@@ -120,43 +120,36 @@ function TransactionsPage({
   const emailSummaryRows = safeDailySummaries.map((s) => ({
     id: `email-summary-${s.id}`,
     date: s.date,
-    unitBusiness: s.branch_type || 'Unknown', // serializer should expose branch_type
-    branch: s.branch_name || 'Unknown', // serializer should expose branch_name
+    unitBusiness: s.branch_type || 'Unknown',
+    branch: s.branch_name || 'Unknown',
     category: 'Penjualan via POS',
     type: 'Income',
     amount: Number(s.total_collected ?? 0),
-    payment: '-', // POS summary, no specific payment method
+    payment: '-', // tidak ada payment method spesifik
     source: 'Email',
-    description: 'Ringkasan harian LUNA POS',
+    description: 'Ringkasan harian POS (email)',
     createdAt: s.created_at,
     branchId: s.branch || null,
     categoryId: null,
-    sourceIdentifier: s.source_identifier || `luna-summary-${s.id}`,
+    sourceIdentifier: `email-summary-${s.id}`,
   }))
 
-  // --- merge real transactions + email rows, dedupe by sourceIdentifier if present ---
+  // --- merge: manual/WA transactions + email summary rows, hide email items ---
   const mergedTransactions = useMemo(() => {
-    const byKey = new Map()
+    const list = []
 
-    // real transactions first
+    // manual, WhatsApp, dll (email itemized di-hide pakai flag isEmailPosItem)
     safeTransactions.forEach((t) => {
-      const key = t.sourceIdentifier
-        ? `${t.source}-${t.sourceIdentifier}`
-        : `tx-${t.id}`
-      byKey.set(key, t)
+      if (t.isEmailPosItem) return
+      list.push(t)
     })
 
-    // add email summary rows only if not already present
-    emailSummaryRows.forEach((t) => {
-      const key = t.sourceIdentifier
-        ? `${t.source}-${t.sourceIdentifier}`
-        : t.id
-      if (!byKey.has(key)) {
-        byKey.set(key, t)
-      }
+    // tambahkan satu row per DailySummary
+    emailSummaryRows.forEach((row) => {
+      list.push(row)
     })
 
-    return Array.from(byKey.values())
+    return list
   }, [safeTransactions, emailSummaryRows])
 
   // --- opsi Unit & Cabang ---
@@ -269,9 +262,10 @@ function TransactionsPage({
     setTransactionToDelete(null)
   }
 
-  // prevent duplikat transaksi (tanggal + cabang + kategori + type + amount + payment)
+  // prevent duplikat transaksi manual
   const handleAddTransaction = async (newTx) => {
     const isDuplicate = safeTransactions.some((t) => {
+      if (t.isEmailPosItem) return false
       return (
         t.date === newTx.date &&
         t.branchId === newTx.branchId &&
@@ -714,9 +708,6 @@ function ThSortable({ label, onClick }) {
     </th>
   )
 }
-
-// ConfirmDialog, AddTransactionModal, TransactionRow
-// keep your existing implementations unchanged.
 
 function ConfirmDialog({ title, description, onCancel, onConfirm }) {
   return (
