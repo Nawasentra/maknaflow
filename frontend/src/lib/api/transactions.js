@@ -5,13 +5,11 @@ import api from '../axios'
 
 export async function fetchBranches() {
   const res = await api.get('/branches/')
-  // expected: [{id, name, branch_type, address}, ...]
   return Array.isArray(res.data) ? res.data : res.data.results || []
 }
 
 export async function fetchCategories() {
   const res = await api.get('/categories/')
-  // expected: [{id, name, transaction_type}, ...]
   return Array.isArray(res.data) ? res.data : res.data.results || []
 }
 
@@ -26,10 +24,11 @@ function mapTransaction(t) {
       ? 'Expense'
       : 'Income'
 
+  const sourceRaw = t.source || 'MANUAL'
   const source =
-    t.source === 'EMAIL'
+    sourceRaw === 'EMAIL'
       ? 'Email'
-      : t.source === 'WHATSAPP'
+      : sourceRaw === 'WHATSAPP'
       ? 'Whatsapp'
       : 'Manual'
 
@@ -59,6 +58,9 @@ function mapTransaction(t) {
     // Id mentah untuk keperluan form
     branchId: t.branch,
     categoryId: t.category,
+
+    // flag: transaksi email itemized → akan di-hide di TransactionsPage
+    isEmailPosItem: source === 'Email',
   }
 }
 
@@ -66,21 +68,18 @@ function mapTransaction(t) {
 function mapToBackendPayload(frontendTx) {
   return {
     date: frontendTx.date,
-    branch: frontendTx.branchId,        // integer, required
-    category: frontendTx.categoryId,    // integer, required
+    branch: frontendTx.branchId,
+    category: frontendTx.categoryId,
     amount: frontendTx.amount,
     description: frontendTx.description || '',
     payment_method: frontendTx.payment, // "CASH" | "QRIS" | "TRANSFER"
     transaction_type:
       frontendTx.type === 'Income' ? 'INCOME' : 'EXPENSE',
 
-    // sumber transaksi (Manual / Whatsapp / Email).
-    // untuk halaman transaksi manual: selalu 'MANUAL'
     source: frontendTx.source
       ? frontendTx.source.toUpperCase()
       : 'MANUAL',
 
-    // WAJIB untuk serializer → minimal string sederhana
     source_identifier:
       frontendTx.sourceIdentifier || 'manual-entry',
   }

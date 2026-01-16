@@ -647,16 +647,13 @@ class DailySummaryViewSet(viewsets.ReadOnlyModelViewSet):
 
 class BotMasterData(APIView):
     """
-    API khusus untuk Bot WhatsApp mengambil daftar Cabang & Kategori terbaru
+    Memberikan daftar Cabang & Kategori ke Bot WhatsApp
     """
     permission_classes = [AllowAny]
-    
+    authentication_classes = []
+
     def get(self, request):
-        # Ambil semua cabang aktif
-        # Kita pakai .values() agar datanya ringan (hanya ID, Nama, dan Tipe)
         branches = list(Branch.objects.values('id', 'name', 'branch_type'))
-        
-        # Ambil semua kategori aktif
         categories = list(Category.objects.values('id', 'name', 'transaction_type'))
         
         return Response({
@@ -776,85 +773,76 @@ class WhatsAppWebhookView(APIView):
 
 
 class InternalWhatsAppIngestion(APIView):
-    # Endpoint ini akan dipanggil oleh Node.js Bot
-    parser_classes = [MultiPartParser, FormParser]
+    permission_classes = [AllowAny]
+    authentication_classes = []
 
     def post(self, request):
         data = request.data
+        print(f"Payload diterima dari Bot: {data}")
 
-        # 1. Identifikasi Staff berdasarkan No HP (sesuai screenshot Security)
-        # Pastikan format nomor HP di database konsisten (misal: 628xxx)
-        phone = data.get("phone_number")
-        staff_user = (
-            User.objects.filter(
-                phone_number=phone,
-                is_staff=True,
-            ).first()
-        )
+        # 1. Identifikasi Staff
+        phone = data.get('phone_number')
+        staff_user = User.objects.filter(profile__phone_number=phone, is_staff=True).first()
+        
+        if not staff_user:
+             staff_user = User.objects.filter(phone_number=phone, is_staff=True).first()
 
         if not staff_user:
-            return Response(
-                {"error": "Nomor tidak terdaftar sebagai Staff"},
-                status=400,
-            )
+            return Response({"error": "Nomor WhatsApp tidak terdaftar sebagai Staff"}, status=400)
 
-        # 2. Catat ke IngestionLog (Safety Net sesuai arsitektur)
+        # 2. Catat Log
         log = IngestionLog.objects.create(
             source="WHATSAPP_INTERNAL",
             raw_data=str(data),
-            status="PENDING",
+            status="PENDING"
         )
 
         try:
-            branch_id = data.get('branch_id') # Menerima ID
-            branch = Branch.objects.get(pk=branch_id)
+            # Terima ID (Angka), bukan Nama
+            branch_id = data.get('branch_id')
+            try:
+                branch = Branch.objects.get(pk=branch_id)
+            except Branch.DoesNotExist:
+                raise Exception(f"Branch ID {branch_id} tidak ditemukan.")
 
-            category_id = data.get('category_id') # Menerima ID
-            category = Category.objects.get(pk=category_id)
+            category_id = data.get('category_id')
+            try:
+                category = Category.objects.get(pk=category_id)
+            except Category.DoesNotExist:
+                raise Exception(f"Category ID {category_id} tidak ditemukan.")
 
+            # 3. Buat Transaksi
             transaction = Transaction.objects.create(
-                reported_by=staff_user,
+                user=staff_user,
                 branch=branch,
                 category=category,
-                amount=data.get("amount"),
-                description=data.get("notes", "-"),
-                payment_method=data.get("payment_method", "CASH"),
-                transaction_type=category.transaction_type,  # Use category's transaction type
-                source=TransactionSource.WHATSAPP,
+                amount=data.get('amount'),
+                description=data.get('notes', '-'),
+                transaction_type=data.get('type', 'EXPENSE'),
+                payment_method="CASH",
                 is_verified=staff_user.is_verified,
+                source="WHATSAPP_INTERNAL"
             )
-
-            # Update Log sukses
-            log.status = IngestionStatus.SUCCESS
+            
+            log.status = "SUCCESS"
+            log.created_transaction = transaction
             log.save()
-
-            return Response(
-                {
-                    "message": "Transaksi berhasil disimpan",
-                    "id": transaction.id,
-                },
-                status=201,
-            )
-
+            
+            return Response({"message": "Sukses", "id": transaction.id}, status=201)
+            
         except Exception as e:
-            log.status = IngestionStatus.FAILED
+            log.status = "FAILED"
             log.error_message = str(e)
             log.save()
-            logger.error(
-                f"WhatsApp internal ingestion failed: {e}", exc_info=True
-            )
             return Response({"error": str(e)}, status=400)
-
-# ==========================================
-# HEALTH CHECK VIEW
-# ==========================================
-
+    
 class HealthCheckView(APIView):
     """
-    Simple endpoint to keep the server awake
+    Cek kesehatan server untuk Render
     """
-    authentication_classes = []
     permission_classes = [AllowAny]
+    authentication_classes = []
 
     def get(self, request):
-        return JsonResponse({"status": "ok", "service": "MaknaFlow Backend"}, status=200)
+        return Response({"status": "ok", "message": "Server is running"})
+        
