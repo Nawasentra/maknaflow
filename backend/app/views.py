@@ -2,7 +2,17 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from django.conf import settings
-from .models import IngestionLog, TransactionSource, IngestionStatus, Transaction, Branch, Category, User, DailySummary
+from .models import (
+    IngestionLog, 
+    TransactionSource, 
+    IngestionStatus, 
+    Transaction, 
+    Branch, 
+    Category, 
+    User, 
+    DailySummary, 
+    PaymentMethod
+)
 from .serializers import EmailWebhookPayloadSerializer
 from .ingestion.email_webhook import EmailWebhookService
 from rest_framework.parsers import JSONParser, MultiPartParser, FormParser
