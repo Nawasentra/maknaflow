@@ -133,16 +133,26 @@ function DashboardPage({ transactions, isLoading, error }) {
 
   // ---------- KPI ----------
 
-  const incomeTotal = filteredTransactions
-    .filter((t) => t.type === 'Income')
+  // income manual/WA (exclude email, karena email income diambil dari DailySummary)
+  const manualIncome = filteredTransactions
+    .filter((t) => t.type === 'Income' && t.source !== 'Email')
     .reduce((sum, t) => sum + (t.amount || 0), 0)
+
+  // income dari POS email (DailySummary.payment_breakdown.total)
+  const emailIncome = paymentBreakdown?.total || 0
+
+  const incomeTotal = manualIncome + emailIncome
 
   const expenseTotal = filteredTransactions
     .filter((t) => t.type === 'Expense')
     .reduce((sum, t) => sum + (t.amount || 0), 0)
 
   const netProfit = incomeTotal - expenseTotal
-  const totalTransactions = filteredTransactions.length
+
+  // hitung transaksi: transaksi non-email + jumlah summary email
+  const totalTransactions =
+    filteredTransactions.filter((t) => t.source !== 'Email').length +
+    (paymentBreakdown?.count || 0)
 
   // ---------- CHART DATA ----------
 
