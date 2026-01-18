@@ -952,9 +952,7 @@ class InternalWhatsAppIngestion(APIView):
                 amount=amount,
                 transaction_type=transaction_type,
                 category=category,
-                amount=data.get('amount'),
                 description=data.get('notes', '-'),
-                transaction_type=data.get('type', 'EXPENSE'),
                 payment_method="CASH",
                 is_verified=staff_user.is_verified,
                 source="WHATSAPP_INTERNAL"
