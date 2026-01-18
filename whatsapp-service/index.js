@@ -1,197 +1,225 @@
-const { Client, LocalAuth } = require('whatsapp-web.js');
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
+const { Boom } = require('@hapi/boom');
 const qrcode = require('qrcode-terminal');
+const pino = require('pino');
 const axios = require('axios');
+const fs = require('fs');
 
-// Konfigurasi Client
-const client = new Client({
-    authStrategy: new LocalAuth(),
-    puppeteer: { args: ['--no-sandbox'] }
-});
-
-// URL API Django
+// --- KONFIGURASI ---
 const BASE_URL = 'https://maknaflow-staging.onrender.com/api';
+const SESSION_DIR = 'auth_info_baileys'; // Folder penyimpan sesi (pengganti .wwebjs_auth)
 
-// State Management
+// State Management (Sama seperti sebelumnya)
 const userSessions = {};
-
-// Cache sederhana agar tidak nembak API terus menerus (Opsional)
 let MASTER_DATA = null;
 
-// Fungsi untuk update data terbaru dari Django
+// --- FUNGSI DATA ---
 async function fetchMasterData() {
     try {
         console.log("🔄 Mengambil data terbaru dari Django...");
         const response = await axios.get(`${BASE_URL}/bot/master-data/`);
         MASTER_DATA = response.data;
-        console.log("✅ Data Master Terupdate:", MASTER_DATA.branches.length, "Cabang,", MASTER_DATA.categories.length, "Kategori.");
+        console.log(`✅ Data Master Terupdate: ${MASTER_DATA.branches.length} Cabang, ${MASTER_DATA.categories.length} Kategori.`);
     } catch (error) {
-        console.error("❌ Gagal ambil data master:", error.message);
+        console.error("❌ Gagal ambil data master (Render mungkin tidur):", error.message);
     }
 }
 
-client.on('qr', (qr) => qrcode.generate(qr, { small: true }));
+// --- FUNGSI UTAMA BOT ---
+async function connectToWhatsApp() {
+    // Menyiapkan sistem autentikasi (agar tidak scan QR terus)
+    const { state, saveCreds } = await useMultiFileAuthState(SESSION_DIR);
 
-client.on('ready', async () => {
-    console.log('Bot Siap!');
-    // Ambil data saat bot nyala pertama kali
-    await fetchMasterData();
-});
+    const sock = makeWASocket({
+        auth: state,
+        printQRInTerminal: true, // Otomatis print QR di terminal
+        logger: pino({ level: 'silent' }), // Supaya log bersih
+        browser: ['MaknaFlow Bot', 'Chrome', '1.0.0'], // Identitas bot
+    });
 
-client.on('message', async msg => {
-    const sender = msg.from.replace('@c.us', '');
-    const text = msg.body.trim();
+    // 1. Event: Koneksi Update (Nyambung/Putus/QR)
+    sock.ev.on('connection.update', async (update) => {
+        const { connection, lastDisconnect, qr } = update;
 
-    // Refresh data manual jika Owner mengetik /refresh (untuk update tanpa restart bot)
-    if (text === '/refresh') {
-        await fetchMasterData();
-        msg.reply('✅ Data Cabang & Kategori berhasil diperbarui dari Database!');
-        return;
-    }
-
-    if (!userSessions[sender]) {
-        if (text.toLowerCase() === '/lapor') {
-            // Pastikan data ada
-            if (!MASTER_DATA) await fetchMasterData();
-
-            userSessions[sender] = { step: 1, data: { phone_number: sender } };
-            
-            // Generate Menu Tipe Bisnis Dinamis? 
-            // Atau tetap statis karena tipe bisnis jarang berubah. 
-            // Di sini kita buat statis dulu biar simpel, tapi cabangnya nanti dinamis.
-            msg.reply('Halo Staff! Pilih Unit Bisnis:\n1. Laundry\n2. Carwash\n3. Kos');
+        if (qr) {
+            console.log('📌 Silakan Scan QR Code di atas!');
         }
-    } else {
-        const session = userSessions[sender];
 
-        switch (session.step) {
-            case 1: // User pilih Tipe Bisnis (Laundry/Carwash/dll)
-                let selectedType = '';
-                if (text === '1') selectedType = 'LAUNDRY';
-                if (text === '2') selectedType = 'CARWASH';
-                if (text === '3') selectedType = 'KOS';
+        if (connection === 'close') {
+            const shouldReconnect = (lastDisconnect.error instanceof Boom)?.output?.statusCode !== DisconnectReason.loggedOut;
+            console.log('⚠️ Koneksi terputus. Mencoba reconnect...', shouldReconnect);
+            // Reconnect otomatis jika tidak di-logout
+            if (shouldReconnect) {
+                connectToWhatsApp();
+            } else {
+                console.log('❌ Anda telah logout. Hapus folder auth_info_baileys dan scan ulang.');
+            }
+        } else if (connection === 'open') {
+            console.log('🚀 Bot Siap & Terhubung Stabil (Baileys Mode)!');
+            await fetchMasterData();
+        }
+    });
 
-                if (!selectedType) {
-                    msg.reply('Pilihan salah. Ketik 1, 2, atau 3.');
-                    return;
+    // 2. Event: Simpan Kredit (Session)
+    sock.ev.on('creds.update', saveCreds);
+
+    // 3. Event: Pesan Masuk
+    sock.ev.on('messages.upsert', async ({ messages, type }) => {
+        if (type !== 'notify') return;
+        
+        const msg = messages[0];
+        if (!msg.message) return;
+
+        // Normalisasi Data Pesan
+        const sender = msg.key.remoteJid.replace('@s.whatsapp.net', ''); // Format: 628xxx
+        const messageType = Object.keys(msg.message)[0];
+        const text = messageType === 'conversation' ? msg.message.conversation : 
+                     messageType === 'extendedTextMessage' ? msg.message.extendedTextMessage.text : '';
+
+        if (!text) return; // Skip jika bukan teks
+        
+        console.log(`📩 Pesan dari ${sender}: "${text}"`);
+
+        // Helper Function: Reply Praktis
+        const reply = async (text) => {
+            await sock.sendMessage(msg.key.remoteJid, { text: text }, { quoted: msg });
+        };
+
+        // --- LOGIC BISNIS (Sama persis dengan sebelumnya) ---
+
+        // Command Refresh
+        if (text === '/refresh') {
+            await fetchMasterData();
+            await reply('✅ Data Database diperbarui!');
+            return;
+        }
+
+        // Logic Sesi
+        if (!userSessions[sender]) {
+            if (text.toLowerCase() === '/lapor') {
+                if (!MASTER_DATA || !MASTER_DATA.branches) {
+                    await fetchMasterData();
+                    if (!MASTER_DATA) {
+                        await reply('❌ Gagal menghubungi server database.');
+                        return;
+                    }
                 }
+                userSessions[sender] = { step: 1, data: { phone_number: sender } };
+                await reply('Halo Staff! Pilih Unit Bisnis:\n1. Laundry\n2. Carwash\n3. Kos');
+            }
+        } else {
+            const session = userSessions[sender];
 
-                // FILTER CABANG OTOMATIS BERDASARKAN TIPE
-                // Cari cabang di MASTER_DATA yang tipenya sesuai pilihan user
-                const filteredBranches = MASTER_DATA.branches.filter(b => b.branch_type === selectedType);
-
-                if (filteredBranches.length === 0) {
-                    msg.reply(`❌ Belum ada cabang bertipe ${selectedType} di Database Django. Tambahkan dulu di Admin.`);
-                    delete userSessions[sender];
-                    return;
-                }
-
-                // SIMPAN DAFTAR CABANG SEMENTARA DI SESI USER
-                // Agar nanti pas user ketik "1", kita tahu "1" itu cabang ID berapa
-                session.temp_branches = filteredBranches; 
-
-                // Buat Teks Menu Dinamis
-                let menuText = `Pilih Cabang ${selectedType}:\n`;
-                filteredBranches.forEach((branch, index) => {
-                    menuText += `${index + 1}. ${branch.name}\n`;
-                });
-
-                session.step = 2;
-                msg.reply(menuText);
-                break;
-
-            case 2: // User pilih Nomor Cabang
-                const branchIndex = parseInt(text) - 1; // Karena array mulai dari 0
-                const branchList = session.temp_branches;
-
-                if (branchList && branchList[branchIndex]) {
-                    // KITA DAPAT ID CABANGNYA LANGSUNG DARI SINI!
-                    session.data.branch_id = branchList[branchIndex].id;
-                    session.data.branch_name = branchList[branchIndex].name; // Just for display/log
-                    
-                    session.step = 3;
-                    msg.reply(`Cabang *${session.data.branch_name}* terpilih.\n\nMasukan Tipe Transaksi:\n1. INCOME\n2. EXPENSE`);
-                } else {
-                    msg.reply('Nomor cabang tidak valid. Ulangi pilih nomor.');
-                }
-                break;
-
-            case 3: // Tipe Income/Expense
-                const types = { '1': 'INCOME', '2': 'EXPENSE' };
-                if (types[text]) {
-                    session.data.type = types[text];
-                    session.step = 4;
-                    
-                    // Tampilkan Kategori yang sesuai tipe transaksi (Income vs Expense)
-                    // Filter kategori dari MASTER_DATA
-                    const filteredCats = MASTER_DATA.categories.filter(c => c.transaction_type === types[text]);
-                    
-                    // Simpan mapping kategori sementara
-                    session.temp_cats = filteredCats;
-
-                    let catMenu = `Pilih Kategori (Ketik Nomor):\n`;
-                    filteredCats.forEach((cat, index) => {
-                        catMenu += `${index + 1}. ${cat.name}\n`;
-                    });
-                    // Opsi manual
-                    catMenu += `${filteredCats.length + 1}. Lainnya (Ketik Manual)`;
-
-                    msg.reply(catMenu);
-                } else {
-                    msg.reply('Pilihan salah. Ketik 1 atau 2.');
-                }
-                break;
-
-            case 4: // Pilih Kategori (Nomor)
-                const catIndex = parseInt(text) - 1;
-                const catList = session.temp_cats;
-                
-                // Opsi "Lainnya" atau Manual input logika bisa ditambahkan disini
-                // Untuk sekarang kita asumsikan user memilih dari list angka
-                if (catList && catList[catIndex]) {
-                    session.data.category_id = catList[catIndex].id;
-                    session.step = 5;
-                    msg.reply('Masukkan Nominal (Angka saja):');
-                } else {
-                     msg.reply('Nomor kategori tidak valid.');
-                }
-                break;
-
-            case 5: // Nominal
-                if (!isNaN(text) && /^\d+$/.test(text)) {
-                    session.data.amount = parseInt(text);
-                    session.step = 6;
-                    msg.reply('Ada catatan tambahan? (Ketik "-" jika tidak ada)');
-                } else {
-                    msg.reply('Harap masukkan angka valid.');
-                }
-                break;
-
-            case 6: // Notes & Submit
-                session.data.notes = text;
-                msg.reply('⏳ Mengirim data...');
-
-                try {
-                    // Payload sudah berisi ID (branch_id, category_id)
-                    // Jadi tidak perlu mapping manual lagi!
-                    const payload = {
-                        phone_number: session.data.phone_number,
-                        branch_id: session.data.branch_id,
-                        category_id: session.data.category_id,
-                        type: session.data.type,
-                        amount: session.data.amount,
-                        notes: session.data.notes
-                    };
-
-                    const response = await axios.post(`${BASE_URL}/ingestion/internal-wa/`, payload);
-                    msg.reply(`✅ Sukses! Transaksi ID: ${response.data.id}`);
-                } catch (error) {
-                    console.error(error);
-                    msg.reply('❌ Gagal kirim ke server.');
-                }
+            // Batal
+            if (text.toLowerCase() === 'batal') {
                 delete userSessions[sender];
-                break;
-        }
-    }
-});
+                await reply('🚫 Transaksi dibatalkan.');
+                return;
+            }
 
-client.initialize();
+            switch (session.step) {
+                case 1: // Pilih Tipe
+                    let selectedType = '';
+                    if (text === '1') selectedType = 'LAUNDRY';
+                    else if (text === '2') selectedType = 'CARWASH';
+                    else if (text === '3') selectedType = 'KOS';
+
+                    if (!selectedType) {
+                        await reply('❌ Pilihan salah. Ketik 1, 2, atau 3.'); 
+                        return; 
+                    }
+
+                    const filteredBranches = MASTER_DATA.branches.filter(b => b.branch_type === selectedType);
+                    if (filteredBranches.length === 0) {
+                        await reply(`❌ Belum ada cabang ${selectedType}.`);
+                        delete userSessions[sender];
+                        return;
+                    }
+
+                    session.temp_branches = filteredBranches;
+                    let menuText = `🏢 Pilih Cabang ${selectedType}:\n`;
+                    filteredBranches.forEach((branch, index) => {
+                        menuText += `${index + 1}. ${branch.name}\n`;
+                    });
+                    session.step = 2;
+                    await reply(menuText);
+                    break;
+
+                case 2: // Pilih Cabang
+                    const branchIndex = parseInt(text) - 1;
+                    if (session.temp_branches && session.temp_branches[branchIndex]) {
+                        session.data.branch_id = session.temp_branches[branchIndex].id;
+                        session.data.branch_name = session.temp_branches[branchIndex].name;
+                        session.step = 3;
+                        await reply(`✅ Cabang *${session.data.branch_name}* terpilih.\n\n💰 Tipe Transaksi:\n1. INCOME\n2. EXPENSE`);
+                    } else {
+                        await reply('❌ Nomor cabang tidak valid.');
+                    }
+                    break;
+
+                case 3: // Income/Expense
+                    const types = { '1': 'INCOME', '2': 'EXPENSE' };
+                    if (types[text]) {
+                        session.data.type = types[text];
+                        session.step = 4;
+                        const filteredCats = MASTER_DATA.categories.filter(c => c.transaction_type === types[text]);
+                        session.temp_cats = filteredCats;
+                        let catMenu = `📂 Pilih Kategori ${types[text]}:\n`;
+                        filteredCats.forEach((cat, index) => {
+                            catMenu += `${index + 1}. ${cat.name}\n`;
+                        });
+                        await reply(catMenu);
+                    } else {
+                        await reply('❌ Pilihan salah. Ketik 1 atau 2.');
+                    }
+                    break;
+
+                case 4: // Kategori
+                    const catIndex = parseInt(text) - 1;
+                    if (session.temp_cats && session.temp_cats[catIndex]) {
+                        session.data.category_id = session.temp_cats[catIndex].id;
+                        session.data.category_name = session.temp_cats[catIndex].name;
+                        session.step = 5;
+                        await reply(`Kategori: *${session.data.category_name}*\n\n💵 Masukkan Nominal (Angka saja):`);
+                    } else {
+                        await reply('❌ Nomor kategori tidak valid.');
+                    }
+                    break;
+
+                case 5: // Nominal
+                    const cleanAmount = text.replace(/[^0-9]/g, '');
+                    if (cleanAmount && !isNaN(cleanAmount)) {
+                        session.data.amount = parseInt(cleanAmount);
+                        session.step = 6;
+                        await reply('📝 Ada catatan? (Ketik "-" jika tidak ada)');
+                    } else {
+                        await reply('❌ Harap masukkan angka valid.');
+                    }
+                    break;
+                
+                case 6: // Submit
+                    session.data.notes = text;
+                    await reply('⏳ Mengirim data...');
+                    try {
+                        const payload = {
+                            phone_number: session.data.phone_number,
+                            branch_id: session.data.branch_id,
+                            category_id: session.data.category_id,
+                            type: session.data.type,
+                            amount: session.data.amount,
+                            notes: session.data.notes
+                        };
+                        const response = await axios.post(`${BASE_URL}/ingestion/internal-wa/`, payload);
+                        await reply(`✅ *SUKSES!* ID: ${response.data.id}`);
+                    } catch (error) {
+                        await reply('❌ Gagal mencatat transaksi.');
+                    }
+                    delete userSessions[sender];
+                    break;
+            }
+        }
+    });
+}
+
+// Jalankan Bot
+connectToWhatsApp();
