@@ -7,6 +7,7 @@ import {
   fetchCategories,
   fetchTransactions,
 } from '../../lib/api/transactions'
+import { fetchDailySummaries } from '../../lib/api/dailySummaries'
 
 const inputStyle = {
   width: '100%',
@@ -56,6 +57,7 @@ function TransactionsPage({
 
   const [branches, setBranches] = useState([])
   const [categories, setCategories] = useState([])
+  const [dailySummaries, setDailySummaries] = useState([])
 
   const [sortConfig, setSortConfig] = useState({
     key: 'date',
@@ -83,19 +85,21 @@ function TransactionsPage({
     }
   }
 
-  // --- initial load (branches, categories, transactions) ---
+  // --- initial load (branches, categories, transactions, daily summaries) ---
   useEffect(() => {
     const loadMeta = async () => {
       try {
         setLoading(true)
-        const [br, cat, tx] = await Promise.all([
+        const [br, cat, tx, ds] = await Promise.all([
           fetchBranches(),
           fetchCategories(),
           fetchTransactions(),
+          fetchDailySummaries(),
         ])
         setSafeBranches(br)
         setSafeCategories(cat)
         setTransactions(Array.isArray(tx) ? tx : [])
+        setDailySummaries(Array.isArray(ds) ? ds : ds.results || [])
       } catch (e) {
         console.error(e)
         showToast?.('Gagal memuat data referensi.', 'error')
@@ -108,17 +112,111 @@ function TransactionsPage({
   }, [])
 
   const safeTransactions = Array.isArray(transactions) ? transactions : []
+  const safeDailySummaries = Array.isArray(dailySummaries)
+    ? dailySummaries
+    : []
 
-  // --- opsi Unit & Cabang (berdasarkan transaksi historis) ---
+  // --- synthesize Email POS rows per payment method (only if amount > 0) ---
+  const emailSummaryRows = useMemo(() => {
+    const rows = []
+    
+    safeDailySummaries.forEach((s) => {
+      const amounts = {
+        cash: Number(s.cash_amount ?? 0),
+        qris: Number(s.qris_amount ?? 0),
+        transfer: Number(s.transfer_amount ?? 0),
+      }
+      
+      // Only add rows for payment methods with positive amounts
+      if (amounts.cash > 0) {
+        rows.push({
+          id: `email-summary-${s.id}-cash`,
+          date: s.date,
+          unitBusiness: s.branch_type || 'Unknown',
+          branch: s.branch_name || 'Unknown',
+          category: 'Penjualan via POS',
+          type: 'Income',
+          amount: amounts.cash,
+          payment: 'CASH',
+          source: 'Email',
+          description: 'Ringkasan harian POS (email) - Cash',
+          createdAt: s.created_at,
+          branchId: s.branch || null,
+          categoryId: null,
+          sourceIdentifier: `email-summary-${s.id}-cash`,
+        })
+      }
+      
+      if (amounts.qris > 0) {
+        rows.push({
+          id: `email-summary-${s.id}-qris`,
+          date: s.date,
+          unitBusiness: s.branch_type || 'Unknown',
+          branch: s.branch_name || 'Unknown',
+          category: 'Penjualan via POS',
+          type: 'Income',
+          amount: amounts.qris,
+          payment: 'QRIS',
+          source: 'Email',
+          description: 'Ringkasan harian POS (email) - QRIS',
+          createdAt: s.created_at,
+          branchId: s.branch || null,
+          categoryId: null,
+          sourceIdentifier: `email-summary-${s.id}-qris`,
+        })
+      }
+      
+      if (amounts.transfer > 0) {
+        rows.push({
+          id: `email-summary-${s.id}-transfer`,
+          date: s.date,
+          unitBusiness: s.branch_type || 'Unknown',
+          branch: s.branch_name || 'Unknown',
+          category: 'Penjualan via POS',
+          type: 'Income',
+          amount: amounts.transfer,
+          payment: 'TRANSFER',
+          source: 'Email',
+          description: 'Ringkasan harian POS (email) - Transfer',
+          createdAt: s.created_at,
+          branchId: s.branch || null,
+          categoryId: null,
+          sourceIdentifier: `email-summary-${s.id}-transfer`,
+        })
+      }
+    })
+    
+    return rows
+  }, [safeDailySummaries])
+
+  // --- merge: manual/WA transactions + email summary rows, hide email items ---
+  const mergedTransactions = useMemo(() => {
+    const list = []
+
+    // manual, WhatsApp, dll (email itemized di-hide pakai flag isEmailPosItem)
+    safeTransactions.forEach((t) => {
+      if (t.isEmailPosItem) return
+      list.push(t)
+    })
+
+    // tambahkan Email summary rows (conditional per payment method)
+    emailSummaryRows.forEach((row) => {
+      list.push(row)
+    })
+
+    return list
+  }, [safeTransactions, emailSummaryRows])
+
+  // --- opsi Unit & Cabang ---
   const unitOptions = useMemo(() => {
     const units = Array.from(
-      new Set(safeTransactions.map((t) => t.unitBusiness).filter(Boolean)),
+      new Set(mergedTransactions.map((t) => t.unitBusiness).filter(Boolean)),
     )
     return ['Semua Unit', ...units]
-  }, [safeTransactions])
+  }, [mergedTransactions])
 
   const branchOptions = useMemo(() => {
-    let source = safeTransactions
+    let source = mergedTransactions
     if (filterUnit !== 'Semua Unit') {
       source = source.filter((t) => t.unitBusiness === filterUnit)
     }
@@ -126,7 +224,7 @@ function TransactionsPage({
       new Set(source.map((t) => t.branch).filter(Boolean)),
     )
     return ['Semua Cabang', ...names]
-  }, [safeTransactions, filterUnit])
+  }, [mergedTransactions, filterUnit])
 
   useEffect(() => {
     if (!branchOptions.includes(filterBranch)) {
@@ -135,7 +233,7 @@ function TransactionsPage({
   }, [branchOptions, filterBranch])
 
   // --- filter transaksi ---
-  const filteredTransactions = safeTransactions.filter((t) => {
+  const filteredTransactions = mergedTransactions.filter((t) => {
     if (searchTerm) {
       const q = searchTerm.toLowerCase()
       const matchSearch =
@@ -196,7 +294,7 @@ function TransactionsPage({
   }
 
   const handleConfirmDelete = async () => {
-    if (transactionToDelete) {
+    if (transactionToDelete && typeof transactionToDelete.id === 'number') {
       try {
         await deleteTransaction(transactionToDelete.id)
         setTransactions((prev) =>
@@ -219,9 +317,10 @@ function TransactionsPage({
     setTransactionToDelete(null)
   }
 
-  // prevent duplikat transaksi (tanggal + cabang + kategori + type + amount + payment)
+  // prevent duplikat transaksi manual
   const handleAddTransaction = async (newTx) => {
     const isDuplicate = safeTransactions.some((t) => {
+      if (t.isEmailPosItem) return false
       return (
         t.date === newTx.date &&
         t.branchId === newTx.branchId &&
@@ -773,7 +872,6 @@ function AddTransactionModal({
     ? businessConfigs
     : []
 
-  // map branch.id -> active (true/false) dari businessConfigs
   const branchActiveMap = useMemo(() => {
     const map = new Map()
     safeBusinessConfigs.forEach((unit) => {
@@ -784,7 +882,6 @@ function AddTransactionModal({
     return map
   }, [safeBusinessConfigs])
 
-  // filter + dedup + sort kategori
   const filteredCategories = useMemo(() => {
     const txType = type === 'Income' ? 'INCOME' : 'EXPENSE'
     const pool = safeCategories.filter((c) => c.transaction_type === txType)
@@ -1195,9 +1292,7 @@ function TransactionRow({ transaction, onAskDelete }) {
         Rp {new Intl.NumberFormat('id-ID').format(transaction.amount)}
       </td>
       <td style={{ padding: '1rem 1.5rem', color: 'var(--text)' }}>
-        {transaction.source === 'Email'
-          ? '-'
-          : transaction.payment === 'CASH'
+        {transaction.payment === 'CASH'
           ? 'Cash'
           : transaction.payment === 'QRIS'
           ? 'QRIS'

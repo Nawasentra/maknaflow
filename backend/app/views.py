@@ -2,7 +2,17 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from django.conf import settings
-from .models import IngestionLog, TransactionSource, IngestionStatus, Transaction, Branch, Category, User, DailySummary
+from .models import (
+    IngestionLog, 
+    TransactionSource, 
+    IngestionStatus, 
+    Transaction, 
+    Branch, 
+    Category, 
+    User, 
+    DailySummary, 
+    PaymentMethod
+)
 from .serializers import EmailWebhookPayloadSerializer
 from .ingestion.email_webhook import EmailWebhookService
 from rest_framework.parsers import JSONParser, MultiPartParser, FormParser
@@ -773,48 +783,174 @@ class WhatsAppWebhookView(APIView):
 
 
 class InternalWhatsAppIngestion(APIView):
+    """
+    Endpoint untuk menerima laporan transaksi dari WhatsApp Bot internal
+    POST /api/ingestion/internal-wa/
+    
+    Payload:
+    {
+        "phone_number": "6281234567890",
+        "branch_id": 1,
+        "category_id": 2,
+        "type": "INCOME" | "EXPENSE",
+        "amount": 50000,
+        "notes": "Catatan opsional"
+    }
+    """
     permission_classes = [AllowAny]
     authentication_classes = []
 
     def post(self, request):
         data = request.data
-        print(f"Payload diterima dari Bot: {data}")
-
-        # 1. Identifikasi Staff
-        phone = data.get('phone_number')
-        staff_user = User.objects.filter(profile__phone_number=phone, is_staff=True).first()
         
-        if not staff_user:
-             staff_user = User.objects.filter(phone_number=phone, is_staff=True).first()
-
-        if not staff_user:
-            return Response({"error": "Nomor WhatsApp tidak terdaftar sebagai Staff"}, status=400)
-
-        # 2. Catat Log
-        log = IngestionLog.objects.create(
-            source="WHATSAPP_INTERNAL",
-            raw_data=str(data),
-            status="PENDING"
-        )
-
+        # Log untuk debugging di Render
+        logger.info("=" * 80)
+        logger.info("📥 WhatsApp Bot Internal Ingestion")
+        logger.info(f"Payload received: {data}")
+        logger.info("=" * 80)
+        
         try:
-            # Terima ID (Angka), bukan Nama
+            # 1. Validasi & ambil phone number
+            phone = data.get('phone_number')
+            if not phone:
+                logger.error("❌ phone_number tidak ada di payload")
+                return Response(
+                    {"error": "phone_number is required"}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            logger.info(f"📞 Mencari user dengan phone_number: {phone}")
+
+            # 2. Cari staff berdasarkan phone number
+            staff_user = None
+            try:
+                staff_user = User.objects.get(phone_number=phone)
+                logger.info(f"✅ User ditemukan: {staff_user.username} (ID: {staff_user.id})")
+            except User.DoesNotExist:
+                # Coba format alternatif (62xxx <-> 0xxx)
+                alternative_phone = None
+                if phone.startswith('62'):
+                    alternative_phone = '0' + phone[2:]
+                elif phone.startswith('0'):
+                    alternative_phone = '62' + phone[1:]
+                
+                if alternative_phone:
+                    logger.info(f"🔄 Mencoba format alternatif: {alternative_phone}")
+                    try:
+                        staff_user = User.objects.get(phone_number=alternative_phone)
+                        logger.info(f"✅ User ditemukan (format alternatif): {staff_user.username}")
+                    except User.DoesNotExist:
+                        pass
+            
+            if not staff_user:
+                logger.error(f"❌ User tidak ditemukan untuk phone_number: {phone}")
+                return Response(
+                    {"error": f"Nomor {phone} tidak terdaftar di sistem"}, 
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            # 3. Validasi bahwa user adalah staff (punya assigned_branch)
+            if not staff_user.assigned_branch:
+                logger.error(f"❌ User {staff_user.username} tidak memiliki assigned_branch")
+                return Response(
+                    {"error": "User bukan staff yang terdaftar di cabang manapun"}, 
+                    status=status.HTTP_403_FORBIDDEN
+                )
+            
+            logger.info(f"✅ Staff verified - Assigned to: {staff_user.assigned_branch.name}")
+
+            # 4. Validasi branch_id
             branch_id = data.get('branch_id')
+            if not branch_id:
+                logger.error("❌ branch_id tidak ada di payload")
+                return Response(
+                    {"error": "branch_id is required"}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            logger.info(f"🏢 Mencari Branch dengan ID: {branch_id}")
             try:
                 branch = Branch.objects.get(pk=branch_id)
+                logger.info(f"✅ Branch ditemukan: {branch.name} ({branch.get_branch_type_display()})")
             except Branch.DoesNotExist:
-                raise Exception(f"Branch ID {branch_id} tidak ditemukan.")
+                logger.error(f"❌ Branch dengan ID {branch_id} tidak ditemukan")
+                return Response(
+                    {"error": f"Branch dengan ID {branch_id} tidak ditemukan"}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
 
+            # 5. Validasi category_id
             category_id = data.get('category_id')
+            if not category_id:
+                logger.error("❌ category_id tidak ada di payload")
+                return Response(
+                    {"error": "category_id is required"}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            logger.info(f"📂 Mencari Category dengan ID: {category_id}")
             try:
                 category = Category.objects.get(pk=category_id)
+                logger.info(f"✅ Category ditemukan: {category.name} ({category.transaction_type})")
             except Category.DoesNotExist:
-                raise Exception(f"Category ID {category_id} tidak ditemukan.")
+                logger.error(f"❌ Category dengan ID {category_id} tidak ditemukan")
+                return Response(
+                    {"error": f"Category dengan ID {category_id} tidak ditemukan"}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
 
-            # 3. Buat Transaksi
+            # 6. Validasi amount
+            amount = data.get('amount')
+            if not amount:
+                logger.error("❌ amount tidak ada di payload")
+                return Response(
+                    {"error": "amount is required"}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            try:
+                amount = int(amount)
+                if amount <= 0:
+                    raise ValueError("Amount must be positive")
+                logger.info(f"💰 Amount: Rp {amount:,}")
+            except (ValueError, TypeError) as e:
+                logger.error(f"❌ amount tidak valid: {amount} - {str(e)}")
+                return Response(
+                    {"error": "amount harus berupa angka positif"}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # 7. Validasi transaction type
+            transaction_type = data.get('type', 'EXPENSE')
+            if transaction_type not in ['INCOME', 'EXPENSE']:
+                logger.error(f"❌ type tidak valid: {transaction_type}")
+                return Response(
+                    {"error": "type harus INCOME atau EXPENSE"}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            logger.info(f"📊 Transaction Type: {transaction_type}")
+
+            # 8. Get notes
+            notes = data.get('notes', '-')
+            logger.info(f"📝 Notes: {notes}")
+
+            # 9. Buat Ingestion Log
+            logger.info("📝 Creating ingestion log...")
+            ingestion_log = IngestionLog.objects.create(
+                source=TransactionSource.WHATSAPP,
+                raw_payload=data,
+                status=IngestionStatus.PENDING,
+            )
+            logger.info(f"✅ Ingestion log created: ID={ingestion_log.id}")
+
+            # 10. Buat Transaction
+            logger.info("💾 Creating transaction record...")
             transaction = Transaction.objects.create(
-                user=staff_user,
                 branch=branch,
+                reported_by=staff_user,
+                amount=amount,
+                transaction_type=transaction_type,
                 category=category,
                 amount=data.get('amount'),
                 description=data.get('notes', '-'),
