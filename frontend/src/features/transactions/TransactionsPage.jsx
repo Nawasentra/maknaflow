@@ -116,23 +116,78 @@ function TransactionsPage({
     ? dailySummaries
     : []
 
-  // --- synthesize one Email POS row per DailySummary ---
-  const emailSummaryRows = safeDailySummaries.map((s) => ({
-    id: `email-summary-${s.id}`,
-    date: s.date,
-    unitBusiness: s.branch_type || 'Unknown',
-    branch: s.branch_name || 'Unknown',
-    category: 'Penjualan via POS',
-    type: 'Income',
-    amount: Number(s.total_collected ?? 0),
-    payment: '-', // tidak ada payment method spesifik
-    source: 'Email',
-    description: 'Ringkasan harian POS (email)',
-    createdAt: s.created_at,
-    branchId: s.branch || null,
-    categoryId: null,
-    sourceIdentifier: `email-summary-${s.id}`,
-  }))
+  // --- synthesize Email POS rows per payment method (only if amount > 0) ---
+  const emailSummaryRows = useMemo(() => {
+    const rows = []
+    
+    safeDailySummaries.forEach((s) => {
+      const amounts = {
+        cash: Number(s.cash_amount ?? 0),
+        qris: Number(s.qris_amount ?? 0),
+        transfer: Number(s.transfer_amount ?? 0),
+      }
+      
+      // Only add rows for payment methods with positive amounts
+      if (amounts.cash > 0) {
+        rows.push({
+          id: `email-summary-${s.id}-cash`,
+          date: s.date,
+          unitBusiness: s.branch_type || 'Unknown',
+          branch: s.branch_name || 'Unknown',
+          category: 'Penjualan via POS',
+          type: 'Income',
+          amount: amounts.cash,
+          payment: 'CASH',
+          source: 'Email',
+          description: 'Ringkasan harian POS (email) - Cash',
+          createdAt: s.created_at,
+          branchId: s.branch || null,
+          categoryId: null,
+          sourceIdentifier: `email-summary-${s.id}-cash`,
+        })
+      }
+      
+      if (amounts.qris > 0) {
+        rows.push({
+          id: `email-summary-${s.id}-qris`,
+          date: s.date,
+          unitBusiness: s.branch_type || 'Unknown',
+          branch: s.branch_name || 'Unknown',
+          category: 'Penjualan via POS',
+          type: 'Income',
+          amount: amounts.qris,
+          payment: 'QRIS',
+          source: 'Email',
+          description: 'Ringkasan harian POS (email) - QRIS',
+          createdAt: s.created_at,
+          branchId: s.branch || null,
+          categoryId: null,
+          sourceIdentifier: `email-summary-${s.id}-qris`,
+        })
+      }
+      
+      if (amounts.transfer > 0) {
+        rows.push({
+          id: `email-summary-${s.id}-transfer`,
+          date: s.date,
+          unitBusiness: s.branch_type || 'Unknown',
+          branch: s.branch_name || 'Unknown',
+          category: 'Penjualan via POS',
+          type: 'Income',
+          amount: amounts.transfer,
+          payment: 'TRANSFER',
+          source: 'Email',
+          description: 'Ringkasan harian POS (email) - Transfer',
+          createdAt: s.created_at,
+          branchId: s.branch || null,
+          categoryId: null,
+          sourceIdentifier: `email-summary-${s.id}-transfer`,
+        })
+      }
+    })
+    
+    return rows
+  }, [safeDailySummaries])
 
   // --- merge: manual/WA transactions + email summary rows, hide email items ---
   const mergedTransactions = useMemo(() => {
@@ -144,7 +199,7 @@ function TransactionsPage({
       list.push(t)
     })
 
-    // tambahkan satu row per DailySummary
+    // tambahkan Email summary rows (conditional per payment method)
     emailSummaryRows.forEach((row) => {
       list.push(row)
     })
@@ -1237,9 +1292,7 @@ function TransactionRow({ transaction, onAskDelete }) {
         Rp {new Intl.NumberFormat('id-ID').format(transaction.amount)}
       </td>
       <td style={{ padding: '1rem 1.5rem', color: 'var(--text)' }}>
-        {transaction.source === 'Email'
-          ? '-' // email summary has no explicit payment method
-          : transaction.payment === 'CASH'
+        {transaction.payment === 'CASH'
           ? 'Cash'
           : transaction.payment === 'QRIS'
           ? 'QRIS'
