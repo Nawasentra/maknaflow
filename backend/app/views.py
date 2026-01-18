@@ -952,85 +952,23 @@ class InternalWhatsAppIngestion(APIView):
                 amount=amount,
                 transaction_type=transaction_type,
                 category=category,
-                date=timezone.now().date(),
-                description=notes,
-                payment_method=PaymentMethod.CASH,  # Default untuk WhatsApp bot
-                source=TransactionSource.WHATSAPP,
-                source_identifier=phone,
-                is_verified=staff_user.is_verified,  # Auto-verify jika staff sudah terverifikasi
+                amount=data.get('amount'),
+                description=data.get('notes', '-'),
+                transaction_type=data.get('type', 'EXPENSE'),
+                payment_method="CASH",
+                is_verified=staff_user.is_verified,
+                source="WHATSAPP_INTERNAL"
             )
             
-            logger.info(f"✅ Transaction created successfully!")
-            logger.info(f"   - ID: {transaction.id}")
-            logger.info(f"   - UUID: {transaction.uuid}")
-            logger.info(f"   - Amount: Rp {transaction.amount:,}")
-            logger.info(f"   - Branch: {transaction.branch.name}")
-            logger.info(f"   - Category: {transaction.category.name}")
-            logger.info(f"   - Type: {transaction.transaction_type}")
-            logger.info(f"   - Verified: {transaction.is_verified}")
-            logger.info(f"   - Reported by: {transaction.reported_by.username}")
-
-            # 11. Link transaction ke ingestion log
-            ingestion_log.created_transaction = transaction
-            ingestion_log.status = IngestionStatus.SUCCESS
-            ingestion_log.save()
-            logger.info(f"✅ Ingestion log updated to SUCCESS")
-
-            # 12. Return response
-            response_data = {
-                "status": "success",
-                "message": "Transaksi berhasil dicatat",
-                "id": transaction.id,
-                "uuid": str(transaction.uuid),
-                "branch": transaction.branch.name,
-                "category": transaction.category.name,
-                "amount": float(transaction.amount),
-                "type": transaction.transaction_type,
-                "is_verified": transaction.is_verified,
-                "date": str(transaction.date),
-            }
+            log.status = "SUCCESS"
+            log.created_transaction = transaction
+            log.save()
             
-            logger.info(f"✅ Response: {response_data}")
-            logger.info("=" * 80)
-            
-            return Response(response_data, status=status.HTTP_201_CREATED)
+            return Response({"message": "Sukses", "id": transaction.id}, status=201)
             
         except Exception as e:
-            # Catch semua error unexpected
-            logger.error("=" * 80)
-            logger.error("❌ UNEXPECTED ERROR")
-            logger.error(f"Exception type: {type(e).__name__}")
-            logger.error(f"Exception message: {str(e)}")
-            logger.error("Full traceback:")
-            logger.error(traceback.format_exc())
-            logger.error("=" * 80)
-            
-            # Update ingestion log jika sudah dibuat
-            if 'ingestion_log' in locals():
-                try:
-                    ingestion_log.status = IngestionStatus.FAILED
-                    ingestion_log.error_message = f"{type(e).__name__}: {str(e)}"
-                    ingestion_log.save()
-                    logger.info("Ingestion log updated to FAILED")
-                except Exception as log_error:
-                    logger.error(f"Failed to update ingestion log: {log_error}")
-            
-            return Response(
-                {
-                    "error": "Internal server error",
-                    "detail": str(e),
-                    "type": type(e).__name__
-                }, 
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-    
-class HealthCheckView(APIView):
-    """
-    Cek kesehatan server untuk Render
-    """
-    permission_classes = [AllowAny]
-    authentication_classes = []
-
-    def get(self, request):
-        return Response({"status": "ok", "message": "Server is running"})
+            log.status = "FAILED"
+            log.error_message = str(e)
+            log.save()
+            return Response({"error": str(e)}, status=400)
         
