@@ -952,23 +952,49 @@ class InternalWhatsAppIngestion(APIView):
                 amount=amount,
                 transaction_type=transaction_type,
                 category=category,
-                description=data.get('notes', '-'),
-                payment_method="CASH",
+                description=notes,
+                payment_method=PaymentMethod.CASH,
                 is_verified=staff_user.is_verified,
-                source="WHATSAPP_INTERNAL"
+                source=TransactionSource.WHATSAPP,
+                date=timezone.now().date(),
             )
             
-            log.status = "SUCCESS"
-            log.created_transaction = transaction
-            log.save()
+            logger.info(f"✅ Transaction created successfully: ID={transaction.id}")
+            logger.info(f"   Branch: {branch.name}")
+            logger.info(f"   Amount: Rp {amount:,}")
+            logger.info(f"   Type: {transaction_type}")
+            logger.info(f"   Category: {category.name}")
+            logger.info(f"   Verified: {transaction.is_verified}")
+            logger.info("=" * 80)
             
-            return Response({"message": "Sukses", "id": transaction.id}, status=201)
+            ingestion_log.status = IngestionStatus.SUCCESS
+            ingestion_log.created_transaction = transaction
+            ingestion_log.save()
+            
+            return Response({
+                "status": "success",
+                "message": "Transaksi berhasil dicatat",
+                "transaction_id": transaction.id,
+                "branch": branch.name,
+                "amount": amount,
+                "type": transaction_type,
+                "verified": transaction.is_verified
+            }, status=status.HTTP_201_CREATED)
             
         except Exception as e:
-            log.status = "FAILED"
-            log.error_message = str(e)
-            log.save()
-            return Response({"error": str(e)}, status=400)
+            logger.error("❌ Exception occurred during transaction creation")
+            logger.error(f"Exception: {str(e)}")
+            logger.error(traceback.format_exc())
+            logger.error("=" * 80)
+            
+            ingestion_log.status = IngestionStatus.FAILED
+            ingestion_log.error_message = str(e)
+            ingestion_log.save()
+            
+            return Response(
+                {"error": "Gagal membuat transaksi", "detail": str(e)}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
         
 class HealthCheckView(APIView):
     """
