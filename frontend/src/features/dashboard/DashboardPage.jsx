@@ -176,6 +176,15 @@ function DashboardPage({ transactions, isLoading, error }) {
       return acc
     }, {})
     
+    // ✅ ADD: Distribute POS email income across sampled dates proportionally
+    const posTotal = paymentBreakdown?.total || 0
+    if (posTotal > 0 && uniqueDates.length > 0) {
+      const posPerDay = posTotal / uniqueDates.length  // Even distribution
+      uniqueDates.forEach(date => { 
+        if (!map[date]) map[date] = { date, income: 0, expense: 0 }
+        map[date].income += posPerDay
+      })
+    }
     // Fill missing dates in sampled range with 0s
     const sampledDates = sampleDatesEvenly(uniqueDates)
     const filledMap = { ...map }
@@ -187,7 +196,7 @@ function DashboardPage({ transactions, isLoading, error }) {
     })
     
     return filledMap
-  }, [filteredTransactions, uniqueDates])
+  }, [filteredTransactions, uniqueDates, paymentBreakdown])
 
   const trendData = useMemo(() => {
     const sampledDates = sampleDatesEvenly(uniqueDates)
