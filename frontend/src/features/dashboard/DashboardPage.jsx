@@ -160,42 +160,39 @@ function DashboardPage({ transactions, isLoading, error }) {
     return Array.from(new Set(dates))
   }, [filteredTransactions])
 
-  // ---------- CHART DATA WITH SAMPLING ----------
-  // ✅ FIXED: POS income now distributed across ALL 5 sampled dates (not just uniqueDates)
+  // ✅ FIXED: CHART DATA - POS only fills MISSING manual income
   const dailyMap = useMemo(() => {
+    // 1. MANUAL transactions ONLY (preserve real data)
     const map = filteredTransactions.reduce((acc, t) => {
       const key = t.date
-      if (!acc[key]) {
-        acc[key] = { date: key, income: 0, expense: 0 }
-      }
-      if (t.type === 'Income') {
-        acc[key].income += t.amount || 0
-      } else if (t.type === 'Expense') {
-        acc[key].expense += t.amount || 0
-      }
+      if (!acc[key]) acc[key] = { date: key, income: 0, expense: 0 }
+      if (t.type === 'Income') acc[key].income += t.amount || 0
+      else if (t.type === 'Expense') acc[key].expense += t.amount || 0
       return acc
     }, {})
-    
-    // ✅ FIXED POS BLOCK: Distribute across ALL 5 sampled dates
+
+    // 2. Sample 5 dates evenly
     const sampledDates = sampleDatesEvenly(uniqueDates)
+
+    // 3. ✅ POS: ONLY add to ZERO-income dates (no double-add!)
     const posTotal = paymentBreakdown?.total || 0
     if (posTotal > 0) {
-      const posPerDay = posTotal / 5 // Fixed: 5 nodes total (maxNodes)
-      sampledDates.forEach(date => {  // Fixed: Use sampledDates (all 5), not uniqueDates
-        if (!map[date]) map[date] = { date, income: 0, expense: 0 }
-        map[date].income += posPerDay
+      const posPerDay = posTotal / 5
+      sampledDates.forEach(date => {
+        // ✅ FIX: Skip if manual income exists (Jan16 keeps 6.4M)
+        if ((!map[date] || map[date].income === 0)) {
+          if (!map[date]) map[date] = { date, income: 0, expense: 0 }
+          map[date].income += posPerDay
+        }
       })
     }
-    
-    // Fill any remaining missing dates in sampled range with 0s
-    const filledMap = { ...map }
+
+    // 4. Fill pure zeros
     sampledDates.forEach(date => {
-      if (!filledMap[date]) {
-        filledMap[date] = { date, income: 0, expense: 0 }
-      }
+      if (!map[date]) map[date] = { date, income: 0, expense: 0 }
     })
-    
-    return filledMap
+
+    return map
   }, [filteredTransactions, uniqueDates, paymentBreakdown])
 
   const trendData = useMemo(() => {
