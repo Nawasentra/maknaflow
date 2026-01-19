@@ -10,7 +10,7 @@ const BASE_URL = 'https://maknaflow-staging.onrender.com/api';
 const SESSION_DIR = 'auth_baileys'; 
 const CONTACTS_FILE = 'contacts_mapping.json'; // File database manual kita
 
-// State Management
+// State Management (Sama seperti sebelumnya)
 const userSessions = {};
 let MASTER_DATA = null;
 let LID_MAPPING = {}; // Cache di RAM
@@ -45,7 +45,7 @@ async function fetchMasterData() {
         MASTER_DATA = response.data;
         console.log(`✅ Data Master Terupdate: ${MASTER_DATA.branches.length} Cabang, ${MASTER_DATA.categories.length} Kategori.`);
     } catch (error) {
-        console.error("❌ Gagal ambil data master:", error.message);
+        console.error("❌ Gagal ambil data master (Render mungkin tidur):", error.message);
     }
 }
 
@@ -187,7 +187,10 @@ async function connectToWhatsApp() {
                     else if (text === '2') selectedType = 'CARWASH';
                     else if (text === '3') selectedType = 'KOS';
 
-                    if (!selectedType) { await reply('❌ Pilihan salah.'); return; }
+                    if (!selectedType) {
+                        await reply('❌ Pilihan salah. Ketik 1, 2, atau 3.'); 
+                        return; 
+                    }
 
                     const filteredBranches = MASTER_DATA.branches.filter(b => b.branch_type === selectedType);
                     if (filteredBranches.length === 0) {
@@ -227,10 +230,12 @@ async function connectToWhatsApp() {
                             catMenu += `${index + 1}. ${cat.name}\n`;
                         });
                         await reply(catMenu);
-                    } else { await reply('❌ Pilihan salah.'); }
+                    } else {
+                        await reply('❌ Pilihan salah. Ketik 1 atau 2.');
+                    }
                     break;
 
-                case 4:
+                case 4: // Kategori
                     const catIndex = parseInt(text) - 1;
                     if (session.temp_cats && session.temp_cats[catIndex]) {
                         session.data.category_id = session.temp_cats[catIndex].id;
@@ -325,4 +330,5 @@ async function connectToWhatsApp() {
     });
 }
 
+// Jalankan Bot
 connectToWhatsApp();

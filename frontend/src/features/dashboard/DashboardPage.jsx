@@ -131,6 +131,89 @@ function DashboardPage({ transactions, isLoading, error }) {
     startOfMonth,
   ])
 
+  // ---------- UNIQUE DATES FOR SAMPLING ----------
+
+  const uniqueDates = useMemo(() => {
+    const dates = filteredTransactions
+      .map((t) => t.date)
+      .filter(Boolean)
+      .filter((date) => parseLocalDate(date)) // valid dates only
+    return Array.from(new Set(dates))
+  }, [filteredTransactions])
+
+  // ---------- DAILY MAP + TREND DATA (FIXED) ----------
+
+  // ✅ FIXED: Use REAL dates, simple logic, no artificial sampling
+  const dailyMap = useMemo(() => {
+    // 1. Build map from ALL manual transactions (preserve 100%)
+    const map = filteredTransactions.reduce((acc, t) => {
+      const key = t.date
+      if (!acc[key]) acc[key] = { date: key, income: 0, expense: 0 }
+      if (t.type === 'Income') acc[key].income += t.amount || 0
+      else if (t.type === 'Expense') acc[key].expense += t.amount || 0
+      return acc
+    }, {})
+
+    // 🔍 DEBUG
+    console.log('=== MANUAL DATA ===')
+    console.log('Manual income by date:', 
+      Object.fromEntries(Object.entries(map).map(([d,v]) => [d, v.income])))
+    console.log('paymentBreakdown:', paymentBreakdown)
+    console.log('uniqueDates:', uniqueDates)
+
+    // 2. Add POS ONLY to days with ZERO manual income
+    const posTotal = paymentBreakdown?.total || 0
+    if (posTotal > 0 && uniqueDates.length > 0) {
+      const daysNeedingPOS = uniqueDates.filter(date => !map[date] || map[date].income === 0)
+      
+      if (daysNeedingPOS.length > 0) {
+        const basePerDay = posTotal / daysNeedingPOS.length
+        daysNeedingPOS.forEach(date => {
+          if (!map[date]) map[date] = { date, income: 0, expense: 0 }
+          map[date].income += basePerDay
+        })
+      }
+    }
+
+    // 3. Ensure all uniqueDates exist
+    uniqueDates.forEach(date => {
+      if (!map[date]) {
+        map[date] = { date, income: 0, expense: 0 }
+      }
+    })
+
+    console.log('Final dailyMap:', map)
+    return map
+  }, [filteredTransactions, uniqueDates, paymentBreakdown])
+
+  // ✅ FIXED: Use REAL dates only (no sampling), pick max 5 evenly
+  const trendData = useMemo(() => {
+    if (uniqueDates.length === 0) return []
+    
+    const sortedDates = [...uniqueDates].sort()
+    
+    // If 5 or fewer dates, use all
+    let selectedDates = sortedDates
+    
+    // If more than 5, pick 5 evenly spaced REAL dates
+    if (sortedDates.length > 5) {
+      const step = (sortedDates.length - 1) / 4  // 5 points = 4 intervals
+      selectedDates = [
+        sortedDates[0],
+        sortedDates[Math.round(step)],
+        sortedDates[Math.round(step * 2)],
+        sortedDates[Math.round(step * 3)],
+        sortedDates[sortedDates.length - 1]
+      ]
+    }
+    
+    const data = selectedDates.map(date => dailyMap[date])
+    
+    console.log('trendData dates:', selectedDates)
+    console.log('trendData values:', data)
+    return data
+  }, [dailyMap, uniqueDates])
+
   // ---------- KPI ----------
 
   // income manual/WA (exclude email, karena email income diambil dari DailySummary)
@@ -153,25 +236,6 @@ function DashboardPage({ transactions, isLoading, error }) {
   const totalTransactions =
     filteredTransactions.filter((t) => t.source !== 'Email').length +
     (paymentBreakdown?.count || 0)
-
-  // ---------- CHART DATA ----------
-
-  const dailyMap = filteredTransactions.reduce((acc, t) => {
-    const key = t.date
-    if (!acc[key]) {
-      acc[key] = { date: key, income: 0, expense: 0 }
-    }
-    if (t.type === 'Income') {
-      acc[key].income += t.amount || 0
-    } else if (t.type === 'Expense') {
-      acc[key].expense += t.amount || 0
-    }
-    return acc
-  }, {})
-
-  const trendData = Object.values(dailyMap).sort(
-    (a, b) => new Date(a.date) - new Date(b.date),
-  )
 
   // ---------- PAYMENT BREAKDOWN (DailySummary) ----------
 
@@ -207,11 +271,11 @@ function DashboardPage({ transactions, isLoading, error }) {
         }
 
         if (filterBranch !== 'Semua Cabang') {
-          params.branch = filterBranch
+          params.branch_name = filterBranch
         }
         if (filterUnit !== 'Semua Unit') {
           // kirim nama unit → backend map ke enum
-          params.unit = filterUnit
+          params.branch_type = filterUnit.toUpperCase()
         }
 
         const data = await fetchPaymentBreakdown(params)
@@ -269,7 +333,8 @@ function DashboardPage({ transactions, isLoading, error }) {
     const result = []
     if (totalCash > 0) result.push({ name: 'Cash', value: totalCash })
     if (totalQris > 0) result.push({ name: 'QRIS', value: totalQris })
-    if (totalTransfer > 0) result.push({ name: 'Transfer', value: totalTransfer })
+    if (totalTransfer > 0)
+      result.push({ name: 'Transfer', value: totalTransfer })
 
     return result
   }, [paymentBreakdown, filteredTransactions])
@@ -583,7 +648,10 @@ function DashboardPage({ transactions, isLoading, error }) {
                 data={trendData}
                 margin={{ top: 20, right: 20, left: 60, bottom: 0 }}
               >
-                <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" />
+                <CartesianGrid
+                  stroke="var(--border)"
+                  strokeDasharray="3 3"
+                />
                 <XAxis dataKey="date" stroke="#9ca3af" />
                 <YAxis
                   stroke="#9ca3af"
@@ -685,7 +753,11 @@ function DashboardPage({ transactions, isLoading, error }) {
                 >
                   <CartesianGrid stroke="var(--border)" />
                   <XAxis type="number" stroke="#9ca3af" />
-                  <YAxis type="category" dataKey="name" stroke="#9ca3af" />
+                  <YAxis
+                    type="category"
+                    dataKey="name"
+                    stroke="#9ca3af"
+                  />
                   <Tooltip />
                   <Bar dataKey="value" name="Jumlah" fill="#f97316" />
                 </BarChart>
