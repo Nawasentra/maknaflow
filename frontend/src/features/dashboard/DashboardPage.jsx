@@ -254,11 +254,11 @@ function DashboardPage({ transactions, isLoading, error }) {
         }
 
         if (filterBranch !== 'Semua Cabang') {
-          params.branch = filterBranch
+          params.branch_name = filterBranch
         }
         if (filterUnit !== 'Semua Unit') {
           // kirim nama unit → backend map ke enum
-          params.unit = filterUnit
+          params.branch_type = filterUnit.toUpperCase()
         }
 
         const data = await fetchPaymentBreakdown(params)
