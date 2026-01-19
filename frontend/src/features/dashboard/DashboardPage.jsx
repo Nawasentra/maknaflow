@@ -51,14 +51,15 @@ function sampleDatesEvenly(uniqueDates, maxNodes = 5) {
   const sortedDates = [...uniqueDates].sort()
   if (sortedDates.length <= maxNodes) return sortedDates
   
-  const startDate = parseLocalDate(sortedDates[0])
-  const endDate = parseLocalDate(sortedDates[sortedDates.length - 1])
-  const totalDays = (endDate - startDate) / (1000 * 60 * 60 * 24)
+  const startDate = new Date(sortedDates[0] + 'T00:00:00+00:00')
+  const endDate = new Date(sortedDates[sortedDates.length - 1] + 'T00:00:00+00:00')
+  
+  const totalDays = (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)
   const intervalDays = totalDays / (maxNodes - 1)
   
   return Array.from({ length: maxNodes }, (_, i) => {
     const date = new Date(startDate)
-    date.setDate(date.getDate() + Math.round(i * intervalDays))
+    date.setUTCDate(date.getUTCDate() + Math.round(i * intervalDays)) 
     return formatLocalDate(date)
   })
 }
