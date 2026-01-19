@@ -44,26 +44,6 @@ function normalizeUnit(unit) {
   return unit
 }
 
-// NEW: Sample dates evenly for chart (max 5 nodes)
-function sampleDatesEvenly(uniqueDates, maxNodes = 5) {
-  if (!uniqueDates.length) return []
-
-  const sortedDates = [...uniqueDates].sort()
-  const startDate = new Date(sortedDates[0] + 'T00:00:00')
-  const endDate = new Date(sortedDates[sortedDates.length - 1] + 'T00:00:00')
-
-  const totalDays =
-    (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)
-  const intervalDays = totalDays / (maxNodes - 1)
-
-  return Array.from({ length: maxNodes }, (_, i) => {
-    const targetTime = startDate.getTime() + i * intervalDays * 86400000
-    const date = new Date(targetTime)
-    date.setHours(0, 0, 0, 0)
-    return formatLocalDate(date)
-  })
-}
-
 // --- main component -------------------------------------------
 
 function DashboardPage({ transactions, isLoading, error }) {
@@ -163,7 +143,7 @@ function DashboardPage({ transactions, isLoading, error }) {
 
   // ---------- DAILY MAP + TREND DATA (FIXED) ----------
 
-  // ✅ FIXED: Preserve manual data, smart POS distribution, correct sampling
+  // ✅ FIXED: Use REAL dates, simple logic, no artificial sampling
   const dailyMap = useMemo(() => {
     // 1. Build map from ALL manual transactions (preserve 100%)
     const map = filteredTransactions.reduce((acc, t) => {
@@ -174,19 +154,9 @@ function DashboardPage({ transactions, isLoading, error }) {
       return acc
     }, {})
 
-    // 🔍 DEBUG Jan13 (check F12 console)
-    const jan13Tx = filteredTransactions.filter(t => t.date === '2026-01-13')
-    console.log('=== DEBUG JAN 13 ===')
-    console.table(jan13Tx.map(t => ({
-      date: t.date,
-      amount: t.amount,
-      type: t.type,
-      source: t.source,
-      unit: t.unitBusiness
-    })))
-    console.log('Jan13 manual income sum:', 
-      jan13Tx.filter(t=>t.type==='Income').reduce((s,t)=>s+(t.amount||0),0))
-    console.log('All manual income by date:', 
+    // 🔍 DEBUG
+    console.log('=== MANUAL DATA ===')
+    console.log('Manual income by date:', 
       Object.fromEntries(Object.entries(map).map(([d,v]) => [d, v.income])))
     console.log('paymentBreakdown:', paymentBreakdown)
     console.log('uniqueDates:', uniqueDates)
@@ -194,21 +164,18 @@ function DashboardPage({ transactions, isLoading, error }) {
     // 2. Add POS ONLY to days with ZERO manual income
     const posTotal = paymentBreakdown?.total || 0
     if (posTotal > 0 && uniqueDates.length > 0) {
-      // Count days that need POS (have 0 manual income)
       const daysNeedingPOS = uniqueDates.filter(date => !map[date] || map[date].income === 0)
       
       if (daysNeedingPOS.length > 0) {
         const basePerDay = posTotal / daysNeedingPOS.length
-        
         daysNeedingPOS.forEach(date => {
           if (!map[date]) map[date] = { date, income: 0, expense: 0 }
-          // Simple equal distribution - no complex weighting that causes errors
           map[date].income += basePerDay
         })
       }
     }
 
-    // 3. Ensure all uniqueDates exist in map (fill with zeros if needed)
+    // 3. Ensure all uniqueDates exist
     uniqueDates.forEach(date => {
       if (!map[date]) {
         map[date] = { date, income: 0, expense: 0 }
@@ -219,30 +186,31 @@ function DashboardPage({ transactions, isLoading, error }) {
     return map
   }, [filteredTransactions, uniqueDates, paymentBreakdown])
 
-  // ✅ FIXED: Sample 5 dates evenly, map to correct values
+  // ✅ FIXED: Use REAL dates only (no sampling), pick max 5 evenly
   const trendData = useMemo(() => {
     if (uniqueDates.length === 0) return []
     
     const sortedDates = [...uniqueDates].sort()
-    const sampledDates = sampleDatesEvenly(sortedDates, 5)
     
-    const data = sampledDates
-      .map(date => {
-        // Use exact match from dailyMap
-        if (dailyMap[date]) {
-          return dailyMap[date]
-        }
-        // If sampled date doesn't exist, find nearest real date
-        const nearest = sortedDates.reduce((prev, curr) => {
-          const prevDiff = Math.abs(new Date(prev) - new Date(date))
-          const currDiff = Math.abs(new Date(curr) - new Date(date))
-          return currDiff < prevDiff ? curr : prev
-        })
-        return dailyMap[nearest] || { date, income: 0, expense: 0 }
-      })
-      .sort((a, b) => new Date(a.date) - new Date(b.date))
+    // If 5 or fewer dates, use all
+    let selectedDates = sortedDates
     
-    console.log('trendData for chart:', data)
+    // If more than 5, pick 5 evenly spaced REAL dates
+    if (sortedDates.length > 5) {
+      const step = (sortedDates.length - 1) / 4  // 5 points = 4 intervals
+      selectedDates = [
+        sortedDates[0],
+        sortedDates[Math.round(step)],
+        sortedDates[Math.round(step * 2)],
+        sortedDates[Math.round(step * 3)],
+        sortedDates[sortedDates.length - 1]
+      ]
+    }
+    
+    const data = selectedDates.map(date => dailyMap[date])
+    
+    console.log('trendData dates:', selectedDates)
+    console.log('trendData values:', data)
     return data
   }, [dailyMap, uniqueDates])
 
