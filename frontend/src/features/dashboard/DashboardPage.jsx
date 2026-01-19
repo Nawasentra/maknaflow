@@ -44,6 +44,25 @@ function normalizeUnit(unit) {
   return unit
 }
 
+// NEW: Sample dates evenly for chart (max 5 nodes)
+function sampleDatesEvenly(uniqueDates, maxNodes = 5) {
+  if (!uniqueDates.length) return []
+  
+  const sortedDates = [...uniqueDates].sort()
+  if (sortedDates.length <= maxNodes) return sortedDates
+  
+  const startDate = parseLocalDate(sortedDates[0])
+  const endDate = parseLocalDate(sortedDates[sortedDates.length - 1])
+  const totalDays = (endDate - startDate) / (1000 * 60 * 60 * 24)
+  const intervalDays = totalDays / (maxNodes - 1)
+  
+  return Array.from({ length: maxNodes }, (_, i) => {
+    const date = new Date(startDate)
+    date.setDate(date.getDate() + Math.round(i * intervalDays))
+    return formatLocalDate(date)
+  })
+}
+
 // --- main component -------------------------------------------
 
 function DashboardPage({ transactions, isLoading, error }) {
@@ -131,6 +150,52 @@ function DashboardPage({ transactions, isLoading, error }) {
     startOfMonth,
   ])
 
+  // ---------- UNIQUE DATES FOR SAMPLING ----------
+
+  const uniqueDates = useMemo(() => {
+    const dates = filteredTransactions
+      .map(t => t.date)
+      .filter(Boolean)
+      .filter(date => parseLocalDate(date)) // valid dates only
+    return Array.from(new Set(dates))
+  }, [filteredTransactions])
+
+  // ---------- CHART DATA WITH SAMPLING ----------
+
+  const dailyMap = useMemo(() => {
+    const map = filteredTransactions.reduce((acc, t) => {
+      const key = t.date
+      if (!acc[key]) {
+        acc[key] = { date: key, income: 0, expense: 0 }
+      }
+      if (t.type === 'Income') {
+        acc[key].income += t.amount || 0
+      } else if (t.type === 'Expense') {
+        acc[key].expense += t.amount || 0
+      }
+      return acc
+    }, {})
+    
+    // Fill missing dates in sampled range with 0s
+    const sampledDates = sampleDatesEvenly(uniqueDates)
+    const filledMap = { ...map }
+    
+    sampledDates.forEach(date => {
+      if (!filledMap[date]) {
+        filledMap[date] = { date, income: 0, expense: 0 }
+      }
+    })
+    
+    return filledMap
+  }, [filteredTransactions, uniqueDates])
+
+  const trendData = useMemo(() => {
+    const sampledDates = sampleDatesEvenly(uniqueDates)
+    return sampledDates.map(date => dailyMap[date]).sort(
+      (a, b) => new Date(a.date) - new Date(b.date),
+    )
+  }, [dailyMap, uniqueDates])
+
   // ---------- KPI ----------
 
   // income manual/WA (exclude email, karena email income diambil dari DailySummary)
@@ -153,25 +218,6 @@ function DashboardPage({ transactions, isLoading, error }) {
   const totalTransactions =
     filteredTransactions.filter((t) => t.source !== 'Email').length +
     (paymentBreakdown?.count || 0)
-
-  // ---------- CHART DATA ----------
-
-  const dailyMap = filteredTransactions.reduce((acc, t) => {
-    const key = t.date
-    if (!acc[key]) {
-      acc[key] = { date: key, income: 0, expense: 0 }
-    }
-    if (t.type === 'Income') {
-      acc[key].income += t.amount || 0
-    } else if (t.type === 'Expense') {
-      acc[key].expense += t.amount || 0
-    }
-    return acc
-  }, {})
-
-  const trendData = Object.values(dailyMap).sort(
-    (a, b) => new Date(a.date) - new Date(b.date),
-  )
 
   // ---------- PAYMENT BREAKDOWN (DailySummary) ----------
 
