@@ -161,7 +161,7 @@ function DashboardPage({ transactions, isLoading, error }) {
   }, [filteredTransactions])
 
   // ---------- CHART DATA WITH SAMPLING ----------
-
+  // ✅ FIXED: POS income now distributed across ALL 5 sampled dates (not just uniqueDates)
   const dailyMap = useMemo(() => {
     const map = filteredTransactions.reduce((acc, t) => {
       const key = t.date
@@ -176,19 +176,19 @@ function DashboardPage({ transactions, isLoading, error }) {
       return acc
     }, {})
     
-    // ✅ ADD: Distribute POS email income across sampled dates proportionally
+    // ✅ FIXED POS BLOCK: Distribute across ALL 5 sampled dates
+    const sampledDates = sampleDatesEvenly(uniqueDates)
     const posTotal = paymentBreakdown?.total || 0
-    if (posTotal > 0 && uniqueDates.length > 0) {
-      const posPerDay = posTotal / uniqueDates.length  // Even distribution
-      uniqueDates.forEach(date => { 
+    if (posTotal > 0) {
+      const posPerDay = posTotal / 5 // Fixed: 5 nodes total (maxNodes)
+      sampledDates.forEach(date => {  // Fixed: Use sampledDates (all 5), not uniqueDates
         if (!map[date]) map[date] = { date, income: 0, expense: 0 }
         map[date].income += posPerDay
       })
     }
-    // Fill missing dates in sampled range with 0s
-    const sampledDates = sampleDatesEvenly(uniqueDates)
-    const filledMap = { ...map }
     
+    // Fill any remaining missing dates in sampled range with 0s
+    const filledMap = { ...map }
     sampledDates.forEach(date => {
       if (!filledMap[date]) {
         filledMap[date] = { date, income: 0, expense: 0 }
