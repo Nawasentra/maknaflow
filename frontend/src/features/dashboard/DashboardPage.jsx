@@ -48,18 +48,17 @@ function normalizeUnit(unit) {
 function sampleDatesEvenly(uniqueDates, maxNodes = 5) {
   if (!uniqueDates.length) return []
   
-  const sortedDates = [...uniqueDates].sort()
-  if (sortedDates.length <= maxNodes) return sortedDates
-  
-  const startDate = new Date(sortedDates[0] + 'T00:00:00+00:00')
-  const endDate = new Date(sortedDates[sortedDates.length - 1] + 'T00:00:00+00:00')
+  const sortedDates = [...uniqueDates].sort()  
+  const startDate = new Date(sortedDates[0] + 'T00:00:00')
+  const endDate = new Date(sortedDates[sortedDates.length - 1] + 'T00:00:00')
   
   const totalDays = (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)
   const intervalDays = totalDays / (maxNodes - 1)
   
   return Array.from({ length: maxNodes }, (_, i) => {
-    const date = new Date(startDate)
-    date.setUTCDate(date.getUTCDate() + Math.round(i * intervalDays)) 
+    const targetTime = startDate.getTime() + (i * intervalDays * 86400000)
+    const date = new Date(targetTime)
+    date.setHours(0, 0, 0, 0)
     return formatLocalDate(date)
   })
 }
