@@ -7,6 +7,7 @@ import {
   fetchCategories,
 } from '../../lib/api/branchesCategories'
 
+
 // Fixed backend branch types (harus sama dengan BranchType di Django)
 const BRANCH_TYPES = [
   { value: 'LAUNDRY', label: 'Laundry' },
@@ -14,6 +15,7 @@ const BRANCH_TYPES = [
   { value: 'KOS', label: 'Kos' },
   { value: 'OTHER', label: 'Other Business' },
 ]
+
 
 function AddBusinessPage({ businessConfigs, setBusinessConfigs, showToast }) {
   const [step, setStep] = useState(1)
@@ -25,9 +27,11 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs, showToast }) {
   const [expenseInput, setExpenseInput] = useState('')
   const [loading, setLoading] = useState(false)
 
+
   // data referensi dari backend
   const [existingBranches, setExistingBranches] = useState([])
   const [existingCategories, setExistingCategories] = useState([])
+
 
   // sekali load: cabang + kategori yang sudah ada
   useEffect(() => {
@@ -45,6 +49,7 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs, showToast }) {
     }
     load()
   }, [])
+
 
   // preload default kategori ketika pilih tipe unit bisnis yg sudah ada di config
   useEffect(() => {
@@ -65,13 +70,16 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs, showToast }) {
     setExpenseCategories(cfg.defaultExpenseCategories || [])
   }, [branchType, businessConfigs])
 
+
   // ---------- AUTOCOMPLETE KATEGORI ----------
+
 
   // semua nama kategori unik dari backend (sumber list autocomplete)
   const allCategoryNames = useMemo(() => {
     const names = (existingCategories || []).map((c) => c.name || '')
     return Array.from(new Set(names.filter(Boolean)))
   }, [existingCategories])
+
 
   const incomeSuggestions = useMemo(() => {
     const q = incomeInput.trim().toLowerCase()
@@ -87,6 +95,7 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs, showToast }) {
       .slice(0, 6)
   }, [incomeInput, allCategoryNames, incomeCategories])
 
+
   const expenseSuggestions = useMemo(() => {
     const q = expenseInput.trim().toLowerCase()
     if (!q) return []
@@ -101,6 +110,7 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs, showToast }) {
       .slice(0, 6)
   }, [expenseInput, allCategoryNames, expenseCategories])
 
+
   const addIncomeCategory = (value) => {
     const trimmed = value.trim()
     if (!trimmed) return
@@ -113,6 +123,7 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs, showToast }) {
     }
     setIncomeCategories((prev) => [...prev, trimmed])
   }
+
 
   const addExpenseCategory = (value) => {
     const trimmed = value.trim()
@@ -127,41 +138,50 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs, showToast }) {
     setExpenseCategories((prev) => [...prev, trimmed])
   }
 
+
   const handleAddIncomeCategory = () => {
     addIncomeCategory(incomeInput)
     setIncomeInput('')
   }
+
 
   const handleAddExpenseCategory = () => {
     addExpenseCategory(expenseInput)
     setExpenseInput('')
   }
 
+
   const handleIncomeSuggestionClick = (name) => {
     addIncomeCategory(name)
     setIncomeInput('')
   }
+
 
   const handleExpenseSuggestionClick = (name) => {
     addExpenseCategory(name)
     setExpenseInput('')
   }
 
+
   const handleRemoveIncome = (cat) => {
     setIncomeCategories((prev) => prev.filter((c) => c !== cat))
   }
 
+
   const handleRemoveExpense = (cat) => {
     setExpenseCategories((prev) => prev.filter((c) => c !== cat))
   }
+
 
   const canGoNext =
     branchName.trim() &&
     branchType &&
     (incomeCategories.length > 0 || expenseCategories.length > 0)
 
+
   const branchTypeLabel = (value) =>
     BRANCH_TYPES.find((t) => t.value === value)?.label || value
+
 
   const resetForm = () => {
     setStep(1)
@@ -173,6 +193,7 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs, showToast }) {
     setExpenseInput('')
   }
 
+
   // rebuild businessConfigs setelah aktivasi
   const rebuildBusinessConfigsFromApi = async () => {
     const [branches, categories] = await Promise.all([
@@ -180,10 +201,13 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs, showToast }) {
       fetchCategories(),
     ])
 
+
     setExistingBranches(Array.isArray(branches) ? branches : [])
     setExistingCategories(Array.isArray(categories) ? categories : [])
 
+
     const byType = {}
+
 
     const branchArray = Array.isArray(branches) ? branches : []
     branchArray.forEach((br) => {
@@ -205,6 +229,7 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs, showToast }) {
       })
     })
 
+
     const catArray = Array.isArray(categories) ? categories : []
     catArray.forEach((cat) => {
       Object.values(byType).forEach((cfg) => {
@@ -220,12 +245,15 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs, showToast }) {
       })
     })
 
+
     setBusinessConfigs(Object.values(byType))
   }
+
 
   const handleActivate = async () => {
     if (!canGoNext || loading) return
     setLoading(true)
+
 
     try {
       // Cek duplikat nama cabang (case-insensitive)
@@ -242,11 +270,13 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs, showToast }) {
         return
       }
 
+
       const branchPayload = {
         name: branchName.trim(),
         branch_type: branchType,
       }
       await createBranch(branchPayload)
+
 
       // Dedup kategori sebelum dikirim ke backend
       const uniqueIncome = Array.from(
@@ -260,20 +290,45 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs, showToast }) {
         ),
       )
 
+
+      // ✅ FIX: Check if category exists before creating
       const promises = []
+
       uniqueIncome.forEach((name) => {
-        promises.push(
-          createCategory({ name, transaction_type: 'INCOME' }),
+        const existing = existingCategories.find(
+          (c) =>
+            c.transaction_type === 'INCOME' &&
+            c.name.trim().toLowerCase() === name.toLowerCase(),
         )
+
+        // Only create if it doesn't exist
+        if (!existing) {
+          promises.push(
+            createCategory({ name, transaction_type: 'INCOME' }),
+          )
+        }
       })
+
       uniqueExpense.forEach((name) => {
-        promises.push(
-          createCategory({ name, transaction_type: 'EXPENSE' }),
+        const existing = existingCategories.find(
+          (c) =>
+            c.transaction_type === 'EXPENSE' &&
+            c.name.trim().toLowerCase() === name.toLowerCase(),
         )
+
+        // Only create if it doesn't exist
+        if (!existing) {
+          promises.push(
+            createCategory({ name, transaction_type: 'EXPENSE' }),
+          )
+        }
       })
+
       await Promise.all(promises)
 
+
       await rebuildBusinessConfigsFromApi()
+
 
       resetForm()
       showToast?.('Berhasil mengaktivasi unit bisnis baru.')
@@ -285,10 +340,12 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs, showToast }) {
     }
   }
 
+
   const steps = [
     { id: 1, label: 'Informasi Dasar' },
     { id: 2, label: 'Konfirmasi & Aktivasi' },
   ]
+
 
   return (
     <main
@@ -312,6 +369,7 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs, showToast }) {
         Ikuti langkah-langkah di bawah ini untuk mendefinisikan tipe unit bisnis dan
         cabang.
       </p>
+
 
       <div
         style={{
@@ -377,6 +435,7 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs, showToast }) {
           })}
         </div>
 
+
         {/* Step 1 */}
         {step === 1 && (
           <div
@@ -397,6 +456,7 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs, showToast }) {
                 unit ini.
               </p>
             </div>
+
 
             <div
               style={{
@@ -450,6 +510,7 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs, showToast }) {
                   )}
               </div>
 
+
               <div>
                 <label
                   style={{
@@ -485,6 +546,7 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs, showToast }) {
                   ))}
                 </select>
               </div>
+
 
               <div
                 style={{
@@ -634,6 +696,7 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs, showToast }) {
                   </div>
                 </div>
 
+
                 {/* Kategori Pengeluaran */}
                 <div>
                   <label
@@ -777,6 +840,7 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs, showToast }) {
               </div>
             </div>
 
+
             <div
               style={{
                 display: 'flex',
@@ -800,6 +864,7 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs, showToast }) {
               >
                 ‹ Kembali
               </button>
+
 
               <button
                 type="button"
@@ -826,6 +891,7 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs, showToast }) {
           </div>
         )}
 
+
         {/* Step 2 */}
         {step === 2 && (
           <div
@@ -845,6 +911,7 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs, showToast }) {
                 Tinjau kembali detail unit bisnis sebelum diaktivasi.
               </p>
             </div>
+
 
             <div
               style={{
@@ -885,6 +952,7 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs, showToast }) {
                   </span>
                 </p>
               </div>
+
 
               <div
                 style={{
@@ -941,6 +1009,7 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs, showToast }) {
                   )}
                 </div>
 
+
                 <div
                   style={{
                     backgroundColor: 'var(--bg)',
@@ -991,6 +1060,7 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs, showToast }) {
               </div>
             </div>
 
+
             <div
               style={{
                 display: 'flex',
@@ -1014,6 +1084,7 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs, showToast }) {
               >
                 ‹ Kembali ke bagian sebelumnya
               </button>
+
 
               <button
                 type="button"
@@ -1044,5 +1115,6 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs, showToast }) {
     </main>
   )
 }
+
 
 export default AddBusinessPage
