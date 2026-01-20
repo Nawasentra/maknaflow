@@ -9,6 +9,9 @@ const fs = require('fs');
 const BASE_URL = 'https://maknaflow-staging.onrender.com/api';
 const SESSION_DIR = 'auth_baileys'; 
 const CONTACTS_FILE = 'contacts_mapping.json'; // File database manual kita
+// Tambahan QR dijadikan kode
+const usePairingCode = true; // Ubah jadi false jika ingin balik ke QR
+const nomorBot = '628211019477'; // NOMOR BOT WHATSAPP ANDA
 
 // State Management
 const userSessions = {};
@@ -55,6 +58,7 @@ async function connectToWhatsApp() {
 
     const sock = makeWASocket({
         auth: state,
+        printQRInTerminal: !usePairingCode,
         logger: pino({ level: 'silent' }),
         browser: ['MaknaFlow Bot', 'Chrome', '1.0.0'],
         connectTimeoutMs: 60000,
@@ -62,10 +66,27 @@ async function connectToWhatsApp() {
         emitOwnEvents: true,
     });
 
+    // --- LOGIKA PAIRING CODE ---
+    if (usePairingCode && !sock.authState.creds.registered) {
+        console.log(`⏳ Menunggu request Pairing Code untuk nomor: ${nomorBot}...`);
+        setTimeout(async () => {
+            try {
+                const code = await sock.requestPairingCode(nomorBot);
+                console.log(`\n================================================`);
+                console.log(`🌟 KODE PAIRING ANDA: ${code}`);
+                console.log(`================================================\n`);
+                console.log(`👉 Buka WA di HP > Linked Devices > Link a Device > Link with phone number instead.`);
+            } catch (err) {
+                console.error('Gagal request pairing code:', err);
+            }
+        }, 5000); // Tunggu 5 detik biar siap
+    }
+
     sock.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect, qr } = update;
 
-        if (qr) {
+        if (qr && !usePairingCode) {
+            // Hanya tampilkan QR jika mode Pairing Code dimatikan
             console.log('📌 Scan QR Code di bawah ini:');
             qrcode.generate(qr, { small: true });
         }
@@ -76,10 +97,10 @@ async function connectToWhatsApp() {
             if (shouldReconnect) {
                 connectToWhatsApp();
             } else {
-                console.log('❌ Logout. Hapus folder auth_baileys dan scan ulang.');
+                console.log('❌ Logout. Hapus folder auth_baileys untuk login ulang.');
             }
         } else if (connection === 'open') {
-            console.log('🚀 Bot Siap & Terhubung Stabil (Mode Manual)!');
+            console.log('🚀 Bot Siap & Terhubung Stabil (Mode Pairing)!');
             await fetchMasterData();
         }
     });
@@ -277,6 +298,9 @@ async function connectToWhatsApp() {
                         // Coba cari ID
                         const trxId = response.data.id || response.data.pk || response.data.transaction_id || response.data.data?.id || "Pending";
 
+                        // Coba cari Metode Pembayaran, kalo nggak ada default ke Tunai
+                        const payMethod = response.data.payment_method || "TUNAI (CASH)";
+
                         // --- STRUK DIGITAL LENGKAP ---
                         const struk = `✅ *TRANSAKSI BERHASIL DICATAT*\n` +
                                       `--------------------------------\n` +
@@ -286,6 +310,7 @@ async function connectToWhatsApp() {
                                       `🏢 *Cabang:* ${session.data.branch_name}\n` +
                                       `📂 *Kategori:* ${session.data.category_name}\n` +
                                       `🔄 *Tipe:* ${session.data.type}\n` +
+                                      `💳 *Metode:* ${payMethod}\n` +
                                       `💰 *Nominal:* Rp ${session.data.amount.toLocaleString('id-ID')}\n` +
                                       `📝 *Catatan:* ${session.data.notes}\n` +
                                       `--------------------------------\n` +
