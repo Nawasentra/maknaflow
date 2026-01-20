@@ -51,24 +51,8 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs, showToast }) {
   }, [])
 
 
-  // preload default kategori ketika pilih tipe unit bisnis yg sudah ada di config
-  useEffect(() => {
-    if (!branchType) {
-      setIncomeCategories([])
-      setExpenseCategories([])
-      return
-    }
-    const cfg = (Array.isArray(businessConfigs) ? businessConfigs : []).find(
-      (b) => b.branch_type === branchType || b.id === branchType,
-    )
-    if (!cfg) {
-      setIncomeCategories([])
-      setExpenseCategories([])
-      return
-    }
-    setIncomeCategories(cfg.defaultIncomeCategories || [])
-    setExpenseCategories(cfg.defaultExpenseCategories || [])
-  }, [branchType, businessConfigs])
+  // ✅ REMOVED: Auto-populate useEffect that filled categories based on branch type
+  // Now categories start empty - user must manually select from autocomplete
 
 
   // ---------- AUTOCOMPLETE KATEGORI ----------
@@ -293,14 +277,14 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs, showToast }) {
 
       // ✅ FIX: Check if category exists before creating
       const promises = []
-
+      
       uniqueIncome.forEach((name) => {
         const existing = existingCategories.find(
           (c) =>
             c.transaction_type === 'INCOME' &&
             c.name.trim().toLowerCase() === name.toLowerCase(),
         )
-
+        
         // Only create if it doesn't exist
         if (!existing) {
           promises.push(
@@ -308,14 +292,14 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs, showToast }) {
           )
         }
       })
-
+      
       uniqueExpense.forEach((name) => {
         const existing = existingCategories.find(
           (c) =>
             c.transaction_type === 'EXPENSE' &&
             c.name.trim().toLowerCase() === name.toLowerCase(),
         )
-
+        
         // Only create if it doesn't exist
         if (!existing) {
           promises.push(
@@ -323,7 +307,7 @@ function AddBusinessPage({ businessConfigs, setBusinessConfigs, showToast }) {
           )
         }
       })
-
+      
       await Promise.all(promises)
 
 
