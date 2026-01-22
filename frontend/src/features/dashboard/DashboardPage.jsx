@@ -5,7 +5,6 @@ import {
   Line,
   XAxis,
   YAxis,
-  CartesianGrid,
   Tooltip,
   Legend,
   PieChart,
@@ -59,6 +58,31 @@ function normalizeUnit(unit) {
   if (u === 'KOS') return 'Kos'
   if (u === 'OTHER') return 'Other'
   return unit
+}
+
+
+// ✅ Custom Grid Component - ONLY HORIZONTAL LINES
+const CustomGrid = (props) => {
+  const { x, y, width, height } = props
+  
+  // Draw 5 horizontal lines
+  const lines = []
+  for (let i = 0; i <= 4; i++) {
+    const yPos = y + (height / 4) * i
+    lines.push(
+      <line
+        key={`h-${i}`}
+        x1={x}
+        y1={yPos}
+        x2={x + width}
+        y2={yPos}
+        stroke="rgba(148, 163, 184, 0.2)"
+        strokeDasharray="3 3"
+      />
+    )
+  }
+  
+  return <g className="recharts-cartesian-grid">{lines}</g>
 }
 
 
@@ -907,11 +931,7 @@ function DashboardPage({ transactions, isLoading, error }) {
                 data={trendData}
                 margin={{ top: 20, right: 40, left: 30, bottom: 60 }}
               >
-                <CartesianGrid
-                  stroke="var(--border)"
-                  strokeDasharray="3 3"
-                  vertical={false}
-                />
+                <CustomGrid />
                 <XAxis 
                   dataKey="date" 
                   stroke="#9ca3af"
@@ -1027,7 +1047,6 @@ function DashboardPage({ transactions, isLoading, error }) {
                   layout="vertical"
                   margin={{ top: 10, right: 20, left: 40, bottom: 10 }}
                 >
-                  <CartesianGrid stroke="var(--border)" />
                   <XAxis type="number" stroke="#9ca3af" />
                   <YAxis
                     type="category"
