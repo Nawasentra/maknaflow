@@ -132,22 +132,34 @@ function DashboardPage({ transactions, isLoading, error }) {
   const unitOptions = ['Semua Unit', ...UNIT_LABELS]
 
 
+  // ✅ FIX 1: Branch options should include branches from BOTH manual transactions AND daily summaries
   const branchOptions = useMemo(() => {
-    let source = safeTransactions
-    if (filterUnit !== 'Semua Unit') {
-      source = source.filter(
-        (t) => normalizeUnit(t.unitBusiness) === filterUnit,
-      )
-    }
-    const names = Array.from(
-      new Set(
-        source
-          .map((t) => t.branch)
-          .filter(Boolean),
-      ),
-    )
-    return ['Semua Cabang', ...names]
-  }, [safeTransactions, filterUnit])
+    const branchSet = new Set()
+    
+    // Get branches from manual transactions
+    safeTransactions.forEach((t) => {
+      if (filterUnit === 'Semua Unit' || normalizeUnit(t.unitBusiness) === filterUnit) {
+        if (t.branch) branchSet.add(t.branch)
+      }
+    })
+    
+    // ✅ ALSO get branches from daily summaries (email/POS data)
+    dailySummaries.forEach((s) => {
+      if (filterUnit === 'Semua Unit' || normalizeUnit(s.branch_type) === filterUnit) {
+        if (s.branch_name) branchSet.add(s.branch_name)
+      }
+    })
+    
+    const sortedBranches = Array.from(branchSet).sort()
+    
+    console.log('🏢 Branch Options:', {
+      fromTransactions: safeTransactions.map(t => t.branch).filter(Boolean),
+      fromDailySummaries: dailySummaries.map(s => s.branch_name).filter(Boolean),
+      finalOptions: sortedBranches
+    })
+    
+    return ['Semua Cabang', ...sortedBranches]
+  }, [safeTransactions, dailySummaries, filterUnit])
 
 
   // ✅ Use stable string dependencies for date range
@@ -488,9 +500,26 @@ function DashboardPage({ transactions, isLoading, error }) {
   const netProfit = incomeTotal - expenseTotal
 
 
-  const totalTransactions =
-    filteredTransactions.filter((t) => t.source !== 'Email').length +
-    filteredDailySummaries.reduce((sum, s) => sum + (Number(s.transaction_count) || 0), 0)
+  // ✅ FIX 2: Count ALL transactions (not just non-Email ones)
+  const manualTransactionCount = filteredTransactions.filter((t) => t.source !== 'Email').length
+  const emailTransactionCount = filteredDailySummaries.reduce(
+    (sum, s) => sum + (Number(s.transaction_count) || 0), 
+    0
+  )
+  const totalTransactions = manualTransactionCount + emailTransactionCount
+
+  console.log('📊 Transaction Count Debug:', {
+    manualCount: manualTransactionCount,
+    emailCount: emailTransactionCount,
+    total: totalTransactions,
+    filteredTransactions: filteredTransactions.length,
+    filteredDailySummaries: filteredDailySummaries.length,
+    dailySummaryDetails: filteredDailySummaries.map(s => ({
+      date: s.date,
+      branch: s.branch_name,
+      count: s.transaction_count
+    }))
+  })
 
 
   // ---------- FETCH DAILY SUMMARIES WITH RATE LIMITER ----------
@@ -510,7 +539,9 @@ function DashboardPage({ transactions, isLoading, error }) {
       try {
         console.log('📊 Fetching daily summaries:', dateRangeParams)
         const data = await fetchDailySummaries(dateRangeParams)
-        setDailySummaries(Array.isArray(data) ? data : data.results || [])
+        const summaries = Array.isArray(data) ? data : data.results || []
+        console.log('📊 Daily summaries received:', summaries)
+        setDailySummaries(summaries)
         lastDailySummaryFetch.current = fetchKey
       } catch (err) {
         console.error('Failed to load daily summaries:', err)
