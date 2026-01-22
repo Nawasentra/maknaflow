@@ -500,12 +500,10 @@ function DashboardPage({ transactions, isLoading, error }) {
   const netProfit = incomeTotal - expenseTotal
 
 
-  // ✅ FIX 2: Count ALL transactions (not just non-Email ones)
+  // ✅ FIX 2: Count transactions (each daily summary = 1 transaction)
   const manualTransactionCount = filteredTransactions.filter((t) => t.source !== 'Email').length
-  const emailTransactionCount = filteredDailySummaries.reduce(
-    (sum, s) => sum + (Number(s.transaction_count) || 0), 
-    0
-  )
+  // ✅ Each daily summary counts as 1 transaction (since API doesn't return transaction_count)
+  const emailTransactionCount = filteredDailySummaries.length
   const totalTransactions = manualTransactionCount + emailTransactionCount
 
   console.log('📊 Transaction Count Debug:', {
@@ -517,7 +515,9 @@ function DashboardPage({ transactions, isLoading, error }) {
     dailySummaryDetails: filteredDailySummaries.map(s => ({
       date: s.date,
       branch: s.branch_name,
-      count: s.transaction_count
+      cash: s.cash_amount,
+      qris: s.qris_amount,
+      transfer: s.transfer_amount
     }))
   })
 
