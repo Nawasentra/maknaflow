@@ -113,7 +113,6 @@ function DashboardPage({ transactions, isLoading, error }) {
   }, [safeTransactions, filterUnit])
 
 
-  // ✅ Compute date range parameters ONCE in useMemo
   const dateRangeParams = useMemo(() => {
     const params = {}
     
@@ -261,7 +260,6 @@ function DashboardPage({ transactions, isLoading, error }) {
     const map = {}
 
 
-    // 1. Manual + WhatsApp transactions
     filteredTransactions.forEach((t) => {
       if (t.source === 'Email') return
       
@@ -273,7 +271,6 @@ function DashboardPage({ transactions, isLoading, error }) {
     })
 
 
-    // 2. Email POS transactions from DailySummary
     filteredDailySummaries.forEach((summary) => {
       const key = summary.date
       const dailyPosIncome =
@@ -286,7 +283,6 @@ function DashboardPage({ transactions, isLoading, error }) {
     })
 
 
-    // 3. Ensure all uniqueDates exist
     uniqueDates.forEach((date) => {
       if (!map[date]) {
         map[date] = { date, income: 0, expense: 0 }
@@ -301,7 +297,6 @@ function DashboardPage({ transactions, isLoading, error }) {
   // ---------- TREND DATA (ALL POINTS) ----------
 
 
-  // ✅ Show ALL days with data (truthful graph)
   const trendData = useMemo(() => {
     if (uniqueDates.length === 0) return []
     
@@ -309,10 +304,9 @@ function DashboardPage({ transactions, isLoading, error }) {
   }, [dailyMap, uniqueDates])
 
 
-  // ---------- SELECTED LABEL DATES (5 MAX) ----------
+  // ---------- SELECTED LABEL DATES (5 MAX) - FIXED ----------
 
 
-  // ✅ Calculate which 5 dates should have X-axis labels
   const labelDates = useMemo(() => {
     if (uniqueDates.length === 0) return new Set()
     
@@ -327,45 +321,48 @@ function DashboardPage({ transactions, isLoading, error }) {
       selectedDates = [sortedDates[0], sortedDates[1], sortedDates[2]]
     } else if (totalDays === 4) {
       selectedDates = [sortedDates[0], sortedDates[1], sortedDates[2], sortedDates[3]]
-    } else if (totalDays >= 5 && totalDays <= 7) {
-      if (totalDays === 7) {
-        selectedDates = [
-          sortedDates[0],
-          sortedDates[1],
-          sortedDates[3],
-          sortedDates[5],
-          sortedDates[6],
-        ]
-      } else {
-        const step = (totalDays - 1) / 4
-        selectedDates = [
-          sortedDates[0],
-          sortedDates[Math.round(step)],
-          sortedDates[Math.round(step * 2)],
-          sortedDates[Math.round(step * 3)],
-          sortedDates[totalDays - 1],
-        ]
-      }
-    } else if (totalDays >= 8 && totalDays <= 30) {
-      if (totalDays === 30) {
-        selectedDates = [
-          sortedDates[0],
-          sortedDates[7],
-          sortedDates[15],
-          sortedDates[23],
-          sortedDates[29],
-        ]
-      } else {
-        const step = (totalDays - 1) / 4
-        selectedDates = [
-          sortedDates[0],
-          sortedDates[Math.round(step)],
-          sortedDates[Math.round(step * 2)],
-          sortedDates[Math.round(step * 3)],
-          sortedDates[totalDays - 1],
-        ]
-      }
+    } else if (totalDays === 5) {
+      // All 5 days
+      selectedDates = sortedDates
+    } else if (totalDays === 6) {
+      // First + 3 middle (evenly spaced) + Last
+      selectedDates = [
+        sortedDates[0],
+        sortedDates[1],
+        sortedDates[3],
+        sortedDates[4],
+        sortedDates[5],
+      ]
+    } else if (totalDays === 7) {
+      // days 1, 2, 4, 6, 7
+      selectedDates = [
+        sortedDates[0],
+        sortedDates[1],
+        sortedDates[3],
+        sortedDates[5],
+        sortedDates[6],
+      ]
+    } else if (totalDays >= 8 && totalDays < 30) {
+      // First + 3 evenly-spaced middle + Last
+      const step = (totalDays - 1) / 4
+      selectedDates = [
+        sortedDates[0],
+        sortedDates[Math.round(step)],
+        sortedDates[Math.round(step * 2)],
+        sortedDates[Math.round(step * 3)],
+        sortedDates[totalDays - 1],
+      ]
+    } else if (totalDays === 30) {
+      // days 1, 8, 16, 24, 30
+      selectedDates = [
+        sortedDates[0],
+        sortedDates[7],
+        sortedDates[15],
+        sortedDates[23],
+        sortedDates[29],
+      ]
     } else {
+      // > 30 days: First + 3 evenly-spaced + Last
       const step = (totalDays - 1) / 4
       selectedDates = [
         sortedDates[0],
@@ -376,6 +373,10 @@ function DashboardPage({ transactions, isLoading, error }) {
       ]
     }
     
+    // Debug log
+    console.log('Total days:', totalDays)
+    console.log('Selected label dates:', selectedDates)
+    
     return new Set(selectedDates)
   }, [uniqueDates])
 
@@ -383,7 +384,7 @@ function DashboardPage({ transactions, isLoading, error }) {
   // ✅ Custom tick component - only show labels for selected dates
   const CustomXAxisTick = ({ x, y, payload }) => {
     if (!labelDates.has(payload.value)) {
-      return null // Hide label
+      return null
     }
     
     return (
@@ -399,6 +400,49 @@ function DashboardPage({ transactions, isLoading, error }) {
           {formatDateForChart(payload.value)}
         </text>
       </g>
+    )
+  }
+
+
+  // ✅ Custom Tooltip with date
+  const CustomTooltip = ({ active, payload, label }) => {
+    if (!active || !payload || payload.length === 0) return null
+    
+    return (
+      <div
+        style={{
+          backgroundColor: 'rgba(255, 255, 255, 0.95)',
+          border: '1px solid #e5e7eb',
+          borderRadius: '8px',
+          padding: '0.75rem',
+          boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
+        }}
+      >
+        <p
+          style={{
+            margin: 0,
+            marginBottom: '0.5rem',
+            fontSize: '0.875rem',
+            fontWeight: 600,
+            color: '#111827',
+          }}
+        >
+          {formatDateForChart(label)}
+        </p>
+        {payload.map((entry, index) => (
+          <p
+            key={index}
+            style={{
+              margin: 0,
+              fontSize: '0.875rem',
+              color: entry.color,
+              marginTop: index > 0 ? '0.25rem' : 0,
+            }}
+          >
+            {entry.name}: Rp {new Intl.NumberFormat('id-ID').format(entry.value)}
+          </p>
+        ))}
+      </div>
     )
   }
 
@@ -874,12 +918,7 @@ function DashboardPage({ transactions, isLoading, error }) {
                     new Intl.NumberFormat('id-ID').format(v)
                   }
                 />
-                <Tooltip 
-                  labelFormatter={formatDateForChart}
-                  formatter={(value) => [
-                    `Rp ${new Intl.NumberFormat('id-ID').format(value)}`,
-                  ]}
-                />
+                <Tooltip content={<CustomTooltip />} />
                 <Legend />
                 <Line
                   type="monotone"
@@ -887,7 +926,8 @@ function DashboardPage({ transactions, isLoading, error }) {
                   name="Pendapatan"
                   stroke="#22c55e"
                   strokeWidth={2}
-                  dot={{ r: 4 }}
+                  dot={false}
+                  activeDot={{ r: 6 }}
                 />
                 <Line
                   type="monotone"
@@ -895,7 +935,8 @@ function DashboardPage({ transactions, isLoading, error }) {
                   name="Pengeluaran"
                   stroke="#ef4444"
                   strokeWidth={2}
-                  dot={{ r: 4 }}
+                  dot={false}
+                  activeDot={{ r: 6 }}
                 />
               </LineChart>
             </ResponsiveContainer>
