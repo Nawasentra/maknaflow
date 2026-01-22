@@ -390,9 +390,6 @@ function DashboardPage({ transactions, isLoading, error }) {
       ]
     }
     
-    console.log('📅 Total days:', totalDays)
-    console.log('📅 Selected label dates:', selectedDates.map(d => formatDateForChart(d)))
-    
     return new Set(selectedDates)
   }, [uniqueDates])
 
@@ -913,6 +910,7 @@ function DashboardPage({ transactions, isLoading, error }) {
                 <CartesianGrid
                   stroke="var(--border)"
                   strokeDasharray="3 3"
+                  vertical={false}
                 />
                 <XAxis 
                   dataKey="date" 
