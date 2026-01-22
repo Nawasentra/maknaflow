@@ -74,12 +74,12 @@ function DashboardPage({ transactions, isLoading, error }) {
   const [dailySummaries, setDailySummaries] = useState([])
   const [paymentBreakdown, setPaymentBreakdown] = useState(null)
 
-  // ✅ ADD: Rate limiter refs
+  // ✅ Rate limiter refs to prevent 429 errors
   const lastDailySummaryFetch = useRef('')
   const lastPaymentFetch = useRef('')
 
 
-  // ✅ COMPUTE DATES ONCE (stable strings, not Date objects)
+  // ✅ Compute dates ONCE on mount (stable strings, not Date objects)
   const { todayStr, sevenDaysAgoStr, monthStartStr } = useMemo(() => {
     const today = new Date()
     const startOfToday = new Date(
@@ -96,7 +96,7 @@ function DashboardPage({ transactions, isLoading, error }) {
       sevenDaysAgoStr: formatLocalDate(sevenDaysAgo),
       monthStartStr: formatLocalDate(startOfMonth),
     }
-  }, []) // ✅ Empty array - only compute once on mount
+  }, []) // Empty array - only compute once
 
 
   const safeTransactions = Array.isArray(transactions) ? transactions : []
@@ -126,7 +126,7 @@ function DashboardPage({ transactions, isLoading, error }) {
   }, [safeTransactions, filterUnit])
 
 
-  // ✅ FIX: Use stable string dependencies
+  // ✅ Use stable string dependencies for date range
   const dateRangeParams = useMemo(() => {
     const params = {}
     
@@ -148,7 +148,7 @@ function DashboardPage({ transactions, isLoading, error }) {
   }, [filterDate, customStart, customEnd, todayStr, sevenDaysAgoStr, monthStartStr])
 
 
-  // ✅ Create stable Date objects for filtering (recompute from strings)
+  // ✅ Create stable Date objects for filtering
   const { startOfToday, sevenDaysAgo, startOfMonth } = useMemo(() => {
     return {
       startOfToday: parseLocalDate(todayStr),
@@ -390,32 +390,14 @@ function DashboardPage({ transactions, isLoading, error }) {
       ]
     }
     
+    console.log('📅 Total days:', totalDays)
+    console.log('📅 Selected label dates:', selectedDates.map(d => formatDateForChart(d)))
+    
     return new Set(selectedDates)
   }, [uniqueDates])
 
 
-  const CustomXAxisTick = ({ x, y, payload }) => {
-    if (!labelDates.has(payload.value)) {
-      return null
-    }
-    
-    return (
-      <g transform={`translate(${x},${y})`}>
-        <text
-          x={0}
-          y={0}
-          dy={16}
-          textAnchor="middle"
-          fill="#9ca3af"
-          fontSize={11}
-        >
-          {formatDateForChart(payload.value)}
-        </text>
-      </g>
-    )
-  }
-
-
+  // ✅ Custom Tooltip with date
   const CustomTooltip = ({ active, payload, label }) => {
     if (!active || !payload || payload.length === 0) return null
     
@@ -497,10 +479,10 @@ function DashboardPage({ transactions, isLoading, error }) {
     const loadDailySummaries = async () => {
       if (!dateRangeParams.start_date || !dateRangeParams.end_date) return
       
-      // ✅ Rate limiter: check if we already fetched this
+      // ✅ Rate limiter: prevent duplicate fetches (429 error prevention)
       const fetchKey = JSON.stringify(dateRangeParams)
       if (lastDailySummaryFetch.current === fetchKey) {
-        console.log('⏭️ Skipping duplicate daily summary fetch')
+        console.log('⏭️  Skipping duplicate daily summary fetch')
         return
       }
       
@@ -508,7 +490,7 @@ function DashboardPage({ transactions, isLoading, error }) {
         console.log('📊 Fetching daily summaries:', dateRangeParams)
         const data = await fetchDailySummaries(dateRangeParams)
         setDailySummaries(Array.isArray(data) ? data : data.results || [])
-        lastDailySummaryFetch.current = fetchKey // ✅ Mark as fetched
+        lastDailySummaryFetch.current = fetchKey
       } catch (err) {
         console.error('Failed to load daily summaries:', err)
         setDailySummaries([])
@@ -537,10 +519,10 @@ function DashboardPage({ transactions, isLoading, error }) {
         params.branch_type = filterUnit.toUpperCase()
       }
 
-      // ✅ Rate limiter: check if we already fetched this
+      // ✅ Rate limiter: prevent duplicate fetches (429 error prevention)
       const fetchKey = JSON.stringify(params)
       if (lastPaymentFetch.current === fetchKey) {
-        console.log('⏭️ Skipping duplicate payment breakdown fetch')
+        console.log('⏭️  Skipping duplicate payment breakdown fetch')
         return
       }
       
@@ -548,7 +530,7 @@ function DashboardPage({ transactions, isLoading, error }) {
         console.log('💳 Fetching payment breakdown:', params)
         const data = await fetchPaymentBreakdown(params)
         setPaymentBreakdown(data)
-        lastPaymentFetch.current = fetchKey // ✅ Mark as fetched
+        lastPaymentFetch.current = fetchKey
       } catch (err) {
         console.error('Failed to load payment breakdown:', err)
         setPaymentBreakdown(null)
@@ -926,7 +908,7 @@ function DashboardPage({ transactions, isLoading, error }) {
             <ResponsiveContainer width="100%" height="100%">
               <LineChart
                 data={trendData}
-                margin={{ top: 20, right: 20, left: 60, bottom: 20 }}
+                margin={{ top: 20, right: 40, left: 30, bottom: 60 }}
               >
                 <CartesianGrid
                   stroke="var(--border)"
@@ -935,8 +917,15 @@ function DashboardPage({ transactions, isLoading, error }) {
                 <XAxis 
                   dataKey="date" 
                   stroke="#9ca3af"
-                  tick={<CustomXAxisTick />}
-                  height={50}
+                  interval={0}
+                  tickFormatter={(value) => {
+                    if (labelDates.has(value)) {
+                      return formatDateForChart(value)
+                    }
+                    return ''
+                  }}
+                  tick={{ fontSize: 11 }}
+                  height={60}
                 />
                 <YAxis
                   stroke="#9ca3af"
