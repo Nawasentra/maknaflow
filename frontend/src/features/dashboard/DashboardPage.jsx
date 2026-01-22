@@ -1,5 +1,5 @@
 // src/features/dashboard/DashboardPage.jsx
-import React, { useState, useMemo, useEffect } from 'react'
+import React, { useState, useMemo, useEffect, useRef } from 'react'
 import {
   LineChart,
   Line,
@@ -74,16 +74,29 @@ function DashboardPage({ transactions, isLoading, error }) {
   const [dailySummaries, setDailySummaries] = useState([])
   const [paymentBreakdown, setPaymentBreakdown] = useState(null)
 
+  // ✅ ADD: Rate limiter refs
+  const lastDailySummaryFetch = useRef('')
+  const lastPaymentFetch = useRef('')
 
-  const today = new Date()
-  const startOfToday = new Date(
-    today.getFullYear(),
-    today.getMonth(),
-    today.getDate(),
-  )
-  const sevenDaysAgo = new Date(startOfToday)
-  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6)
-  const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1)
+
+  // ✅ COMPUTE DATES ONCE (stable strings, not Date objects)
+  const { todayStr, sevenDaysAgoStr, monthStartStr } = useMemo(() => {
+    const today = new Date()
+    const startOfToday = new Date(
+      today.getFullYear(),
+      today.getMonth(),
+      today.getDate(),
+    )
+    const sevenDaysAgo = new Date(startOfToday)
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6)
+    const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1)
+
+    return {
+      todayStr: formatLocalDate(startOfToday),
+      sevenDaysAgoStr: formatLocalDate(sevenDaysAgo),
+      monthStartStr: formatLocalDate(startOfMonth),
+    }
+  }, []) // ✅ Empty array - only compute once on mount
 
 
   const safeTransactions = Array.isArray(transactions) ? transactions : []
@@ -113,26 +126,36 @@ function DashboardPage({ transactions, isLoading, error }) {
   }, [safeTransactions, filterUnit])
 
 
+  // ✅ FIX: Use stable string dependencies
   const dateRangeParams = useMemo(() => {
     const params = {}
     
     if (filterDate === 'Hari Ini') {
-      const d = formatLocalDate(startOfToday)
-      params.start_date = d
-      params.end_date = d
+      params.start_date = todayStr
+      params.end_date = todayStr
     } else if (filterDate === '7 Hari Terakhir') {
-      params.start_date = formatLocalDate(sevenDaysAgo)
-      params.end_date = formatLocalDate(startOfToday)
+      params.start_date = sevenDaysAgoStr
+      params.end_date = todayStr
     } else if (filterDate === 'Bulan Ini') {
-      params.start_date = formatLocalDate(startOfMonth)
-      params.end_date = formatLocalDate(startOfToday)
+      params.start_date = monthStartStr
+      params.end_date = todayStr
     } else if (filterDate === 'Custom' && customStart && customEnd) {
       params.start_date = customStart
       params.end_date = customEnd
     }
     
     return params
-  }, [filterDate, customStart, customEnd, startOfToday, sevenDaysAgo, startOfMonth])
+  }, [filterDate, customStart, customEnd, todayStr, sevenDaysAgoStr, monthStartStr])
+
+
+  // ✅ Create stable Date objects for filtering (recompute from strings)
+  const { startOfToday, sevenDaysAgo, startOfMonth } = useMemo(() => {
+    return {
+      startOfToday: parseLocalDate(todayStr),
+      sevenDaysAgo: parseLocalDate(sevenDaysAgoStr),
+      startOfMonth: parseLocalDate(monthStartStr),
+    }
+  }, [todayStr, sevenDaysAgoStr, monthStartStr])
 
 
   // ---------- FILTER TRANSAKSI ----------
@@ -304,7 +327,7 @@ function DashboardPage({ transactions, isLoading, error }) {
   }, [dailyMap, uniqueDates])
 
 
-  // ---------- SELECTED LABEL DATES (5 MAX) - FIXED ----------
+  // ---------- SELECTED LABEL DATES (5 MAX) ----------
 
 
   const labelDates = useMemo(() => {
@@ -322,10 +345,8 @@ function DashboardPage({ transactions, isLoading, error }) {
     } else if (totalDays === 4) {
       selectedDates = [sortedDates[0], sortedDates[1], sortedDates[2], sortedDates[3]]
     } else if (totalDays === 5) {
-      // All 5 days
       selectedDates = sortedDates
     } else if (totalDays === 6) {
-      // First + 3 middle (evenly spaced) + Last
       selectedDates = [
         sortedDates[0],
         sortedDates[1],
@@ -334,7 +355,6 @@ function DashboardPage({ transactions, isLoading, error }) {
         sortedDates[5],
       ]
     } else if (totalDays === 7) {
-      // days 1, 2, 4, 6, 7
       selectedDates = [
         sortedDates[0],
         sortedDates[1],
@@ -343,7 +363,6 @@ function DashboardPage({ transactions, isLoading, error }) {
         sortedDates[6],
       ]
     } else if (totalDays >= 8 && totalDays < 30) {
-      // First + 3 evenly-spaced middle + Last
       const step = (totalDays - 1) / 4
       selectedDates = [
         sortedDates[0],
@@ -353,7 +372,6 @@ function DashboardPage({ transactions, isLoading, error }) {
         sortedDates[totalDays - 1],
       ]
     } else if (totalDays === 30) {
-      // days 1, 8, 16, 24, 30
       selectedDates = [
         sortedDates[0],
         sortedDates[7],
@@ -362,7 +380,6 @@ function DashboardPage({ transactions, isLoading, error }) {
         sortedDates[29],
       ]
     } else {
-      // > 30 days: First + 3 evenly-spaced + Last
       const step = (totalDays - 1) / 4
       selectedDates = [
         sortedDates[0],
@@ -373,15 +390,10 @@ function DashboardPage({ transactions, isLoading, error }) {
       ]
     }
     
-    // Debug log
-    console.log('Total days:', totalDays)
-    console.log('Selected label dates:', selectedDates)
-    
     return new Set(selectedDates)
   }, [uniqueDates])
 
 
-  // ✅ Custom tick component - only show labels for selected dates
   const CustomXAxisTick = ({ x, y, payload }) => {
     if (!labelDates.has(payload.value)) {
       return null
@@ -404,7 +416,6 @@ function DashboardPage({ transactions, isLoading, error }) {
   }
 
 
-  // ✅ Custom Tooltip with date
   const CustomTooltip = ({ active, payload, label }) => {
     if (!active || !payload || payload.length === 0) return null
     
@@ -479,16 +490,25 @@ function DashboardPage({ transactions, isLoading, error }) {
     filteredDailySummaries.reduce((sum, s) => sum + (Number(s.transaction_count) || 0), 0)
 
 
-  // ---------- FETCH DAILY SUMMARIES ----------
+  // ---------- FETCH DAILY SUMMARIES WITH RATE LIMITER ----------
 
 
   useEffect(() => {
     const loadDailySummaries = async () => {
       if (!dateRangeParams.start_date || !dateRangeParams.end_date) return
       
+      // ✅ Rate limiter: check if we already fetched this
+      const fetchKey = JSON.stringify(dateRangeParams)
+      if (lastDailySummaryFetch.current === fetchKey) {
+        console.log('⏭️ Skipping duplicate daily summary fetch')
+        return
+      }
+      
       try {
+        console.log('📊 Fetching daily summaries:', dateRangeParams)
         const data = await fetchDailySummaries(dateRangeParams)
         setDailySummaries(Array.isArray(data) ? data : data.results || [])
+        lastDailySummaryFetch.current = fetchKey // ✅ Mark as fetched
       } catch (err) {
         console.error('Failed to load daily summaries:', err)
         setDailySummaries([])
@@ -500,27 +520,35 @@ function DashboardPage({ transactions, isLoading, error }) {
   }, [dateRangeParams])
 
 
-  // ---------- FETCH PAYMENT BREAKDOWN ----------
+  // ---------- FETCH PAYMENT BREAKDOWN WITH RATE LIMITER ----------
 
 
   useEffect(() => {
     const loadPaymentBreakdown = async () => {
       if (!dateRangeParams.start_date || !dateRangeParams.end_date) return
       
+      const params = { ...dateRangeParams }
+
+
+      if (filterBranch !== 'Semua Cabang') {
+        params.branch_name = filterBranch
+      }
+      if (filterUnit !== 'Semua Unit') {
+        params.branch_type = filterUnit.toUpperCase()
+      }
+
+      // ✅ Rate limiter: check if we already fetched this
+      const fetchKey = JSON.stringify(params)
+      if (lastPaymentFetch.current === fetchKey) {
+        console.log('⏭️ Skipping duplicate payment breakdown fetch')
+        return
+      }
+      
       try {
-        const params = { ...dateRangeParams }
-
-
-        if (filterBranch !== 'Semua Cabang') {
-          params.branch_name = filterBranch
-        }
-        if (filterUnit !== 'Semua Unit') {
-          params.branch_type = filterUnit.toUpperCase()
-        }
-
-
+        console.log('💳 Fetching payment breakdown:', params)
         const data = await fetchPaymentBreakdown(params)
         setPaymentBreakdown(data)
+        lastPaymentFetch.current = fetchKey // ✅ Mark as fetched
       } catch (err) {
         console.error('Failed to load payment breakdown:', err)
         setPaymentBreakdown(null)
