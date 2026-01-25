@@ -1,4 +1,5 @@
 from django.urls import path, include
+from .views import api_staff_list
 from rest_framework.routers import SimpleRouter
 from . import views
 from app.views import (
@@ -46,6 +47,7 @@ urlpatterns = [
     path('webhooks/whatsapp/', WhatsAppWebhookView.as_view(), name='whatsapp-webhook'),
     path('api/ingestion/internal-wa/', InternalWhatsAppIngestion.as_view()),
     path('api/bot/master-data/', BotMasterData.as_view()),
+    path('api/bot/staff-list/', api_staff_list, name='api_staff_list'),
 
     # Health Check endpoint
     path('health/', HealthCheckView.as_view(), name='health-check'),
