@@ -1,11 +1,10 @@
 // src/features/dashboard/DashboardPage.jsx
-import React, { useState, useMemo, useEffect } from 'react'
+import React, { useState, useMemo, useEffect, useRef } from 'react'
 import {
   LineChart,
   Line,
   XAxis,
   YAxis,
-  CartesianGrid,
   Tooltip,
   Legend,
   PieChart,
@@ -15,15 +14,18 @@ import {
   Bar,
   ResponsiveContainer,
 } from 'recharts'
-import { fetchPaymentBreakdown } from '../../lib/api/dailySummaries'
+import { fetchDailySummaries, fetchPaymentBreakdown } from '../../lib/api/dailySummaries'
+
 
 // --- helpers --------------------------------------------------
+
 
 function parseLocalDate(isoDateStr) {
   if (!isoDateStr) return null
   const [year, month, day] = isoDateStr.split('-').map(Number)
   return new Date(year, month - 1, day)
 }
+
 
 function formatLocalDate(d) {
   const year = d.getFullYear()
@@ -32,7 +34,21 @@ function formatLocalDate(d) {
   return `${year}-${month}-${day}`
 }
 
+
+function formatDateForChart(isoDateStr) {
+  if (!isoDateStr) return ''
+  const date = parseLocalDate(isoDateStr)
+  if (!date) return isoDateStr
+  
+  return date.toLocaleDateString('id-ID', { 
+    day: 'numeric', 
+    month: 'short' 
+  })
+}
+
+
 const UNIT_LABELS = ['Laundry', 'Carwash', 'Kos', 'Other']
+
 
 function normalizeUnit(unit) {
   if (!unit) return ''
@@ -44,7 +60,34 @@ function normalizeUnit(unit) {
   return unit
 }
 
+
+// ✅ Custom Grid Component - ONLY HORIZONTAL LINES
+const CustomGrid = (props) => {
+  const { x, y, width, height } = props
+  
+  // Draw 5 horizontal lines
+  const lines = []
+  for (let i = 0; i <= 4; i++) {
+    const yPos = y + (height / 4) * i
+    lines.push(
+      <line
+        key={`h-${i}`}
+        x1={x}
+        y1={yPos}
+        x2={x + width}
+        y2={yPos}
+        stroke="rgba(148, 163, 184, 0.2)"
+        strokeDasharray="3 3"
+      />
+    )
+  }
+  
+  return <g className="recharts-cartesian-grid">{lines}</g>
+}
+
+
 // --- main component -------------------------------------------
+
 
 function DashboardPage({ transactions, isLoading, error }) {
   const [filterDate, setFilterDate] = useState('7 Hari Terakhir')
@@ -52,49 +95,114 @@ function DashboardPage({ transactions, isLoading, error }) {
   const [filterBranch, setFilterBranch] = useState('Semua Cabang')
   const [customStart, setCustomStart] = useState('')
   const [customEnd, setCustomEnd] = useState('')
+  const [dailySummaries, setDailySummaries] = useState([])
   const [paymentBreakdown, setPaymentBreakdown] = useState(null)
-  const [lastPbCall, setLastPbCall] = useState(0) // rate-limit 500ms
 
-  const today = new Date()
-  const startOfToday = new Date(
-    today.getFullYear(),
-    today.getMonth(),
-    today.getDate(),
-  )
-  const sevenDaysAgo = new Date(startOfToday)
-  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6)
-  const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1)
+  // ✅ Rate limiter refs to prevent 429 errors
+  const lastDailySummaryFetch = useRef('')
+  const lastPaymentFetch = useRef('')
+
+
+  // ✅ Compute dates ONCE on mount (stable strings, not Date objects)
+  const { todayStr, sevenDaysAgoStr, monthStartStr } = useMemo(() => {
+    const today = new Date()
+    const startOfToday = new Date(
+      today.getFullYear(),
+      today.getMonth(),
+      today.getDate(),
+    )
+    const sevenDaysAgo = new Date(startOfToday)
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6)
+    const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1)
+
+    return {
+      todayStr: formatLocalDate(startOfToday),
+      sevenDaysAgoStr: formatLocalDate(sevenDaysAgo),
+      monthStartStr: formatLocalDate(startOfMonth),
+    }
+  }, []) // Empty array - only compute once
+
 
   const safeTransactions = Array.isArray(transactions) ? transactions : []
 
+
   // ---------- OPTIONS: UNIT & CABANG ----------
+
 
   const unitOptions = ['Semua Unit', ...UNIT_LABELS]
 
+
+  // ✅ FIX 1: Branch options should include branches from BOTH manual transactions AND daily summaries
   const branchOptions = useMemo(() => {
-    let source = safeTransactions
-    if (filterUnit !== 'Semua Unit') {
-      source = source.filter(
-        (t) => normalizeUnit(t.unitBusiness) === filterUnit,
-      )
+    const branchSet = new Set()
+    
+    // Get branches from manual transactions
+    safeTransactions.forEach((t) => {
+      if (filterUnit === 'Semua Unit' || normalizeUnit(t.unitBusiness) === filterUnit) {
+        if (t.branch) branchSet.add(t.branch)
+      }
+    })
+    
+    // ✅ ALSO get branches from daily summaries (email/POS data)
+    dailySummaries.forEach((s) => {
+      if (filterUnit === 'Semua Unit' || normalizeUnit(s.branch_type) === filterUnit) {
+        if (s.branch_name) branchSet.add(s.branch_name)
+      }
+    })
+    
+    const sortedBranches = Array.from(branchSet).sort()
+    
+    console.log('🏢 Branch Options:', {
+      fromTransactions: safeTransactions.map(t => t.branch).filter(Boolean),
+      fromDailySummaries: dailySummaries.map(s => s.branch_name).filter(Boolean),
+      finalOptions: sortedBranches
+    })
+    
+    return ['Semua Cabang', ...sortedBranches]
+  }, [safeTransactions, dailySummaries, filterUnit])
+
+
+  // ✅ Use stable string dependencies for date range
+  const dateRangeParams = useMemo(() => {
+    const params = {}
+    
+    if (filterDate === 'Hari Ini') {
+      params.start_date = todayStr
+      params.end_date = todayStr
+    } else if (filterDate === '7 Hari Terakhir') {
+      params.start_date = sevenDaysAgoStr
+      params.end_date = todayStr
+    } else if (filterDate === 'Bulan Ini') {
+      params.start_date = monthStartStr
+      params.end_date = todayStr
+    } else if (filterDate === 'Custom' && customStart && customEnd) {
+      params.start_date = customStart
+      params.end_date = customEnd
     }
-    const names = Array.from(
-      new Set(
-        source
-          .map((t) => t.branch)
-          .filter(Boolean),
-      ),
-    )
-    return ['Semua Cabang', ...names]
-  }, [safeTransactions, filterUnit])
+    
+    return params
+  }, [filterDate, customStart, customEnd, todayStr, sevenDaysAgoStr, monthStartStr])
+
+
+  // ✅ Create stable Date objects for filtering
+  const { startOfToday, sevenDaysAgo, startOfMonth } = useMemo(() => {
+    return {
+      startOfToday: parseLocalDate(todayStr),
+      sevenDaysAgo: parseLocalDate(sevenDaysAgoStr),
+      startOfMonth: parseLocalDate(monthStartStr),
+    }
+  }, [todayStr, sevenDaysAgoStr, monthStartStr])
+
 
   // ---------- FILTER TRANSAKSI ----------
+
 
   const filteredTransactions = useMemo(() => {
     return safeTransactions.filter((t) => {
       if (!t.date) return false
       const txDate = parseLocalDate(t.date)
       if (!txDate || isNaN(txDate.getTime())) return false
+
 
       let inRange = true
       if (filterDate === 'Hari Ini') {
@@ -110,12 +218,15 @@ function DashboardPage({ transactions, isLoading, error }) {
         inRange = txDate >= start && txDate <= end
       }
 
+
       const normalizedUnit = normalizeUnit(t.unitBusiness)
       const unitMatch =
         filterUnit === 'Semua Unit' || normalizedUnit === filterUnit
 
+
       const branchMatch =
         filterBranch === 'Semua Cabang' || t.branch === filterBranch
+
 
       return inRange && unitMatch && branchMatch
     })
@@ -131,111 +242,360 @@ function DashboardPage({ transactions, isLoading, error }) {
     startOfMonth,
   ])
 
+
+  // ---------- FILTER DAILY SUMMARIES ----------
+
+
+  const filteredDailySummaries = useMemo(() => {
+    if (!Array.isArray(dailySummaries)) return []
+    
+    return dailySummaries.filter((summary) => {
+      if (!summary.date) return false
+      const summaryDate = parseLocalDate(summary.date)
+      if (!summaryDate || isNaN(summaryDate.getTime())) return false
+
+
+      let inRange = true
+      if (filterDate === 'Hari Ini') {
+        inRange = summaryDate.toDateString() === startOfToday.toDateString()
+      } else if (filterDate === '7 Hari Terakhir') {
+        inRange = summaryDate >= sevenDaysAgo && summaryDate <= startOfToday
+      } else if (filterDate === 'Bulan Ini') {
+        inRange = summaryDate >= startOfMonth && summaryDate <= startOfToday
+      } else if (filterDate === 'Custom' && customStart && customEnd) {
+        const start = parseLocalDate(customStart)
+        const end = parseLocalDate(customEnd)
+        if (!start || !end) return false
+        inRange = summaryDate >= start && summaryDate <= end
+      }
+
+
+      const normalizedUnit = normalizeUnit(summary.branch_type)
+      const unitMatch =
+        filterUnit === 'Semua Unit' || normalizedUnit === filterUnit
+
+
+      const branchMatch =
+        filterBranch === 'Semua Cabang' || summary.branch_name === filterBranch
+
+
+      return inRange && unitMatch && branchMatch
+    })
+  }, [
+    dailySummaries,
+    filterDate,
+    customStart,
+    customEnd,
+    filterUnit,
+    filterBranch,
+    startOfToday,
+    sevenDaysAgo,
+    startOfMonth,
+  ])
+
+
+  // ---------- UNIQUE DATES ----------
+
+
+  const uniqueDates = useMemo(() => {
+    const dateSet = new Set()
+    
+    filteredTransactions.forEach((t) => {
+      if (t.date) dateSet.add(t.date)
+    })
+    
+    filteredDailySummaries.forEach((s) => {
+      if (s.date) dateSet.add(s.date)
+    })
+    
+    return Array.from(dateSet).sort()
+  }, [filteredTransactions, filteredDailySummaries])
+
+
+  // ---------- DAILY MAP ----------
+
+
+  const dailyMap = useMemo(() => {
+    const map = {}
+
+
+    filteredTransactions.forEach((t) => {
+      if (t.source === 'Email') return
+      
+      const key = t.date
+      if (!map[key]) map[key] = { date: key, income: 0, expense: 0 }
+      
+      if (t.type === 'Income') map[key].income += t.amount || 0
+      else if (t.type === 'Expense') map[key].expense += t.amount || 0
+    })
+
+
+    filteredDailySummaries.forEach((summary) => {
+      const key = summary.date
+      const dailyPosIncome =
+        (Number(summary.cash_amount) || 0) +
+        (Number(summary.qris_amount) || 0) +
+        (Number(summary.transfer_amount) || 0)
+      
+      if (!map[key]) map[key] = { date: key, income: 0, expense: 0 }
+      map[key].income += dailyPosIncome
+    })
+
+
+    uniqueDates.forEach((date) => {
+      if (!map[date]) {
+        map[date] = { date, income: 0, expense: 0 }
+      }
+    })
+
+
+    return map
+  }, [filteredTransactions, filteredDailySummaries, uniqueDates])
+
+
+  // ---------- TREND DATA (ALL POINTS) ----------
+
+
+  const trendData = useMemo(() => {
+    if (uniqueDates.length === 0) return []
+    
+    return uniqueDates.sort().map((date) => dailyMap[date])
+  }, [dailyMap, uniqueDates])
+
+
+  // ---------- SELECTED LABEL DATES (5 MAX) ----------
+
+
+  const labelDates = useMemo(() => {
+    if (uniqueDates.length === 0) return new Set()
+    
+    const sortedDates = [...uniqueDates].sort()
+    let selectedDates = []
+    
+    const totalDays = sortedDates.length
+    
+    if (totalDays <= 2) {
+      selectedDates = sortedDates
+    } else if (totalDays === 3) {
+      selectedDates = [sortedDates[0], sortedDates[1], sortedDates[2]]
+    } else if (totalDays === 4) {
+      selectedDates = [sortedDates[0], sortedDates[1], sortedDates[2], sortedDates[3]]
+    } else if (totalDays === 5) {
+      selectedDates = sortedDates
+    } else if (totalDays === 6) {
+      selectedDates = [
+        sortedDates[0],
+        sortedDates[1],
+        sortedDates[3],
+        sortedDates[4],
+        sortedDates[5],
+      ]
+    } else if (totalDays === 7) {
+      selectedDates = [
+        sortedDates[0],
+        sortedDates[1],
+        sortedDates[3],
+        sortedDates[5],
+        sortedDates[6],
+      ]
+    } else if (totalDays >= 8 && totalDays < 30) {
+      const step = (totalDays - 1) / 4
+      selectedDates = [
+        sortedDates[0],
+        sortedDates[Math.round(step)],
+        sortedDates[Math.round(step * 2)],
+        sortedDates[Math.round(step * 3)],
+        sortedDates[totalDays - 1],
+      ]
+    } else if (totalDays === 30) {
+      selectedDates = [
+        sortedDates[0],
+        sortedDates[7],
+        sortedDates[15],
+        sortedDates[23],
+        sortedDates[29],
+      ]
+    } else {
+      const step = (totalDays - 1) / 4
+      selectedDates = [
+        sortedDates[0],
+        sortedDates[Math.round(step)],
+        sortedDates[Math.round(step * 2)],
+        sortedDates[Math.round(step * 3)],
+        sortedDates[totalDays - 1],
+      ]
+    }
+    
+    return new Set(selectedDates)
+  }, [uniqueDates])
+
+
+  // ✅ Custom Tooltip with date
+  const CustomTooltip = ({ active, payload, label }) => {
+    if (!active || !payload || payload.length === 0) return null
+    
+    return (
+      <div
+        style={{
+          backgroundColor: 'rgba(255, 255, 255, 0.95)',
+          border: '1px solid #e5e7eb',
+          borderRadius: '8px',
+          padding: '0.75rem',
+          boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
+        }}
+      >
+        <p
+          style={{
+            margin: 0,
+            marginBottom: '0.5rem',
+            fontSize: '0.875rem',
+            fontWeight: 600,
+            color: '#111827',
+          }}
+        >
+          {formatDateForChart(label)}
+        </p>
+        {payload.map((entry, index) => (
+          <p
+            key={index}
+            style={{
+              margin: 0,
+              fontSize: '0.875rem',
+              color: entry.color,
+              marginTop: index > 0 ? '0.25rem' : 0,
+            }}
+          >
+            {entry.name}: Rp {new Intl.NumberFormat('id-ID').format(entry.value)}
+          </p>
+        ))}
+      </div>
+    )
+  }
+
+
   // ---------- KPI ----------
 
-  // income manual/WA (exclude email, karena email income diambil dari DailySummary)
+
   const manualIncome = filteredTransactions
     .filter((t) => t.type === 'Income' && t.source !== 'Email')
     .reduce((sum, t) => sum + (t.amount || 0), 0)
 
-  // income dari POS email (DailySummary.payment_breakdown.total)
-  const emailIncome = paymentBreakdown?.total || 0
+
+  const emailIncome = filteredDailySummaries.reduce((sum, s) => {
+    return sum + 
+      (Number(s.cash_amount) || 0) + 
+      (Number(s.qris_amount) || 0) + 
+      (Number(s.transfer_amount) || 0)
+  }, 0)
+
 
   const incomeTotal = manualIncome + emailIncome
+
 
   const expenseTotal = filteredTransactions
     .filter((t) => t.type === 'Expense')
     .reduce((sum, t) => sum + (t.amount || 0), 0)
 
+
   const netProfit = incomeTotal - expenseTotal
 
-  // hitung transaksi: transaksi non-email + jumlah summary email
-  const totalTransactions =
-    filteredTransactions.filter((t) => t.source !== 'Email').length +
-    (paymentBreakdown?.count || 0)
 
-  // ---------- CHART DATA ----------
+  // ✅ FIX 2: Count transactions (each daily summary = 1 transaction)
+  const manualTransactionCount = filteredTransactions.filter((t) => t.source !== 'Email').length
+  // ✅ Each daily summary counts as 1 transaction (since API doesn't return transaction_count)
+  const emailTransactionCount = filteredDailySummaries.length
+  const totalTransactions = manualTransactionCount + emailTransactionCount
 
-  const dailyMap = filteredTransactions.reduce((acc, t) => {
-    const key = t.date
-    if (!acc[key]) {
-      acc[key] = { date: key, income: 0, expense: 0 }
-    }
-    if (t.type === 'Income') {
-      acc[key].income += t.amount || 0
-    } else if (t.type === 'Expense') {
-      acc[key].expense += t.amount || 0
-    }
-    return acc
-  }, {})
+  console.log('📊 Transaction Count Debug:', {
+    manualCount: manualTransactionCount,
+    emailCount: emailTransactionCount,
+    total: totalTransactions,
+    filteredTransactions: filteredTransactions.length,
+    filteredDailySummaries: filteredDailySummaries.length,
+    dailySummaryDetails: filteredDailySummaries.map(s => ({
+      date: s.date,
+      branch: s.branch_name,
+      cash: s.cash_amount,
+      qris: s.qris_amount,
+      transfer: s.transfer_amount
+    }))
+  })
 
-  const trendData = Object.values(dailyMap).sort(
-    (a, b) => new Date(a.date) - new Date(b.date),
-  )
 
-  // ---------- PAYMENT BREAKDOWN (DailySummary) ----------
+  // ---------- FETCH DAILY SUMMARIES WITH RATE LIMITER ----------
 
-  // Clear stale paymentBreakdown whenever filters change
-  useEffect(() => {
-    setPaymentBreakdown(null)
-  }, [filterDate, filterUnit, filterBranch, customStart, customEnd])
 
   useEffect(() => {
-    const now = Date.now()
-    if (now - lastPbCall < 500) {
-      return
-    }
-    setLastPbCall(now)
-
-    const loadPaymentBreakdown = async () => {
+    const loadDailySummaries = async () => {
+      if (!dateRangeParams.start_date || !dateRangeParams.end_date) return
+      
+      // ✅ Rate limiter: prevent duplicate fetches (429 error prevention)
+      const fetchKey = JSON.stringify(dateRangeParams)
+      if (lastDailySummaryFetch.current === fetchKey) {
+        console.log('⏭️  Skipping duplicate daily summary fetch')
+        return
+      }
+      
       try {
-        const params = {}
+        console.log('📊 Fetching daily summaries:', dateRangeParams)
+        const data = await fetchDailySummaries(dateRangeParams)
+        const summaries = Array.isArray(data) ? data : data.results || []
+        console.log('📊 Daily summaries received:', summaries)
+        setDailySummaries(summaries)
+        lastDailySummaryFetch.current = fetchKey
+      } catch (err) {
+        console.error('Failed to load daily summaries:', err)
+        setDailySummaries([])
+      }
+    }
 
-        if (filterDate === 'Hari Ini') {
-          const d = formatLocalDate(startOfToday)
-          params.start_date = d
-          params.end_date = d
-        } else if (filterDate === '7 Hari Terakhir') {
-          params.start_date = formatLocalDate(sevenDaysAgo)
-          params.end_date = formatLocalDate(startOfToday)
-        } else if (filterDate === 'Bulan Ini') {
-          params.start_date = formatLocalDate(startOfMonth)
-          params.end_date = formatLocalDate(startOfToday)
-        } else if (filterDate === 'Custom' && customStart && customEnd) {
-          params.start_date = customStart
-          params.end_date = customEnd
-        }
 
-        if (filterBranch !== 'Semua Cabang') {
-          params.branch = filterBranch
-        }
-        if (filterUnit !== 'Semua Unit') {
-          // kirim nama unit → backend map ke enum
-          params.unit = filterUnit
-        }
+    loadDailySummaries()
+  }, [dateRangeParams])
 
+
+  // ---------- FETCH PAYMENT BREAKDOWN WITH RATE LIMITER ----------
+
+
+  useEffect(() => {
+    const loadPaymentBreakdown = async () => {
+      if (!dateRangeParams.start_date || !dateRangeParams.end_date) return
+      
+      const params = { ...dateRangeParams }
+
+
+      if (filterBranch !== 'Semua Cabang') {
+        params.branch_name = filterBranch
+      }
+      if (filterUnit !== 'Semua Unit') {
+        params.branch_type = filterUnit.toUpperCase()
+      }
+
+      // ✅ Rate limiter: prevent duplicate fetches (429 error prevention)
+      const fetchKey = JSON.stringify(params)
+      if (lastPaymentFetch.current === fetchKey) {
+        console.log('⏭️  Skipping duplicate payment breakdown fetch')
+        return
+      }
+      
+      try {
+        console.log('💳 Fetching payment breakdown:', params)
         const data = await fetchPaymentBreakdown(params)
         setPaymentBreakdown(data)
+        lastPaymentFetch.current = fetchKey
       } catch (err) {
         console.error('Failed to load payment breakdown:', err)
         setPaymentBreakdown(null)
       }
     }
 
+
     loadPaymentBreakdown()
-  }, [
-    filterDate,
-    customStart,
-    customEnd,
-    filterUnit,
-    filterBranch,
-    lastPbCall,
-    startOfToday,
-    sevenDaysAgo,
-    startOfMonth,
-  ])
+  }, [dateRangeParams, filterUnit, filterBranch])
+
 
   // ---------- INCOME SOURCES (PIE) ----------
+
 
   const incomeSources = useMemo(() => {
     const hasEmailData =
@@ -243,13 +603,15 @@ function DashboardPage({ transactions, isLoading, error }) {
         ? paymentBreakdown.count > 0
         : false
 
+
     const emailCash = hasEmailData ? paymentBreakdown.cash || 0 : 0
     const emailQris = hasEmailData ? paymentBreakdown.qris || 0 : 0
     const emailTransfer = hasEmailData ? paymentBreakdown.transfer || 0 : 0
 
+
     const manualAgg =
       filteredTransactions
-        .filter((t) => t.type === 'Income')
+        .filter((t) => t.type === 'Income' && t.source !== 'Email')
         .reduce(
           (acc, t) => {
             const method = (t.payment || '').toUpperCase()
@@ -262,19 +624,25 @@ function DashboardPage({ transactions, isLoading, error }) {
           { cash: 0, qris: 0, transfer: 0 },
         ) || { cash: 0, qris: 0, transfer: 0 }
 
+
     const totalCash = emailCash + manualAgg.cash
     const totalQris = emailQris + manualAgg.qris
     const totalTransfer = emailTransfer + manualAgg.transfer
 
+
     const result = []
     if (totalCash > 0) result.push({ name: 'Cash', value: totalCash })
     if (totalQris > 0) result.push({ name: 'QRIS', value: totalQris })
-    if (totalTransfer > 0) result.push({ name: 'Transfer', value: totalTransfer })
+    if (totalTransfer > 0)
+      result.push({ name: 'Transfer', value: totalTransfer })
+
 
     return result
   }, [paymentBreakdown, filteredTransactions])
 
+
   // ---------- EXPENSE BY CATEGORY ----------
+
 
   const expenseCatMap = filteredTransactions
     .filter((t) => t.type === 'Expense')
@@ -284,12 +652,14 @@ function DashboardPage({ transactions, isLoading, error }) {
       return acc
     }, {})
 
+
   const expenseByCategory = Object.entries(expenseCatMap).map(
     ([name, value]) => ({
       name,
       value,
     }),
   )
+
 
   const formatCurrency = (amount) =>
     new Intl.NumberFormat('id-ID', {
@@ -301,7 +671,9 @@ function DashboardPage({ transactions, isLoading, error }) {
       .replace('Rp', '')
       .trim()
 
+
   // ---------- RENDER STATES ----------
+
 
   if (isLoading) {
     return (
@@ -318,6 +690,7 @@ function DashboardPage({ transactions, isLoading, error }) {
     )
   }
 
+
   if (error) {
     return (
       <main
@@ -332,6 +705,7 @@ function DashboardPage({ transactions, isLoading, error }) {
       </main>
     )
   }
+
 
   return (
     <main
@@ -411,6 +785,7 @@ function DashboardPage({ transactions, isLoading, error }) {
                 <option>Custom</option>
               </select>
 
+
               <input
                 type="date"
                 value={customStart}
@@ -448,6 +823,7 @@ function DashboardPage({ transactions, isLoading, error }) {
             </div>
           </div>
 
+
           {/* Unit Bisnis */}
           <div>
             <label
@@ -482,6 +858,7 @@ function DashboardPage({ transactions, isLoading, error }) {
             </select>
           </div>
 
+
           {/* Cabang */}
           <div>
             <label
@@ -514,6 +891,7 @@ function DashboardPage({ transactions, isLoading, error }) {
           </div>
         </div>
       </div>
+
 
       {/* KPI cards */}
       <div
@@ -550,6 +928,7 @@ function DashboardPage({ transactions, isLoading, error }) {
         />
       </div>
 
+
       {/* Charts */}
       <div
         style={{
@@ -581,10 +960,22 @@ function DashboardPage({ transactions, isLoading, error }) {
             <ResponsiveContainer width="100%" height="100%">
               <LineChart
                 data={trendData}
-                margin={{ top: 20, right: 20, left: 60, bottom: 0 }}
+                margin={{ top: 20, right: 40, left: 30, bottom: 60 }}
               >
-                <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" />
-                <XAxis dataKey="date" stroke="#9ca3af" />
+                <CustomGrid />
+                <XAxis 
+                  dataKey="date" 
+                  stroke="#9ca3af"
+                  interval={0}
+                  tickFormatter={(value) => {
+                    if (labelDates.has(value)) {
+                      return formatDateForChart(value)
+                    }
+                    return ''
+                  }}
+                  tick={{ fontSize: 11 }}
+                  height={60}
+                />
                 <YAxis
                   stroke="#9ca3af"
                   domain={[0, (dataMax) => dataMax * 1.1]}
@@ -593,7 +984,7 @@ function DashboardPage({ transactions, isLoading, error }) {
                     new Intl.NumberFormat('id-ID').format(v)
                   }
                 />
-                <Tooltip />
+                <Tooltip content={<CustomTooltip />} />
                 <Legend />
                 <Line
                   type="monotone"
@@ -602,6 +993,7 @@ function DashboardPage({ transactions, isLoading, error }) {
                   stroke="#22c55e"
                   strokeWidth={2}
                   dot={false}
+                  activeDot={{ r: 6 }}
                 />
                 <Line
                   type="monotone"
@@ -610,11 +1002,13 @@ function DashboardPage({ transactions, isLoading, error }) {
                   stroke="#ef4444"
                   strokeWidth={2}
                   dot={false}
+                  activeDot={{ r: 6 }}
                 />
               </LineChart>
             </ResponsiveContainer>
           </div>
         </div>
+
 
         {/* Pie + bar */}
         <div
@@ -666,6 +1060,7 @@ function DashboardPage({ transactions, isLoading, error }) {
             </div>
           </div>
 
+
           <div>
             <h4
               style={{
@@ -683,9 +1078,12 @@ function DashboardPage({ transactions, isLoading, error }) {
                   layout="vertical"
                   margin={{ top: 10, right: 20, left: 40, bottom: 10 }}
                 >
-                  <CartesianGrid stroke="var(--border)" />
                   <XAxis type="number" stroke="#9ca3af" />
-                  <YAxis type="category" dataKey="name" stroke="#9ca3af" />
+                  <YAxis
+                    type="category"
+                    dataKey="name"
+                    stroke="#9ca3af"
+                  />
                   <Tooltip />
                   <Bar dataKey="value" name="Jumlah" fill="#f97316" />
                 </BarChart>
@@ -698,7 +1096,9 @@ function DashboardPage({ transactions, isLoading, error }) {
   )
 }
 
+
 // --- KPI card -------------------------------------------------
+
 
 function KpiCard({ title, value, icon, color }) {
   return (
@@ -751,5 +1151,6 @@ function KpiCard({ title, value, icon, color }) {
     </div>
   )
 }
+
 
 export default DashboardPage

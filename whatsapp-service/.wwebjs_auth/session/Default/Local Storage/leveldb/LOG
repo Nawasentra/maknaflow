@@ -1,6 +1,0 @@
-2026/01/13-12:55:12.899 7b86e Reusing MANIFEST /Users/abellams/Desktop/01 Projects/MaknaFlow/whatsapp-service/.wwebjs_auth/session/Default/Local Storage/leveldb/MANIFEST-000001
-2026/01/13-12:55:12.905 7b86e Recovering log #8
-2026/01/13-12:55:12.906 7b86e Reusing old log /Users/abellams/Desktop/01 Projects/MaknaFlow/whatsapp-service/.wwebjs_auth/session/Default/Local Storage/leveldb/000008.log 
-2026/01/13-12:56:12.912 7b871 Level-0 table #12: started
-2026/01/13-12:56:12.919 7b871 Level-0 table #12: 15395 bytes OK
-2026/01/13-12:56:12.921 7b871 Delete type=0 #8

@@ -19,6 +19,7 @@ from rest_framework.parsers import JSONParser, MultiPartParser, FormParser
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from django.shortcuts import get_object_or_404
 from django.http import HttpResponse, JsonResponse
+from django.contrib.auth import get_user_model
 from django.utils import timezone
 from rest_framework import viewsets, filters
 from rest_framework.decorators import action
@@ -995,7 +996,41 @@ class InternalWhatsAppIngestion(APIView):
                 {"error": "Gagal membuat transaksi", "detail": str(e)}, 
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+def api_staff_list(request):
+    """
+    API khusus untuk Bot WhatsApp.
+    Mengambil data User yang punya nomor HP dan Cabang.
+    """
+    User = get_user_model()
+    
+    # Ambil user yang punya nomor HP dan sudah diverifikasi
+    staff_users = User.objects.filter(phone_number__isnull=False).exclude(phone_number='')
+    
+    data_bot = {}
+
+    for user in staff_users:
+        # 1. Pastikan nomor HP bersih (Format: 628...)
+        phone = str(user.phone_number).replace('+', '').replace('-', '').strip()
         
+        # Tambahkan akhiran WA
+        wa_id = f"{phone}@s.whatsapp.net"
+        
+        # 2. Ambil nama Cabang (Cegah error jika cabang kosong)
+        nama_cabang = "Pusat"
+        if user.assigned_branch:
+            nama_cabang = str(user.assigned_branch) # Atau user.assigned_branch.name
+
+        # 3. Masukkan ke kamus data
+        data_bot[wa_id] = {
+            "nama": user.username,  # Atau user.first_name
+            "cabang": nama_cabang,
+            "unit": "Laundry"       # Bisa disesuaikan logic-nya
+        }
+
+    # Kembalikan sebagai JSON (Data Mentah)
+    return JsonResponse(data_bot)
+   
 class HealthCheckView(APIView):
     """
     Cek kesehatan server untuk Render
