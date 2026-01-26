@@ -1,4 +1,5 @@
 from django.urls import path, include
+from .views import api_staff_list
 from rest_framework.routers import SimpleRouter
 from . import views
 from app.views import (
@@ -8,8 +9,12 @@ from app.views import (
     TransactionViewSet,
     UserViewSet,
     IngestionLogViewSet,
-    EmailWebhookView,
+    DailySummaryViewSet,
+    EmailIngestionWebhook,
     WhatsAppWebhookView,
+    InternalWhatsAppIngestion,
+    HealthCheckView,
+    BotMasterData,
 )
 
 # Create router for ViewSets
@@ -18,14 +23,32 @@ router.register(r'branches', BranchViewSet, basename='branch')
 router.register(r'categories', CategoryViewSet, basename='category')
 router.register(r'transactions', TransactionViewSet, basename='transaction')
 router.register(r'users', UserViewSet, basename='user')
-router.register(r'ingestion-logs', IngestionLogViewSet, basename='ingestion-log')
+router.register(r'ingestion-logs', IngestionLogViewSet, basename='ingestionlog')
+router.register(r'daily-summaries', DailySummaryViewSet, basename='dailysummary')
 
 urlpatterns = [
     path('', views.home, name='home'),
-    path('auth/google/', GoogleLogin.as_view(), name='google_login'),
-    path('api/', include(router.urls)),
     
-    # Webhook endpoints (API Key protected)
-    path('webhooks/email/', EmailWebhookView.as_view(), name='email_webhook'),
-    path('webhooks/whatsapp/', WhatsAppWebhookView.as_view(), name='whatsapp_webhook'),
+    # API endpoints (with /api/ prefix)
+    path('api/', include([
+        # Authentication endpoints under /api/
+        path('auth/google/', GoogleLogin.as_view(), name='google_login'),
+        path('auth/', include('dj_rest_auth.urls')),
+        path('auth/registration/', include('dj_rest_auth.registration.urls')),
+        
+        # ViewSet endpoints
+        path('', include(router.urls)),
+    ])),
+    
+    # Email Webhook endpoint
+    path('webhooks/make/', EmailIngestionWebhook.as_view(), name='email-webhook'),
+    
+    # WhatsApp Webhook endpoint
+    path('webhooks/whatsapp/', WhatsAppWebhookView.as_view(), name='whatsapp-webhook'),
+    path('api/ingestion/internal-wa/', InternalWhatsAppIngestion.as_view()),
+    path('api/bot/master-data/', BotMasterData.as_view()),
+    path('api/bot/staff-list/', api_staff_list, name='api_staff_list'),
+
+    # Health Check endpoint
+    path('health/', HealthCheckView.as_view(), name='health-check'),
 ]

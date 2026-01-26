@@ -1,127 +1,115 @@
 // src/lib/api/transactions.js
-// Sementara masih pakai data dummy dari paste.txt (rawTransactions).
-
 import api from '../axios'
 
-// Bentuk data transaksi untuk referensi:
-// {
-//   id: number,
-//   date: string (YYYY-MM-DD),
-//   unitBusiness: string,
-//   branch: string,
-//   category: string,
-//   type: 'Income' | 'Expense',
-//   amount: number,
-//   payment: string,
-// }
+// ---------- FETCH HELPERS ----------
 
-// --- MOCK DATA LOKAL (boleh import dari file lain kalau mau) ---
-const mockTransactions = [
-  {
-    id: 1,
-    date: '2026-01-07',
-    unitBusiness: 'Laundry',
-    branch: 'Laundry Antapani',
-    category: 'Cuci Kering',
-    type: 'Income',
-    amount: 250000,
-    payment: 'Cash',
-  },
-  {
-    id: 2,
-    date: '2026-01-07',
-    unitBusiness: 'Laundry',
-    branch: 'Laundry Antapani',
-    category: 'Setrika',
-    type: 'Income',
-    amount: 150000,
-    payment: 'QRIS',
-  },
-  {
-    id: 3,
-    date: '2026-01-06',
-    unitBusiness: 'Carwash',
-    branch: 'Carwash',
-    category: 'Cuci Motor',
-    type: 'Income',
-    amount: 75000,
-    payment: 'Cash',
-  },
-  {
-    id: 4,
-    date: '2026-01-06',
-    unitBusiness: 'Laundry',
-    branch: 'Laundry Buah Batu',
-    category: 'Cuci Basah',
-    type: 'Income',
-    amount: 180000,
-    payment: 'QRIS',
-  },
-  {
-    id: 5,
-    date: '2026-01-05',
-    unitBusiness: 'Kos-kosan',
-    branch: 'Kos-kosan',
-    category: 'Sewa Kamar',
-    type: 'Income',
-    amount: 800000,
-    payment: 'Cash',
-  },
-  {
-    id: 6,
-    date: '2026-01-04',
-    unitBusiness: 'Laundry',
-    branch: 'Laundry Antapani',
-    category: 'Gaji Karyawan',
-    type: 'Expense',
-    amount: 500000,
-    payment: 'Cash',
-  },
-  {
-    id: 7,
-    date: '2026-01-03',
-    unitBusiness: 'Carwash',
-    branch: 'Carwash',
-    category: 'Beli Sabun',
-    type: 'Expense',
-    amount: 150000,
-    payment: 'Cash',
-  },
-]
-
-// --- FUNGSI API (nanti tinggal ganti ke backend beneran) ---
-
-export async function fetchTransactions(params) {
-  // NANTI:
-  // const res = await api.get('/transactions/', { params })
-  // return res.data
-
-  // SEKARANG: ignore params, balikin mock
-  return Promise.resolve(mockTransactions)
+export async function fetchBranches() {
+  const res = await api.get('/branches/')
+  return Array.isArray(res.data) ? res.data : res.data.results || []
 }
 
-export async function createTransaction(payload) {
-  // NANTI:
-  // const res = await api.post('/transactions/', payload)
-  // return res.data
+export async function fetchCategories() {
+  const res = await api.get('/categories/')
+  return Array.isArray(res.data) ? res.data : res.data.results || []
+}
 
-  const newId =
-    mockTransactions.length === 0
-      ? 1
-      : Math.max(...mockTransactions.map((t) => t.id)) + 1
+// ---------- TRANSACTIONS ----------
 
-  const tx = { id: newId, ...payload }
-  mockTransactions.push(tx)
-  return Promise.resolve(tx)
+// backend → frontend mapper
+function mapTransaction(t) {
+  const type =
+    t.transaction_type === 'INCOME'
+      ? 'Income'
+      : t.transaction_type === 'EXPENSE'
+      ? 'Expense'
+      : 'Income'
+
+  const sourceRaw = t.source || 'MANUAL'
+  const source =
+    sourceRaw === 'EMAIL'
+      ? 'Email'
+      : sourceRaw === 'WHATSAPP'
+      ? 'Whatsapp'
+      : 'Manual'
+
+  return {
+    id: t.id,
+    date: t.date,
+
+    // Unit bisnis pakai enum branch_type (LAUNDRY, CARWASH, KOS, OTHER)
+    unitBusiness: t.branch_type || 'Unknown',
+
+    // Cabang pakai nama cabang
+    branch: t.branch_name || 'Unknown',
+
+    // Nama kategori dari expanded field di TransactionSerializer
+    category: t.category_name || 'Lainnya',
+
+    type,
+    amount: Number(t.amount ?? 0),
+
+    // HANYA payment_method → CASH / QRIS / TRANSFER / null
+    payment: t.payment_method || 'Unknown',
+
+    source,
+    description: t.description,
+    createdAt: t.created_at,
+
+    // Id mentah untuk keperluan form
+    branchId: t.branch,
+    categoryId: t.category,
+
+    // flag: transaksi email itemized → akan di-hide di TransactionsPage
+    isEmailPosItem: source === 'Email',
+  }
+}
+
+// frontend → backend mapper
+function mapToBackendPayload(frontendTx) {
+  return {
+    date: frontendTx.date,
+    branch: frontendTx.branchId,
+    category: frontendTx.categoryId,
+    amount: frontendTx.amount,
+    description: frontendTx.description || '',
+    payment_method: frontendTx.payment, // "CASH" | "QRIS" | "TRANSFER"
+    transaction_type:
+      frontendTx.type === 'Income' ? 'INCOME' : 'EXPENSE',
+
+    source: frontendTx.source
+      ? frontendTx.source.toUpperCase()
+      : 'MANUAL',
+
+    source_identifier:
+      frontendTx.sourceIdentifier || 'manual-entry',
+  }
+}
+
+export async function fetchTransactions(params = {}) {
+  const res = await api.get('/transactions/', { params })
+  const data = Array.isArray(res.data) ? res.data : res.data.results || []
+  const mapped = data.map(mapTransaction)
+  console.log('fetchTransactions ->', mapped)
+  return mapped
+}
+
+export async function createTransaction(frontendTx) {
+  console.log('createTransaction frontendTx:', frontendTx)
+  const payload = mapToBackendPayload(frontendTx)
+  console.log('createTransaction backend payload:', payload)
+  try {
+    const res = await api.post('/transactions/', payload)
+    console.log('createTransaction response:', res.data)
+    return mapTransaction(res.data)
+  } catch (e) {
+    console.error(
+      'createTransaction error:',
+      e.response?.data || e.message || e,
+    )
+    throw e
+  }
 }
 
 export async function deleteTransaction(id) {
-  // NANTI:
-  // await api.delete(`/transactions/${id}/`)
-
-  const idx = mockTransactions.findIndex((t) => t.id === id)
-  if (idx !== -1) {
-    mockTransactions.splice(idx, 1)
-  }
-  return Promise.resolve()
+  await api.delete(`/transactions/${id}/`)
 }

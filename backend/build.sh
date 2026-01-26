@@ -2,18 +2,21 @@
 # Exit on error
 set -o errexit
 
-echo "--- Starting Build with uv ---"
+echo "--- Building with uv ---"
 
-# Install dependencies using uv sync
-# --frozen ensures we use exactly what's in uv.lock
+# 1. Install dependencies
+# --frozen ensures we use exactly the versions in uv.lock
 uv sync --frozen --no-dev
 
-# Collect static files
+# 2. Collect Static Files
+# We use 'uv run' to execute commands inside the virtual environment uv created
 echo "--- Collecting Static Files ---"
 uv run python manage.py collectstatic --no-input
 
-# Run migrations
+# 3. Run Migrations
 echo "--- Running Migrations ---"
 uv run python manage.py migrate
 
-echo "--- Build Complete ---"
+# 4. Create Superuser (if not exists)
+echo "--- Creating Superuser ---"
+uv run python manage.py create_superuser

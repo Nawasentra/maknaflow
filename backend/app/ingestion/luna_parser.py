@@ -40,6 +40,9 @@ def parse_top_list(lines):
 def parse_luna_email(plain_text):
     lines = [ln.strip() for ln in plain_text.strip().splitlines() if ln.strip()]
     data = defaultdict(dict)
+    
+    # Default to CASH, will be updated if we find payment details
+    payment_method = "CASH"
 
     label_maps = {
         "daily": {
