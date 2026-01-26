@@ -59,10 +59,13 @@ function mapTransaction(t) {
     branchId: t.branch,
     categoryId: t.category,
 
-    // ONLY hide Email transactions that are INCOME
+    // ONLY hide Email transactions that are INCOME AND have category "Penjualan via POS"
     // Because we synthesize them from DailySummary
-    // Expense transactions from Email should still show
-    isEmailPosItem: source === 'Email' && type === 'Income',
+    // All other transactions (including Email Expenses and Manual/WhatsApp) should show
+    isEmailPosItem: 
+      source === 'Email' && 
+      type === 'Income' && 
+      (t.category_name === 'Penjualan via POS' || t.category_name === 'POS Sales'),
   }
 }
 
