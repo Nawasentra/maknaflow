@@ -659,57 +659,47 @@ function TransactionsPage({
             {Math.min(endIndex, totalItems)} dari {totalItems} transaksi
           </span>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <button
               onClick={() => goToPage(currentPage - 1)}
               disabled={currentPage === 1}
               style={{
-                padding: '0.3rem 0.6rem',
-                borderRadius: 6,
+                padding: '0.5rem 0.75rem',
+                borderRadius: 8,
                 border: '1px solid var(--border)',
-                backgroundColor: 'transparent',
+                backgroundColor: 'var(--bg)',
+                color: 'var(--text)',
                 cursor: currentPage === 1 ? 'not-allowed' : 'pointer',
                 opacity: currentPage === 1 ? 0.5 : 1,
+                fontSize: '0.875rem',
               }}
             >
               ‹
             </button>
 
-            {Array.from({ length: totalPages }).map((_, idx) => {
-              const page = idx + 1
-              const isActive = page === currentPage
-              return (
-                <button
-                  key={page}
-                  onClick={() => goToPage(page)}
-                  style={{
-                    minWidth: 28,
-                    padding: '0.3rem 0.5rem',
-                    borderRadius: 6,
-                    border: '1px solid var(--border)',
-                    backgroundColor: isActive
-                      ? 'var(--accent)'
-                      : 'var(--bg-elevated)',
-                    color: isActive ? 'var(--bg)' : 'var(--text)',
-                    fontSize: '0.8rem',
-                    cursor: 'pointer',
-                  }}
-                >
-                  {page}
-                </button>
-              )
-            })}
+            <span
+              style={{
+                padding: '0.5rem 1rem',
+                fontSize: '0.875rem',
+                color: 'var(--text)',
+                fontWeight: '500',
+              }}
+            >
+              {currentPage} / {totalPages}
+            </span>
 
             <button
               onClick={() => goToPage(currentPage + 1)}
               disabled={currentPage === totalPages}
               style={{
-                padding: '0.3rem 0.6rem',
-                borderRadius: 6,
+                padding: '0.5rem 0.75rem',
+                borderRadius: 8,
                 border: '1px solid var(--border)',
-                backgroundColor: 'transparent',
+                backgroundColor: 'var(--bg)',
+                color: 'var(--text)',
                 cursor: currentPage === totalPages ? 'not-allowed' : 'pointer',
                 opacity: currentPage === totalPages ? 0.5 : 1,
+                fontSize: '0.875rem',
               }}
             >
               ›

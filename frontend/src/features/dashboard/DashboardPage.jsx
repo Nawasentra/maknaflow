@@ -500,25 +500,37 @@ function DashboardPage({ transactions, isLoading, error }) {
   const netProfit = incomeTotal - expenseTotal
 
 
-  // ✅ FIX 2: Count transactions (each daily summary = 1 transaction)
-  const manualTransactionCount = filteredTransactions.filter((t) => t.source !== 'Email').length
-  // ✅ Each daily summary counts as 1 transaction (since API doesn't return transaction_count)
-  const emailTransactionCount = filteredDailySummaries.length
+  // ✅ FIX 2: Count ALL transactions properly
+  // Manual/WhatsApp transactions (excluding Email POS items that are synthesized)
+  const manualTransactionCount = filteredTransactions.filter((t) => {
+    // Exclude Email Income transactions that are synthesized from daily summaries
+    if (t.source === 'Email' && t.type === 'Income') return false
+    return true
+  }).length
+  
+  // ✅ Each daily summary represents synthesized Email POS transactions
+  // Count based on payment methods that have amounts > 0
+  const emailTransactionCount = filteredDailySummaries.reduce((count, s) => {
+    let transactionCount = 0
+    if (Number(s.cash_amount) > 0) transactionCount++
+    if (Number(s.qris_amount) > 0) transactionCount++
+    if (Number(s.transfer_amount) > 0) transactionCount++
+    return count + transactionCount
+  }, 0)
+  
   const totalTransactions = manualTransactionCount + emailTransactionCount
 
   console.log('📊 Transaction Count Debug:', {
     manualCount: manualTransactionCount,
     emailCount: emailTransactionCount,
     total: totalTransactions,
-    filteredTransactions: filteredTransactions.length,
+    filteredTransactionsTotal: filteredTransactions.length,
     filteredDailySummaries: filteredDailySummaries.length,
-    dailySummaryDetails: filteredDailySummaries.map(s => ({
-      date: s.date,
-      branch: s.branch_name,
-      cash: s.cash_amount,
-      qris: s.qris_amount,
-      transfer: s.transfer_amount
-    }))
+    manualBreakdown: {
+      income: filteredTransactions.filter(t => t.type === 'Income' && t.source !== 'Email').length,
+      expense: filteredTransactions.filter(t => t.type === 'Expense').length,
+      emailIncome: filteredTransactions.filter(t => t.type === 'Income' && t.source === 'Email').length,
+    }
   })
 
 
@@ -1139,7 +1151,7 @@ function KpiCard({ title, value, icon, color }) {
           <p
             style={{
               fontSize: '1.875rem',
-              fontWeight: '700',
+              fontWeight: 700,
               margin: 0,
               color: 'var(--text)',
             }}

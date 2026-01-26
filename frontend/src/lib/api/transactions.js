@@ -59,8 +59,10 @@ function mapTransaction(t) {
     branchId: t.branch,
     categoryId: t.category,
 
-    // flag: transaksi email itemized → akan di-hide di TransactionsPage
-    isEmailPosItem: source === 'Email',
+    // ONLY hide Email transactions that are INCOME
+    // Because we synthesize them from DailySummary
+    // Expense transactions from Email should still show
+    isEmailPosItem: source === 'Email' && type === 'Income',
   }
 }
 
