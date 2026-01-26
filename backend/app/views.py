@@ -597,30 +597,20 @@ class DailySummaryViewSet(viewsets.ReadOnlyModelViewSet):
 
         if start_date:
             queryset = queryset.filter(date__gte=start_date)
-            logger.debug(f"Filtering by start_date >= {start_date}")
+
         if end_date:
             queryset = queryset.filter(date__lte=end_date)
-            logger.debug(f"Filtering by end_date <= {end_date}")
 
         # 2. Branch name filter (string branch name, e.g. 'Testing')
         branch_name = request.query_params.get("branch")
         if branch_name and branch_name != "Semua Cabang":
-            queryset = queryset.filter(branch__name=branch_name)
-            logger.debug(f"Filtering by branch name: {branch_name}")
+            queryset = queryset.filter(branch_name=branch_name)
 
         # 3. Branch type (unit) filter
         # Dashboard sends ?unit=Laundry/Carwash/Kos/Other
         branch_type = request.query_params.get("unit")
         if branch_type and branch_type != "Semua Unit":
-            unit_map = {
-                "Laundry": "LAUNDRY",
-                "Carwash": "CARWASH",
-                "Kos": "KOS",
-                "Other": "OTHER",
-            }
-            db_branch_type = unit_map.get(branch_type, branch_type.upper())
-            queryset = queryset.filter(branch__branch_type=db_branch_type)
-            logger.debug(f"Filtering by branch type: {db_branch_type}")
+            queryset = queryset.filter(branch_type=branch_type)
 
         count = queryset.count()
         logger.info(
