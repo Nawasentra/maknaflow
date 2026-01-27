@@ -65,7 +65,7 @@ function mapTransaction(t) {
     // Because we synthesize them from DailySummary
     // Expense transactions from Email should still show
     // Use the cleaned 'source' variable here to be safe
-    isEmailPosItem: source === 'Email' && type === 'Income',
+    //isEmailPosItem: source === 'Email' && type === 'Income',
   }
 }
 
