@@ -17,20 +17,22 @@ export async function fetchCategories() {
 
 // backend → frontend mapper
 function mapTransaction(t) {
+  // 1. Robust handling for Transaction Type (Handle potentially lowercase values)
+  const typeRaw = (t.transaction_type || 'INCOME').toUpperCase()
   const type =
-    t.transaction_type === 'INCOME'
-      ? 'Income'
-      : t.transaction_type === 'EXPENSE'
+    typeRaw === 'EXPENSE'
       ? 'Expense'
-      : 'Income'
+      : 'Income' // Default to Income
 
-  const sourceRaw = t.source || 'MANUAL'
-  const source =
-    sourceRaw === 'EMAIL'
-      ? 'Email'
-      : sourceRaw === 'WHATSAPP'
-      ? 'Whatsapp'
-      : 'Manual'
+  // 2. Robust handling for Source (Handle mixed case: "WhatsApp", "whatsapp", "WHATSAPP")
+  const sourceRaw = (t.source || 'MANUAL').toUpperCase()
+  
+  let source = 'Manual'
+  if (sourceRaw === 'EMAIL') {
+    source = 'Email'
+  } else if (sourceRaw === 'WHATSAPP') {
+    source = 'Whatsapp'
+  }
 
   return {
     id: t.id,
@@ -62,6 +64,7 @@ function mapTransaction(t) {
     // ONLY hide Email transactions that are INCOME
     // Because we synthesize them from DailySummary
     // Expense transactions from Email should still show
+    // Use the cleaned 'source' variable here to be safe
     isEmailPosItem: source === 'Email' && type === 'Income',
   }
 }
@@ -78,6 +81,7 @@ function mapToBackendPayload(frontendTx) {
     transaction_type:
       frontendTx.type === 'Income' ? 'INCOME' : 'EXPENSE',
 
+    // Ensure to send uppercase to backend
     source: frontendTx.source
       ? frontendTx.source.toUpperCase()
       : 'MANUAL',
@@ -90,8 +94,12 @@ function mapToBackendPayload(frontendTx) {
 export async function fetchTransactions(params = {}) {
   const res = await api.get('/transactions/', { params })
   const data = Array.isArray(res.data) ? res.data : res.data.results || []
+  
+  // Debug log to see raw data from backend (Check browser console)
+  console.log('Raw Backend Transactions:', data)
+  
   const mapped = data.map(mapTransaction)
-  console.log('fetchTransactions ->', mapped)
+  console.log('Mapped Transactions:', mapped)
   return mapped
 }
 
