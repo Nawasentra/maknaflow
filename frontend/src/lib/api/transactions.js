@@ -17,22 +17,18 @@ export async function fetchCategories() {
 
 // backend → frontend mapper
 function mapTransaction(t) {
-  // 1. Robust handling for Transaction Type (Handle potentially lowercase values)
-  const typeRaw = (t.transaction_type || 'INCOME').toUpperCase()
   const type =
-    typeRaw === 'EXPENSE'
+    (t.transaction_type || '').toUpperCase() === 'INCOME'
+      ? 'Income'
+      : (t.transaction_type || '').toUpperCase() === 'EXPENSE'
       ? 'Expense'
-      : 'Income' // Default to Income
+      : 'Income'
 
-  // 2. Robust handling for Source (Handle mixed case: "WhatsApp", "whatsapp", "WHATSAPP")
+  // Normalize source to handle case sensitivity
   const sourceRaw = (t.source || 'MANUAL').toUpperCase()
-  
   let source = 'Manual'
-  if (sourceRaw === 'EMAIL') {
-    source = 'Email'
-  } else if (sourceRaw === 'WHATSAPP') {
-    source = 'Whatsapp'
-  }
+  if (sourceRaw === 'EMAIL') source = 'Email'
+  else if (sourceRaw === 'WHATSAPP') source = 'Whatsapp'
 
   return {
     id: t.id,
@@ -64,7 +60,6 @@ function mapTransaction(t) {
     // ONLY hide Email transactions that are INCOME
     // Because we synthesize them from DailySummary
     // Expense transactions from Email should still show
-    // Use the cleaned 'source' variable here to be safe
     isEmailPosItem: source === 'Email' && type === 'Income',
   }
 }
@@ -81,7 +76,6 @@ function mapToBackendPayload(frontendTx) {
     transaction_type:
       frontendTx.type === 'Income' ? 'INCOME' : 'EXPENSE',
 
-    // Ensure send uppercase to backend
     source: frontendTx.source
       ? frontendTx.source.toUpperCase()
       : 'MANUAL',
@@ -91,15 +85,56 @@ function mapToBackendPayload(frontendTx) {
   }
 }
 
+// FIXED: Fetch ALL pages recursively to ensure we don't miss manual transactions
+// pushed off the first page by email transactions.
 export async function fetchTransactions(params = {}) {
-  const res = await api.get('/transactions/', { params })
-  const data = Array.isArray(res.data) ? res.data : res.data.results || []
+  let allResults = []
+  let nextUrl = '/transactions/'
+  let page = 1
   
-  // Debug log to see raw data from backend (Check browser console)
-  console.log('Raw Backend Transactions:', data)
-  
-  const mapped = data.map(mapTransaction)
-  console.log('Mapped Transactions:', mapped)
+  // Safety limit to prevent infinite loops if API is misbehaving
+  const MAX_PAGES = 20 
+
+  try {
+    // Initial fetch
+    // We explicitly request a larger page size to minimize requests
+    const config = { params: { ...params, page_size: 100 } }
+    
+    while (nextUrl && page <= MAX_PAGES) {
+      // If nextUrl is a full URL (from DRF 'next' field), use it directly
+      // Otherwise use the relative path for the first request
+      const urlToFetch = nextUrl.startsWith('http') 
+        ? nextUrl.replace(import.meta.env.VITE_API_URL || '', '') // strip base URL if needed for axios interceptor
+        : nextUrl
+
+      const res = await api.get(urlToFetch, config)
+      
+      const data = res.data
+      let results = []
+
+      if (Array.isArray(data)) {
+        // Not paginated
+        results = data
+        nextUrl = null
+      } else {
+        // Paginated
+        results = data.results || []
+        nextUrl = data.next // URL for the next page
+      }
+
+      allResults = [...allResults, ...results]
+      page += 1
+      
+      // Clear params for subsequent requests since 'next' URL already contains them
+      if (nextUrl) delete config.params
+    }
+  } catch (err) {
+    console.error("Error fetching transactions:", err)
+    // Return whatever we managed to fetch
+  }
+
+  const mapped = allResults.map(mapTransaction)
+  console.log(`Fetched ${mapped.length} transactions total.`)
   return mapped
 }
 
