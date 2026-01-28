@@ -1,8 +1,22 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
 from .models import (
-    User, Branch, Category, Transaction, IngestionLog, DailySummary
+    User, Branch, Category, Transaction, IngestionLog, DailySummary, UserPhoneNumber, UserBranchAssignment, UserLineID
 )
+
+class UserPhoneNumberInline(admin.TabularInline):
+    model = UserPhoneNumber
+    extra = 1
+
+class UserBranchAssignmentInline(admin.TabularInline):
+    model = UserBranchAssignment
+    extra = 1
+
+class UserLineIDInline(admin.TabularInline):
+    model = UserLineID
+    extra = 1
+
+
 
 @admin.register(Branch)
 class BranchAdmin(admin.ModelAdmin):
@@ -244,3 +258,5 @@ class CustomUserAdmin(UserAdmin):
             'fields': ('phone_number', 'assigned_branch', 'is_verified'),
         }),
     )
+
+    inlines = [UserPhoneNumberInline, UserBranchAssignmentInline, UserLineIDInline]
