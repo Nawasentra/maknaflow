@@ -70,26 +70,9 @@ class Branch(TimeStampedModel):
 
 
 class User(AbstractUser):
-    """
-    Custom User Model
-    - Owner: is_superuser=True
-    - Staff: regular users with phone numbers for WhatsApp reporting
-    """
-    phone_number = models.CharField(
-        max_length=20, 
-        blank=True, 
-        null=True,
-        unique=True,
-        help_text="Staff's WhatsApp number for transaction reporting"
-    )
-    assigned_branch = models.ForeignKey(
-        Branch,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name='staff_members',
-        help_text="Branch where this staff member works (null for owner)"
-    )
+    # Removed single phone_number and assigned_branch fields
+    # Use related models: UserPhoneNumber, UserBranchAssignment, UserLineID
+    
     is_verified = models.BooleanField(
         default=False,
         help_text="If True, transactions from this staff auto-approve without owner verification"
@@ -98,6 +81,32 @@ class User(AbstractUser):
     def __str__(self):
         return self.email or self.username
 
+
+class UserPhoneNumber(TimeStampedModel):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='phone_numbers')
+    phone_number = models.CharField(max_length=20, unique=True)
+    
+    def __str__(self):
+        return f"{self.user.username} - {self.phone_number}"
+
+
+class UserBranchAssignment(TimeStampedModel):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='branch_assignments')
+    branch = models.ForeignKey(Branch, on_delete=models.CASCADE, related_name='assigned_staff')
+    
+    class Meta:
+        unique_together = ('user', 'branch')
+
+    def __str__(self):
+        return f"{self.user.username} -> {self.branch.name}"
+
+
+class UserLineID(TimeStampedModel):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='line_ids')
+    line_id = models.CharField(max_length=100, unique=True)
+    
+    def __str__(self):
+        return f"{self.user.username} - {self.line_id}"
 
 class Category(TimeStampedModel):
     """

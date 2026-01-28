@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Branch, User, Category, Transaction, IngestionLog, DailySummary
+from .models import Branch, User, Category, Transaction, IngestionLog, DailySummary, UserPhoneNumber, UserBranchAssignment, UserLineID
 
 # ==============================================
 # 1. REFERENCE SERIALIZERS
@@ -18,10 +18,30 @@ class CategorySerializer(serializers.ModelSerializer):
         fields = ['id', 'name', 'transaction_type']
 
 
+class UserPhoneNumberSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = UserPhoneNumber
+        fields = ['id', 'phone_number']
+
+class UserBranchAssignmentSerializer(serializers.ModelSerializer):
+    branch_name = serializers.CharField(source='branch.name', read_only=True)
+    class Meta:
+        model = UserBranchAssignment
+        fields = ['id', 'branch', 'branch_name']
+
+class UserLineIDSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = UserLineID
+        fields = ['id', 'line_id']
+
 class UserSerializer(serializers.ModelSerializer):
+    phone_numbers = UserPhoneNumberSerializer(many=True, read_only=True)
+    branch_assignments = UserBranchAssignmentSerializer(many=True, read_only=True)
+    line_ids = UserLineIDSerializer(many=True, read_only=True)
+
     class Meta:
         model = User
-        fields = ['id', 'username', 'email', 'phone_number', 'assigned_branch', 'is_verified']
+        fields = ['id', 'username', 'email', 'is_verified', 'phone_numbers', 'branch_assignments', 'line_ids']
 
 # ==============================================
 # 2. MAIN TRANSACTION SERIALIZER
