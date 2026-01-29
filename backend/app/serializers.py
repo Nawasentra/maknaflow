@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Branch, User, Category, Transaction, IngestionLog, DailySummary, UserPhoneNumber, UserBranchAssignment, UserLineID
+from .models import Branch, User, Category, Transaction, IngestionLog, DailySummary, StaffIdentity
 
 # ==============================================
 # 1. REFERENCE SERIALIZERS
@@ -17,31 +17,32 @@ class CategorySerializer(serializers.ModelSerializer):
         model = Category
         fields = ['id', 'name', 'transaction_type']
 
-
-class UserPhoneNumberSerializer(serializers.ModelSerializer):
+class StaffIdentitySerializer(serializers.ModelSerializer):
+    """
+    Serializer untuk model StaffIdentity baru.
+    Menggantikan UserPhoneNumber, UserLineID, dll.
+    """
     class Meta:
-        model = UserPhoneNumber
-        fields = ['id', 'phone_number']
+        model = StaffIdentity
+        fields = ['id', 'identifier', 'description']
 
-class UserBranchAssignmentSerializer(serializers.ModelSerializer):
-    branch_name = serializers.CharField(source='branch.name', read_only=True)
-    class Meta:
-        model = UserBranchAssignment
-        fields = ['id', 'branch', 'branch_name']
-
-class UserLineIDSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = UserLineID
-        fields = ['id', 'line_id']
 
 class UserSerializer(serializers.ModelSerializer):
-    phone_numbers = UserPhoneNumberSerializer(many=True, read_only=True)
-    branch_assignments = UserBranchAssignmentSerializer(many=True, read_only=True)
-    line_ids = UserLineIDSerializer(many=True, read_only=True)
+    """
+    Updated User Serializer for Ultimate Model.
+    - assigned_branches: List of Branch objects (Many-to-Many)
+    - identities: List of phone numbers/LIDs
+    """
+    assigned_branches = BranchSerializer(many=True, read_only=True)
+    identities = StaffIdentitySerializer(many=True, read_only=True)
 
     class Meta:
         model = User
-        fields = ['id', 'username', 'email', 'is_verified', 'phone_numbers', 'branch_assignments', 'line_ids']
+        fields = [
+            'id', 'username', 'email', 'first_name', 'last_name',
+            'is_verified', 'jabatan', 
+            'assigned_branches', 'identities'
+        ]
 
 # ==============================================
 # 2. MAIN TRANSACTION SERIALIZER
@@ -56,7 +57,8 @@ class TransactionSerializer(serializers.ModelSerializer):
     category_name = serializers.CharField(source='category.name', read_only=True)
     reported_by_email = serializers.EmailField(source='reported_by.email', read_only=True)
     reported_by_username = serializers.CharField(source='reported_by.username', read_only=True)
-    reported_by_phone = serializers.CharField(source='reported_by.phone_number', read_only=True)
+    # Custom method to get phone number because User no longer has direct phone_number field
+    reported_by_phone = serializers.SerializerMethodField()
 
     class Meta:
         model = Transaction
@@ -99,6 +101,14 @@ class TransactionSerializer(serializers.ModelSerializer):
             'reported_by_username',
             'reported_by_phone',
         ]
+    
+    def get_reported_by_phone(self, obj):
+        """
+        Helper to fetch the first available identity (phone number) from the user
+        """
+        if obj.reported_by and obj.reported_by.identities.exists():
+            return obj.reported_by.identities.first().identifier
+        return None
 
     def validate_amount(self, value):
         """
@@ -116,6 +126,7 @@ class TransactionSerializer(serializers.ModelSerializer):
         category = data.get('category')
         transaction_type = data.get('transaction_type')
 
+        # Only validate if both are present (might be partial update)
         if category and transaction_type:
             if category.transaction_type != transaction_type:
                 raise serializers.ValidationError({
@@ -163,18 +174,23 @@ class EmailWebhookPayloadSerializer(serializers.Serializer):
     """
     Serializer for validating email webhook payloads from Make.com
     """
-    sender = serializers.EmailField()
-    subject = serializers.CharField()
-    text_body = serializers.CharField()
+    sender = serializers.EmailField(required=False)
+    subject = serializers.CharField(required=False)
+    text_body = serializers.CharField(required=False)
+    # Added flexibility for other fields if needed
+    recipient = serializers.CharField(required=False)
 
 
 class WhatsAppWebhookPayloadSerializer(serializers.Serializer):
     """
     Serializer for validating WhatsApp webhook payloads
     """
-    branch_id = serializers.IntegerField()
-    phone_number = serializers.CharField(max_length=20)
-    message = serializers.CharField(max_length=1000)
+    branch_id = serializers.CharField() # Changed to CharField to accept Names or IDs
+    phone_number = serializers.CharField(max_length=100)
+    message = serializers.CharField(max_length=1000, required=False, allow_blank=True)
+    amount = serializers.IntegerField(required=False)
+    type = serializers.CharField(required=False)
+    notes = serializers.CharField(required=False, allow_blank=True)
 
 # ==============================================
 # 5. DAILY SUMMARY SERIALIZER
